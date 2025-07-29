@@ -2,6 +2,7 @@
 # Enthält die Klasse für den Spieler-Charakter (den Alchemisten) mit verschiedenen Animationen.
 
 import pygame
+from config import Colors, PlayerConfig
 import os
 
 class Player(pygame.sprite.Sprite):
@@ -19,12 +20,12 @@ class Player(pygame.sprite.Sprite):
         super().__init__()
         
         # Animations-Konfiguration
-        self.animation_speed_ms = {"idle": 120, "run": 80} # Geschwindigkeit für jeden Zustand
+        self.animation_speed_ms = PlayerConfig.ANIMATION_SPEED_MS
         self.last_update_time = pygame.time.get_ticks()
         self.current_frame_index = 0
         
         # Bewegungs-Konfiguration
-        self.speed = 8
+        self.speed = PlayerConfig.SPEED
         self.is_moving = False
         self.facing_right = True # Spieler schaut standardmäßig nach rechts
         
@@ -75,7 +76,10 @@ class Player(pygame.sprite.Sprite):
             spritesheet = pygame.image.load(spritesheet_path).convert_alpha()
         except pygame.error:
             print(f"Fehler: Spritesheet-Datei konnte nicht geladen werden: {spritesheet_path}")
-            return [pygame.Surface((50, 80))] # Gibt einen leeren Platzhalter zurück
+            # Erstelle einen Platzhalter in der richtigen Größe
+            placeholder = pygame.Surface((PlayerConfig.SPRITE_WIDTH, PlayerConfig.SPRITE_HEIGHT), pygame.SRCALPHA)
+            placeholder.fill(Colors.PLACEHOLDER_GREEN)  # Grün als Platzhalter
+            return [placeholder]
 
         sheet_width = spritesheet.get_width()
         sheet_height = spritesheet.get_height()
@@ -90,8 +94,11 @@ class Player(pygame.sprite.Sprite):
             frame_surface = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
             frame_surface.blit(spritesheet, (0, 0), (x, 0, frame_width, frame_height))
             
-            # Skaliere das Bild für eine bessere Sichtbarkeit
-            scaled_frame = pygame.transform.scale(frame_surface, (frame_width * 3, frame_height * 3))
+            # Skaliere das Bild für passende Größe zu den Kacheln (etwa 2 Kacheln hoch = 64px)
+            # Original: 231x190 -> Ziel: etwa 48x64 (2 Kacheln breit, 2 Kacheln hoch)
+            target_width = 48
+            target_height = 64
+            scaled_frame = pygame.transform.scale(frame_surface, (target_width, target_height))
             frames.append(scaled_frame)
             
         return frames
@@ -126,32 +133,68 @@ class Player(pygame.sprite.Sprite):
             self.image = new_image
             self.rect = self.image.get_rect(center=old_center)
 
-    def move(self, dx):
-        """Bewegt den Spieler horizontal."""
+    def move(self, dx, dy=0):
+        """Bewegt den Spieler horizontal und vertikal."""
         if dx > 0:
             self.facing_right = True
         elif dx < 0:
             self.facing_right = False
         
         self.rect.x += dx
+        self.rect.y += dy
         
-        # Grenzen des Bildschirms einhalten
-        if self.rect.left < 0:
-            self.rect.left = 0
-        if self.rect.right > 1920: # Annahme: Bildschirmbreite
-            self.rect.right = 1920
+        # Grenzen des Bildschirms einhalten (für sehr große Maps können diese entfernt werden)
+        if self.rect.left < -1000:  # Erweiterte Grenzen für größere Maps
+            self.rect.left = -1000
+        if self.rect.right > 2920:  # Erweiterte Grenzen
+            self.rect.right = 2920
+        if self.rect.top < -1000:
+            self.rect.top = -1000
+        if self.rect.bottom > 2080:
+            self.rect.bottom = 2080
 
-    def move_left(self):
-        """Bewegt den Spieler nach links"""
+    def get_movement_left(self):
+        """Gibt die Bewegung nach links zurück"""
         self.is_moving = True
         self.facing_right = False
-        self.move(-self.speed)
+        return (-self.speed, 0)
+        
+    def get_movement_right(self):
+        """Gibt die Bewegung nach rechts zurück"""
+        self.is_moving = True
+        self.facing_right = True
+        return (self.speed, 0)
+
+    def get_movement_up(self):
+        """Gibt die Bewegung nach oben zurück"""
+        self.is_moving = True
+        return (0, -self.speed)
+        
+    def get_movement_down(self):
+        """Gibt die Bewegung nach unten zurück"""
+        self.is_moving = True
+        return (0, self.speed)
+        
+    # Behalte die alten Methoden für Kompatibilität bei
+    def move_left(self):
+        """Bewegt den Spieler nach links"""
+        dx, dy = self.get_movement_left()
+        self.move(dx, dy)
         
     def move_right(self):
         """Bewegt den Spieler nach rechts"""
-        self.is_moving = True
-        self.facing_right = True
-        self.move(self.speed)
+        dx, dy = self.get_movement_right()
+        self.move(dx, dy)
+
+    def move_up(self):
+        """Bewegt den Spieler nach oben"""
+        dx, dy = self.get_movement_up()
+        self.move(dx, dy)
+        
+    def move_down(self):
+        """Bewegt den Spieler nach unten"""
+        dx, dy = self.get_movement_down()
+        self.move(dx, dy)
 
     def stop_moving(self):
         """Stoppt die Bewegung des Spielers"""
