@@ -2,8 +2,8 @@
 # Enthält die Klasse für den Spieler-Charakter (den Alchemisten) mit verschiedenen Animationen.
 
 import pygame
-from config import Colors, PlayerConfig
 import os
+from settings import *
 
 class Player(pygame.sprite.Sprite):
     """
@@ -20,29 +20,40 @@ class Player(pygame.sprite.Sprite):
         super().__init__()
         
         # Animations-Konfiguration
-        self.animation_speed_ms = PlayerConfig.ANIMATION_SPEED_MS
+        self.animation_speed_ms = {"idle": 200, "run": 120}  # Robuste Animation timings
         self.last_update_time = pygame.time.get_ticks()
         self.current_frame_index = 0
         
-        # Bewegungs-Konfiguration
-        self.speed = PlayerConfig.SPEED
-        self.is_moving = False
-        self.facing_right = True # Spieler schaut standardmäßig nach rechts
+        # Bewegungs-Konfiguration (Delta Time Support)
+        self.speed = PLAYER_SPEED
+        self.direction = pygame.math.Vector2(0, 0)  # Verwende Vector2 für präzise Bewegung
+        self.facing_right = True  # Spieler schaut standardmäßig nach rechts
+        self.status = "idle"  # Neues robustes Status-System
         
         # Animations-Zustände
-        self.current_state = "idle"
         self.animation_frames = {"idle": [], "run": []}
         
         self.load_animations(asset_path)
         
         # Initiales Bild und Position setzen
-        self.image = self.animation_frames[self.current_state][0]
+        self.image = self.animation_frames["idle"][0] if self.animation_frames["idle"] else self.create_placeholder()
         self.rect = self.image.get_rect(center=(pos_x, pos_y))
+
+    def create_placeholder(self):
+        """Erstellt einen Platzhalter-Sprite bei Asset-Ladeproblemen"""
+        placeholder = pygame.Surface(PLAYER_SIZE, pygame.SRCALPHA)
+        placeholder.fill((0, 255, 0))  # Grün als Platzhalter
+        return placeholder
 
     def load_animations(self, path):
         """
         Lädt Animationen. Prüft, ob der Pfad ein Ordner (für mehrere Animationen)
         oder eine einzelne Datei ist.
+        
+        TODO: Refactor für Asset-Loading-System
+        - Erstelle asset_loader.py für zentrales Asset-Management
+        - Lade Animationen nur einmal und teile sie zwischen allen Instanzen
+        - Verwende Sprite-Atlas für bessere Performance
         """
         # Fall 1: Der Pfad ist ein Ordner (z.B. "assets/Wizard Pack")
         if os.path.isdir(path):
@@ -77,9 +88,7 @@ class Player(pygame.sprite.Sprite):
         except pygame.error:
             print(f"Fehler: Spritesheet-Datei konnte nicht geladen werden: {spritesheet_path}")
             # Erstelle einen Platzhalter in der richtigen Größe
-            placeholder = pygame.Surface((PlayerConfig.SPRITE_WIDTH, PlayerConfig.SPRITE_HEIGHT), pygame.SRCALPHA)
-            placeholder.fill(Colors.PLACEHOLDER_GREEN)  # Grün als Platzhalter
-            return [placeholder]
+            return [self.create_placeholder()]
 
         sheet_width = spritesheet.get_width()
         sheet_height = spritesheet.get_height()
@@ -94,111 +103,142 @@ class Player(pygame.sprite.Sprite):
             frame_surface = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
             frame_surface.blit(spritesheet, (0, 0), (x, 0, frame_width, frame_height))
             
-            # Skaliere das Bild für passende Größe zu den Kacheln (etwa 2 Kacheln hoch = 64px)
-            # Original: 231x190 -> Ziel: etwa 48x64 (2 Kacheln breit, 2 Kacheln hoch)
-            target_width = 48
-            target_height = 64
-            scaled_frame = pygame.transform.scale(frame_surface, (target_width, target_height))
+            # Skaliere das Bild für passende Größe zu den Kacheln
+            # Original: 231x190 -> Ziel: PLAYER_SIZE für bessere Sichtbarkeit
+            scaled_frame = pygame.transform.scale(frame_surface, PLAYER_SIZE)
             frames.append(scaled_frame)
             
         return frames
 
-    def update(self):
+    def get_status(self):
         """
-        Aktualisiert den Zustand und die Animation des Spielers in jedem Tick.
+        Robuste Status-Bestimmung für Animationen.
+        Bestimmt den Status in jedem Frame neu, um 'steckenbleibende' Animationen zu vermeiden.
         """
-        # 1. Animationszustand basierend auf Bewegung bestimmen
-        new_state = "run" if self.is_moving else "idle"
-        if new_state != self.current_state:
-            self.current_state = new_state
-            self.current_frame_index = 0 # Animation zurücksetzen
+        # idle status
+        if self.direction.x == 0 and self.direction.y == 0:
+            # Wenn der Status nicht schon 'idle' ist, setze ihn und starte die Animation neu
+            if 'idle' not in self.status:
+                self.status = 'idle'
+                self.current_frame_index = 0
+        else:
+            # Bewegung erkannt
+            if 'run' not in self.status:
+                self.status = 'run'
+                self.current_frame_index = 0
+        
+        # TODO: Erweitert für Kampf-Status
+        # if self.attacking:
+        #     self.direction.x = 0
+        #     self.direction.y = 0
+        #     if 'attack' not in self.status:
+        #         self.status = 'attack'
+        #         self.current_frame_index = 0
 
-        # 2. Animation fortschreiten lassen
+    def update(self, dt=None):
+        """
+        Aktualisiert den Zustand und die Animation des Spielers.
+        dt: Delta Time in Sekunden (obligatorisch für framerate-unabhängige Bewegung)
+        """
+        if dt is None:
+            dt = 1.0 / 60.0  # Fallback für 60 FPS
+        
+        # 1. Status basierend auf aktueller Bewegungsrichtung bestimmen
+        self.get_status()
+
+        # 2. Animation fortschreiten lassen (Delta Time basiert)
         now = pygame.time.get_ticks()
-        if now - self.last_update_time > self.animation_speed_ms[self.current_state]:
+        if now - self.last_update_time > self.animation_speed_ms[self.status]:
             self.last_update_time = now
             
-            frames_for_current_state = self.animation_frames[self.current_state]
-            self.current_frame_index = (self.current_frame_index + 1) % len(frames_for_current_state)
-            
-            # Das Bild des Sprites aktualisieren
-            new_image = frames_for_current_state[self.current_frame_index]
-            
-            # Bild spiegeln, falls der Spieler nach links schaut
-            if not self.facing_right:
-                new_image = pygame.transform.flip(new_image, True, False)
-            
-            # Position beibehalten, während das Bild aktualisiert wird
-            old_center = self.rect.center
-            self.image = new_image
-            self.rect = self.image.get_rect(center=old_center)
+            frames_for_current_status = self.animation_frames[self.status]
+            if frames_for_current_status:  # Sicherheitsprüfung
+                self.current_frame_index = (self.current_frame_index + 1) % len(frames_for_current_status)
+                
+                # Das Bild des Sprites aktualisieren
+                new_image = frames_for_current_status[self.current_frame_index]
+                
+                # Bild spiegeln, falls der Spieler nach links schaut
+                if not self.facing_right:
+                    new_image = pygame.transform.flip(new_image, True, False)
+                
+                # Position beibehalten, während das Bild aktualisiert wird
+                old_center = self.rect.center
+                self.image = new_image
+                self.rect = self.image.get_rect(center=old_center)
 
-    def move(self, dx, dy=0):
-        """Bewegt den Spieler horizontal und vertikal."""
-        if dx > 0:
-            self.facing_right = True
-        elif dx < 0:
-            self.facing_right = False
-        
-        self.rect.x += dx
-        self.rect.y += dy
-        
-        # Grenzen des Bildschirms einhalten (für sehr große Maps können diese entfernt werden)
-        if self.rect.left < -1000:  # Erweiterte Grenzen für größere Maps
-            self.rect.left = -1000
-        if self.rect.right > 2920:  # Erweiterte Grenzen
-            self.rect.right = 2920
-        if self.rect.top < -1000:
-            self.rect.top = -1000
-        if self.rect.bottom > 2080:
-            self.rect.bottom = 2080
+    def move(self, dt=1.0/60.0):
+        """
+        Delta Time basierte Bewegung mit Kollisionserkennung.
+        dt: Delta Time in Sekunden für framerate-unabhängige Bewegung
+        """
+        if self.direction.magnitude() > 0:
+            # Normalisiere die Richtung, um diagonale Bewegung zu korrigieren
+            normalized_direction = self.direction.normalize()
+            
+            # Berechne die Bewegung basierend auf Delta Time
+            movement_x = normalized_direction.x * self.speed * dt * 60  # * 60 für 60fps Referenz
+            movement_y = normalized_direction.y * self.speed * dt * 60
+            
+            # Aktualisiere Blickrichtung
+            if normalized_direction.x > 0:
+                self.facing_right = True
+            elif normalized_direction.x < 0:
+                self.facing_right = False
+            
+            # Bewegung anwenden
+            self.rect.x += movement_x
+            self.rect.y += movement_y
+            
+            # TODO: Hier später Kollisionserkennung mit Welt-Grenzen
+            # Für jetzt: Erweiterte Grenzen für größere Maps
+            self.rect.x = max(-1000, min(2920 - self.rect.width, self.rect.x))
+            self.rect.y = max(-1000, min(2080 - self.rect.height, self.rect.y))
+
+    def set_direction(self, direction_vector):
+        """Setzt die Bewegungsrichtung als Vector2 (modern approach)"""
+        self.direction = direction_vector
 
     def get_movement_left(self):
-        """Gibt die Bewegung nach links zurück"""
-        self.is_moving = True
-        self.facing_right = False
+        """Legacy Kompatibilität - gibt die Bewegung nach links zurück"""
+        self.direction.x = -1
         return (-self.speed, 0)
         
     def get_movement_right(self):
-        """Gibt die Bewegung nach rechts zurück"""
-        self.is_moving = True
-        self.facing_right = True
+        """Legacy Kompatibilität - gibt die Bewegung nach rechts zurück"""
+        self.direction.x = 1
         return (self.speed, 0)
 
     def get_movement_up(self):
-        """Gibt die Bewegung nach oben zurück"""
-        self.is_moving = True
+        """Legacy Kompatibilität - gibt die Bewegung nach oben zurück"""
+        self.direction.y = -1
         return (0, -self.speed)
         
     def get_movement_down(self):
-        """Gibt die Bewegung nach unten zurück"""
-        self.is_moving = True
+        """Legacy Kompatibilität - gibt die Bewegung nach unten zurück"""
+        self.direction.y = 1
         return (0, self.speed)
         
-    # Behalte die alten Methoden für Kompatibilität bei
+    # Legacy Kompatibilität: Behalte die alten Methoden bei
     def move_left(self):
-        """Bewegt den Spieler nach links"""
-        dx, dy = self.get_movement_left()
-        self.move(dx, dy)
+        """Legacy: Bewegt den Spieler nach links"""
+        self.direction.x = -1
         
     def move_right(self):
-        """Bewegt den Spieler nach rechts"""
-        dx, dy = self.get_movement_right()
-        self.move(dx, dy)
+        """Legacy: Bewegt den Spieler nach rechts"""
+        self.direction.x = 1
 
     def move_up(self):
-        """Bewegt den Spieler nach oben"""
-        dx, dy = self.get_movement_up()
-        self.move(dx, dy)
+        """Legacy: Bewegt den Spieler nach oben"""
+        self.direction.y = -1
         
     def move_down(self):
-        """Bewegt den Spieler nach unten"""
-        dx, dy = self.get_movement_down()
-        self.move(dx, dy)
+        """Legacy: Bewegt den Spieler nach unten"""
+        self.direction.y = 1
 
     def stop_moving(self):
         """Stoppt die Bewegung des Spielers"""
-        self.is_moving = False
+        self.direction = pygame.math.Vector2(0, 0)
 
     def update_position_properties(self):
         """Aktualisiert Position-Properties für Kompatibilität"""
