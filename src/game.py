@@ -2,7 +2,9 @@
 # Erweiterte Alchemist-Spiel Logik mit animiertem Spieler
 
 import pygame
+import os
 from player import Player
+from settings import *
 
 class Game:
     """
@@ -16,28 +18,40 @@ class Game:
         if not pygame.get_init():
             pygame.init()
         
+        # === PATH SETUP (ROBUST) ===
+        # Erstelle absolute Pfade, um Probleme zu vermeiden
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        
         # Spieler erstellen (mit Multi-Animation System)
         # Versuche zuerst das Wizard Pack, dann Fallbacks
         sprite_paths = [
-            "assets/Wizard Pack",  # Wizard Pack Ordner
-            "assets/wizard_char.png",  # Original Einzeldatei
-            "assets/wizard_char_demo.png"  # Demo-Fallback
+            os.path.join(project_root, "assets", "Wizard Pack"),  # Absoluter Pfad
+            os.path.join(project_root, "assets", "wizard_char.png"),
+            os.path.join(project_root, "assets", "wizard_char_demo.png")
         ]
         
         player_created = False
+        # Player in der Mitte der Game-Surface platzieren
+        start_x, start_y = PLAYER_START_POS  # Verwende Settings-Konstante
         for path in sprite_paths:
             try:
-                self.player = Player(path, 960, 500)
-                player_created = True
-                print(f"✅ Spieler erstellt mit: {path}")
-                break
-            except:
+                self.player = Player(path, start_x, start_y)
+                # Prüfen, ob der Player tatsächlich ein Bild hat
+                if self.player.image.get_width() > 1: # Placeholder ist 1x1
+                    player_created = True
+                    print(f"✅ Spieler erfolgreich erstellt mit: {path}")
+                    break
+                else:
+                    print(f"⚠️ Spieler mit Pfad '{path}' erstellt, aber nur als Platzhalter.")
+            except Exception as e:
+                print(f"❌ Fehler beim Erstellen des Spielers mit Pfad '{path}': {e}")
                 continue
         
         if not player_created:
             # Letzter Fallback: Player ohne Spritesheet
-            self.player = Player("", 960, 500)
-            print("⚠️ Spieler ohne Spritesheet erstellt")
+            self.player = Player("", start_x, start_y)
+            print("⚠️ Kritisch: Spieler konnte nur als leerer Platzhalter erstellt werden.")
         
         # Aktive Zutaten für das Brauen (werden durch NFC-Tokens hinzugefügt)
         self.aktive_zutaten = []
@@ -60,10 +74,10 @@ class Game:
         self.score = 0
         
         
-    def update(self, collision_objects=None):
-        """Update-Schleife - aktualisiert Spieler-Animation"""
+    def update(self, dt=None, collision_objects=None):
+        """Update-Schleife mit Delta Time - aktualisiert Spieler-Animation"""
         # Aktualisiere nur die Animation, Bewegung wird separat behandelt
-        self.player.update()
+        self.player.update(dt)
     
     def move_player_with_collision(self, dx, dy, collision_objects):
         """Bewegt den Spieler und überprüft Kollisionen separat für X und Y"""

@@ -1,6 +1,6 @@
 # src/camera.py
 import pygame
-from config import WindowConfig
+from settings import *
 
 class Camera:
     """
