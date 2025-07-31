@@ -38,6 +38,18 @@ class Player(pygame.sprite.Sprite):
         # Initiales Bild und Position setzen
         self.image = self.animation_frames["idle"][0] if self.animation_frames["idle"] else self.create_placeholder()
         self.rect = self.image.get_rect(center=(pos_x, pos_y))
+        # Perfekt angepasste Hitbox - genau um den Charakter herum
+        self.hitbox = self.rect.inflate(-50, -70)  # Optimal: -50 Breite, -70 Höhe
+        self.position = pygame.math.Vector2(self.rect.center)  # Genaue Float-Position für dt-Berechnungen
+        
+        # Für Kollisionserkennung
+        self.obstacle_sprites = pygame.sprite.Group()
+    
+    def update_hitbox(self):
+        """Aktualisiert die Hitbox basierend auf der aktuellen rect-Position"""
+        # Perfekt angepasste Hitbox - genau um den Charakter herum
+        self.hitbox = self.rect.inflate(-70, -70)  # Optimal: -50 Breite, -70 Höhe
+        self.position = pygame.math.Vector2(self.rect.center)
 
     def create_placeholder(self):
         """Erstellt einen Platzhalter-Sprite bei Asset-Ladeproblemen"""
@@ -57,19 +69,16 @@ class Player(pygame.sprite.Sprite):
         """
         # Fall 1: Der Pfad ist ein Ordner (z.B. "assets/Wizard Pack")
         if os.path.isdir(path):
-            print(f"Lade Animationen aus Ordner: {path}")
             # Annahme: Idle.png hat 6 Frames, Run.png hat 8 Frames
             self.animation_frames["idle"] = self.load_frames_from_spritesheet(os.path.join(path, "Idle.png"), 6)
             self.animation_frames["run"] = self.load_frames_from_spritesheet(os.path.join(path, "Run.png"), 8)
         # Fall 2: Der Pfad ist eine einzelne Datei
         elif os.path.isfile(path):
-            print(f"Lade einzelne Spritesheet-Datei: {path}")
             # Wir nehmen an, die einzelne Datei ist eine Idle-Animation mit 60 Frames
             frames = self.load_frames_from_spritesheet(path, 60)
             self.animation_frames["idle"] = frames
             self.animation_frames["run"] = frames # Verwenden die gleiche Animation für "run"
         else:
-            print(f"FEHLER: Asset-Pfad nicht gefunden: {path}")
             # Erstelle einen Fallback-Platzhalter, damit das Spiel nicht abstürzt
             self.animation_frames["idle"] = [pygame.Surface((50, 80))]
             self.animation_frames["idle"][0].fill((255, 0, 0))
@@ -86,7 +95,6 @@ class Player(pygame.sprite.Sprite):
         try:
             spritesheet = pygame.image.load(spritesheet_path).convert_alpha()
         except pygame.error:
-            print(f"Fehler: Spritesheet-Datei konnte nicht geladen werden: {spritesheet_path}")
             # Erstelle einen Platzhalter in der richtigen Größe
             return [self.create_placeholder()]
 
@@ -95,8 +103,6 @@ class Player(pygame.sprite.Sprite):
         
         frame_width = sheet_width // num_frames
         frame_height = sheet_height
-
-        print(f"Lade {num_frames} Frames der Größe {frame_width}x{frame_height} aus {os.path.basename(spritesheet_path)}")
 
         for i in range(num_frames):
             x = i * frame_width
@@ -169,16 +175,12 @@ class Player(pygame.sprite.Sprite):
 
     def move(self, dt=1.0/60.0):
         """
-        Delta Time basierte Bewegung mit Kollisionserkennung.
+        Delta Time basierte Bewegung mit präziser Float-Position und Kollisionserkennung.
         dt: Delta Time in Sekunden für framerate-unabhängige Bewegung
         """
         if self.direction.magnitude() > 0:
             # Normalisiere die Richtung, um diagonale Bewegung zu korrigieren
             normalized_direction = self.direction.normalize()
-            
-            # Berechne die Bewegung basierend auf Delta Time
-            movement_x = normalized_direction.x * self.speed * dt * 60  # * 60 für 60fps Referenz
-            movement_y = normalized_direction.y * self.speed * dt * 60
             
             # Aktualisiere Blickrichtung
             if normalized_direction.x > 0:
@@ -186,14 +188,48 @@ class Player(pygame.sprite.Sprite):
             elif normalized_direction.x < 0:
                 self.facing_right = False
             
-            # Bewegung anwenden
-            self.rect.x += movement_x
-            self.rect.y += movement_y
+            # Berechne die Bewegung mit Float-Präzision
+            speed_multiplier = self.speed * dt * 60  # * 60 für 60fps Referenz
             
-            # TODO: Hier später Kollisionserkennung mit Welt-Grenzen
-            # Für jetzt: Erweiterte Grenzen für größere Maps
-            self.rect.x = max(-1000, min(2920 - self.rect.width, self.rect.x))
-            self.rect.y = max(-1000, min(2080 - self.rect.height, self.rect.y))
+            # Berechnungen mit der Float-Position durchführen
+            self.position.x += normalized_direction.x * speed_multiplier
+            self.position.y += normalized_direction.y * speed_multiplier
+            
+            # Die Integer-Hitbox von der Float-Position aktualisieren
+            self.hitbox.centerx = round(self.position.x)
+            self.collision('horizontal')  # Kollision mit der gerundeten Position prüfen
+            self.hitbox.centery = round(self.position.y)
+            self.collision('vertical')  # Kollision mit der gerundeten Position prüfen
+            
+            # Das finale rect von der (möglicherweise korrigierten) Hitbox aktualisieren
+            self.rect.center = self.hitbox.center
+
+    def collision(self, direction):
+        """
+        Kollisionserkennung mit Hindernissen.
+        Nach einer Kollision wird auch die Float-Position synchronisiert.
+        """
+        if direction == 'horizontal':
+            for sprite in self.obstacle_sprites:
+                if sprite.hitbox.colliderect(self.hitbox):
+                    if self.direction.x > 0:  # Bewegung nach rechts
+                        self.hitbox.right = sprite.hitbox.left
+                    if self.direction.x < 0:  # Bewegung nach links
+                        self.hitbox.left = sprite.hitbox.right
+                    self.position.x = self.hitbox.centerx  # Float-Position synchronisieren
+
+        if direction == 'vertical':
+            for sprite in self.obstacle_sprites:
+                if sprite.hitbox.colliderect(self.hitbox):
+                    if self.direction.y > 0:  # Bewegung nach unten
+                        self.hitbox.bottom = sprite.hitbox.top
+                    if self.direction.y < 0:  # Bewegung nach oben
+                        self.hitbox.top = sprite.hitbox.bottom
+                    self.position.y = self.hitbox.centery  # Float-Position synchronisieren
+
+    def set_obstacle_sprites(self, obstacle_sprites):
+        """Setzt die Sprite-Gruppe für Kollisionserkennung"""
+        self.obstacle_sprites = obstacle_sprites
 
     def set_direction(self, direction_vector):
         """Setzt die Bewegungsrichtung als Vector2 (modern approach)"""

@@ -40,14 +40,11 @@ class Game:
     def load_background_music(self):
         """Lädt und startet Hintergrundmusik"""
         try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(script_dir)
-            music_path = os.path.join(project_root, BACKGROUND_MUSIC)
-            
-            pygame.mixer.music.load(music_path)
+            # Der Pfad in BACKGROUND_MUSIC ist jetzt absolut
+            pygame.mixer.music.load(BACKGROUND_MUSIC)
             pygame.mixer.music.set_volume(MUSIC_VOLUME)
             pygame.mixer.music.play(-1)  # Endlos-Schleife
-            print(f"🎵 Musik gestartet: {music_path}")
+            print(f"🎵 Musik gestartet: {BACKGROUND_MUSIC}")
         except Exception as e:
             print(f"⚠️ Musik-Fehler: {e}")
     
@@ -67,17 +64,13 @@ class Game:
     
     def update(self, dt):
         """Update der Spiel-Logik"""
-        # Aktueller Zustand wird geupdatet
-        # Später: State-Transitions hier verwalten
-        self.current_state.run(dt)
+        # Aktueller Zustand wird nur geupdatet, nicht gerendert
+        self.current_state.update(dt)
     
     def render(self):
         """Rendering-Pipeline"""
-        # Game surface leeren
-        self.game_surface.fill(BACKGROUND_COLOR)
-        
-        # Aktueller Zustand rendert direkt auf game_surface
-        # (Das passiert bereits in Level.run() → Level.render())
+        # Level rendert direkt auf game_surface
+        self.current_state.render()
         
         # Skalierung auf Display
         scaled_surface = pygame.transform.scale(self.game_surface, (WINDOW_WIDTH, WINDOW_HEIGHT))

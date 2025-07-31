@@ -79,22 +79,22 @@ class MapLoader:
                             color = self.get_placeholder_color(gid)
                             pygame.draw.rect(surface, color, transformed_rect)
                             # Optional: Rahmen für bessere Sichtbarkeit
-                            pygame.draw.rect(surface, (0, 0, 0), transformed_rect, max(1, int(camera.zoom_factor)))
+                            pygame.draw.rect(surface, (255, 255, 255), transformed_rect, max(1, int(camera.zoom_factor)))
     
     def get_placeholder_color(self, gid):
         """
         Gibt eine Platzhalter-Farbe basierend auf der Kachel-ID zurück.
         """
-        # Verschiedene Farben für verschiedene Kachel-IDs
+        # Hellere, kontrastreichere Farben für bessere Sichtbarkeit
         colors = [
-            (139, 69, 19),   # Braun - Boden
-            (34, 139, 34),   # Grün - Gras  
-            (128, 128, 128), # Grau - Stein
-            (160, 82, 45),   # Sandbraun
-            (0, 100, 0),     # Dunkelgrün
-            (105, 105, 105), # Dunkelgrau
-            (222, 184, 135), # Beige
-            (85, 107, 47),   # Olivgrün
+            (200, 120, 60),   # Helles Braun - Boden
+            (80, 200, 80),    # Helles Grün - Gras  
+            (180, 180, 180),  # Helles Grau - Stein
+            (240, 180, 100),  # Helles Sandbraun
+            (60, 180, 60),    # Helles Grün
+            (160, 160, 160),  # Hellgrau
+            (255, 220, 180),  # Helles Beige
+            (120, 160, 80),   # Helles Olivgrün
         ]
         return colors[gid % len(colors)]
 
