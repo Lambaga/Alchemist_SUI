@@ -12,15 +12,15 @@ FPS = 60
 
 # === SPIELER EINSTELLUNGEN ===
 PLAYER_SPEED = 4
-PLAYER_SIZE = (48, 64)  # (width, height)
+PLAYER_SIZE = (96, 128)  # (width, height) - 2 Tile-Blöcke
 PLAYER_START_X = 960
 PLAYER_START_Y = 500
 
 # === ANIMATION EINSTELLUNGEN ===
 # Player-Konfiguration
 PLAYER_SPEED = 4
-PLAYER_SPRITE_WIDTH = 48
-PLAYER_SPRITE_HEIGHT = 64
+PLAYER_SPRITE_WIDTH = 96  # 2 Tile-Blöcke breit (angenommen 48px pro Tile)
+PLAYER_SPRITE_HEIGHT = 128  # 2 Tile-Blöcke hoch (angenommen 64px pro Tile)
 ANIMATION_SPEED = 0.15
 ANIMATION_SPEEDS = {
     "idle": 120,

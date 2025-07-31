@@ -20,12 +20,15 @@
 
 ### 4. Fehlerbeseitigung
 - **KORRIGIERT:** Alle Import-Errors nach Refaktorierung
+- **KORRIGIERT:** Diagonalbewegung-Bug (Vektor-Normalisierung implementiert)
+- **VERBESSERT:** Kamera-System mit 2x Zoom für bessere Sichtbarkeit
+- **VERGRÖSSERT:** Charakter-Größe auf 2 Tile-Blöcke (96x128 Pixel)
 - **GETESTET:** Spiel läuft erfolgreich mit allen Features:
-  - ✅ 4-Richtungs-Bewegung (WASD + Pfeiltasten)
+  - ✅ 4-Richtungs-Bewegung (WASD + Pfeiltasten) mit korrekter Geschwindigkeit
   - ✅ Kollisionserkennung mit 104 Map-Objekten
   - ✅ Hintergrundmusik mit Pause/Resume (M-Taste)
-  - ✅ Smooth Kamera-Following
-  - ✅ Animierte Charakter-Sprites
+  - ✅ Smooth Kamera-Following mit Zoom-Funktionalität (+/- Tasten)
+  - ✅ Vergrößerte Charakter-Sprites für bessere Sichtbarkeit
 
 ## 📋 EMPFOHLENE WEITERE VERBESSERUNGEN
 
@@ -75,6 +78,8 @@
 - Alle Core-Features funktional
 - Saubere Code-Architektur
 - Zentrale Konfiguration implementiert
+- Diagonalbewegung-Bug behoben (Vektor-Normalisierung)
+- Kamera-System mit dynamischem Zoom (1x - 4x)
 - Keine kritischen Bugs
 
 **NÄCHSTE SCHRITTE:**

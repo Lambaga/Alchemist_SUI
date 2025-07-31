@@ -49,7 +49,7 @@ class MapLoader:
 
     def render(self, surface, camera):
         """
-        Zeichnet alle sichtbaren Kachelebenen der Karte auf die angegebene Oberfläche.
+        Zeichnet alle sichtbaren Kachelebenen der Karte mit Zoom-Unterstützung.
         Falls Tileset-Grafiken fehlen, werden Platzhalter-Rechtecke gezeichnet.
         """
         if not self.tmx_data:
@@ -67,14 +67,19 @@ class MapLoader:
                         transformed_rect = camera.apply_rect(tile_rect)
                         
                         if tile_image:
-                            # Normale Tileset-Grafik verwenden
-                            surface.blit(tile_image, transformed_rect)
+                            # Skaliere das Tile-Bild entsprechend dem Zoom
+                            scaled_image = pygame.transform.scale(
+                                tile_image,
+                                (int(self.tmx_data.tilewidth * camera.zoom_factor),
+                                 int(self.tmx_data.tileheight * camera.zoom_factor))
+                            )
+                            surface.blit(scaled_image, (transformed_rect.x, transformed_rect.y))
                         else:
-                            # Fallback: Platzhalter-Rechteck zeichnen
+                            # Fallback: Platzhalter-Rechteck zeichnen (bereits durch apply_rect skaliert)
                             color = self.get_placeholder_color(gid)
                             pygame.draw.rect(surface, color, transformed_rect)
                             # Optional: Rahmen für bessere Sichtbarkeit
-                            pygame.draw.rect(surface, (0, 0, 0), transformed_rect, 1)
+                            pygame.draw.rect(surface, (0, 0, 0), transformed_rect, max(1, int(camera.zoom_factor)))
     
     def get_placeholder_color(self, gid):
         """

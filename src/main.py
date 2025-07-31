@@ -82,7 +82,7 @@ class GameRenderer:
             pygame.draw.rect(self.screen, GROUND_COLOR, ground_rect)
         
     def draw_ground_stones(self, camera):
-        """Zeichnet die Steine am Boden durch die Kamera"""
+        """Zeichnet die Steine am Boden durch die Kamera mit Zoom"""
         for stone in self.stones:
             # Erstelle ein temporäres Objekt für die Kamera-Transformation
             stone_rect = pygame.Rect(stone['x'], stone['y'], stone['size'], stone['size'])
@@ -90,27 +90,41 @@ class GameRenderer:
             
             # Zeichne nur Steine, die im sichtbaren Bereich sind
             if -50 < stone_pos.x < SCREEN_WIDTH + 50:
+                # Skaliere die Stein-Größe mit dem Zoom
+                scaled_size = int(stone['size'] * camera.zoom_factor)
                 pygame.draw.circle(self.screen, stone['color'], 
-                                 (stone_pos.x + stone['size']//2, stone_pos.y + stone['size']//2), 
-                                 stone['size']//2)
+                                 (int(stone_pos.x + scaled_size//2), 
+                                  int(stone_pos.y + scaled_size//2)), 
+                                 max(1, scaled_size//2))  # Mindestgröße 1 Pixel
         
     def draw_player(self, player, camera):
-        """Zeichnet den animierten Spieler mit Kamera"""
+        """Zeichnet den animierten Spieler mit Kamera und Zoom"""
         if hasattr(player, 'image') and player.image:
-            # Zeichne das animierte Sprite durch die Kamera
-            self.screen.blit(player.image, camera.apply(player))
+            # Hole die transformierte Position von der Kamera
+            player_pos = camera.apply(player)
+            
+            # Skaliere das Sprite entsprechend dem Zoom-Faktor
+            scaled_image = pygame.transform.scale(
+                player.image, 
+                (int(player.image.get_width() * camera.zoom_factor), 
+                 int(player.image.get_height() * camera.zoom_factor))
+            )
+            
+            # Zeichne das skalierte Sprite
+            self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
         else:
             # Fallback: Zeichne als Rechteck falls keine Animation vorhanden
             player_pos = camera.apply(player)
-            pygame.draw.rect(self.screen, Colors.PLAYER_GREEN, 
-                            (player_pos.x, player_pos.y, player.width, player.height))
+            pygame.draw.rect(self.screen, Colors.PLAYER_GREEN, player_pos)
             
-            # Spieler-"Gesicht" (zwei Punkte für Augen)
-            eye_size = 6
+            # Spieler-"Gesicht" (skaliert mit Zoom)
+            eye_size = int(6 * camera.zoom_factor)
             pygame.draw.circle(self.screen, (0, 0, 0), 
-                              (player_pos.x + 15, player_pos.y + 20), eye_size)
+                              (int(player_pos.x + 15 * camera.zoom_factor), 
+                               int(player_pos.y + 20 * camera.zoom_factor)), eye_size)
             pygame.draw.circle(self.screen, (0, 0, 0), 
-                              (player_pos.x + 45, player_pos.y + 20), eye_size)
+                              (int(player_pos.x + 45 * camera.zoom_factor), 
+                               int(player_pos.y + 20 * camera.zoom_factor)), eye_size)
                           
     def draw_ui(self, game):
         """Zeichnet die Benutzeroberfläche"""
@@ -163,6 +177,7 @@ class GameRenderer:
             "1,2,3 Zutaten sammeln", 
             "Leertaste: Brauen",
             "Backspace: Zutat entfernen",
+            "+ / - : Zoom ein/aus",
             "R: Reset",
             "M: Musik ein/aus",
             "ESC: Beenden"
@@ -300,6 +315,14 @@ def main():
                     else:
                         pygame.mixer.music.unpause()
                         print("🔊 Musik fortgesetzt")
+                        
+                # Zoom-Steuerung
+                elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
+                    camera.zoom_in()
+                    print(f"🔍 Zoom In: {camera.zoom_factor:.1f}x")
+                elif event.key == pygame.K_MINUS:
+                    camera.zoom_out()
+                    print(f"🔍 Zoom Out: {camera.zoom_factor:.1f}x")
                     
             elif event.type == pygame.KEYUP:
                 # Bewegung stoppen
@@ -312,7 +335,7 @@ def main():
                 elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                     keys_pressed['down'] = False
 
-        # 2. Kontinuierliche Bewegung
+        # 2. Kontinuierliche Bewegung mit Diagonalbewegung-Korrektur
         total_dx = 0
         total_dy = 0
         is_moving = False
@@ -333,6 +356,17 @@ def main():
             dx, dy = game.player.get_movement_down()
             total_dy += dy
             is_moving = True
+            
+        # Normalisiere die Bewegung bei Diagonalbewegung
+        if total_dx != 0 and total_dy != 0:
+            # Bei Diagonalbewegung: Geschwindigkeit durch √2 teilen
+            import math
+            length = math.sqrt(total_dx * total_dx + total_dy * total_dy)
+            if length > 0:
+                # Normalisiere auf die ursprüngliche Geschwindigkeit
+                player_speed = game.player.speed
+                total_dx = (total_dx / length) * player_speed
+                total_dy = (total_dy / length) * player_speed
             
         # Stoppe Bewegung wenn keine Taste gedrückt
         if not is_moving:

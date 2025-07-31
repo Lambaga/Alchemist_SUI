@@ -4,43 +4,61 @@ from config import WindowConfig
 
 class Camera:
     """
-    Eine einfache Kamera, die einem Ziel-Sprite folgt.
-    Sie verschiebt die gesamte Szene, um den Eindruck zu erwecken,
-    dass die Kamera dem Spieler folgt.
+    Eine Kamera mit Zoom-Funktionalität, die einem Ziel-Sprite folgt.
+    Sie verschiebt und skaliert die gesamte Szene.
     """
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width, screen_height, zoom_factor=2.0):
         self.screen_width = screen_width
         self.screen_height = screen_height
+        self.zoom_factor = zoom_factor  # 2.0 = 200% Zoom für bessere Sicht
+        self.min_zoom = 1.0  # Minimaler Zoom
+        self.max_zoom = 4.0  # Maximaler Zoom
+        
+        # Effektive Kamera-Größe mit Zoom
+        self.update_zoom_dimensions()
+        
         # Das Kamera-Rechteck repräsentiert den sichtbaren Bereich.
-        # Wir starten es bei (0,0) mit der Größe des Bildschirms.
-        self.camera_rect = pygame.Rect(0, 0, screen_width, screen_height)
+        self.camera_rect = pygame.Rect(0, 0, self.camera_width, self.camera_height)
+        
+    def update_zoom_dimensions(self):
+        """Aktualisiert die Kamera-Dimensionen basierend auf dem Zoom-Faktor"""
+        self.camera_width = self.screen_width / self.zoom_factor
+        self.camera_height = self.screen_height / self.zoom_factor
+        
+    def zoom_in(self, factor=0.2):
+        """Vergrößert den Zoom"""
+        self.zoom_factor = min(self.max_zoom, self.zoom_factor + factor)
+        self.update_zoom_dimensions()
+        
+    def zoom_out(self, factor=0.2):
+        """Verkleinert den Zoom"""
+        self.zoom_factor = max(self.min_zoom, self.zoom_factor - factor)
+        self.update_zoom_dimensions()
 
     def apply(self, entity):
         """
-        Wendet den Kamera-Offset auf ein Sprite an.
-        Verschiebt das Rechteck des Sprites basierend auf der Kameraposition.
+        Wendet den Kamera-Offset und Zoom auf ein Sprite an.
         """
-        return entity.rect.move(self.camera_rect.topleft)
+        # Berechne Position relativ zur Kamera
+        x = (entity.rect.x - self.camera_rect.x) * self.zoom_factor
+        y = (entity.rect.y - self.camera_rect.y) * self.zoom_factor
+        return pygame.Rect(x, y, entity.rect.width * self.zoom_factor, entity.rect.height * self.zoom_factor)
 
     def apply_rect(self, rect):
         """
-        Wendet den Kamera-Offset auf ein beliebiges Rechteck an.
-        Nützlich für statische Objekte wie Steine.
+        Wendet den Kamera-Offset und Zoom auf ein beliebiges Rechteck an.
         """
-        return rect.move(self.camera_rect.topleft)
+        x = (rect.x - self.camera_rect.x) * self.zoom_factor
+        y = (rect.y - self.camera_rect.y) * self.zoom_factor
+        return pygame.Rect(x, y, rect.width * self.zoom_factor, rect.height * self.zoom_factor)
 
     def update(self, target):
         """
-        Aktualisiert die Kameraposition, um das Ziel (den Spieler)
-        in der Mitte des Bildschirms zu halten.
+        Aktualisiert die Kameraposition, um das Ziel in der Mitte zu halten.
         """
-        # Wir wollen, dass das Ziel in der Mitte ist, also berechnen wir die
-        # linke obere Ecke der Kamera so, dass das Ziel zentriert ist.
-        x = -target.rect.centerx + int(self.screen_width / 2)
-        y = -target.rect.centery + int(self.screen_height / 2)
+        # Zentriere das Ziel in der Kamera (mit Zoom berücksichtigt)
+        x = target.rect.centerx - self.camera_width / 2
+        y = target.rect.centery - self.camera_height / 2
 
-        # Hier könnten wir später Grenzen für die Kamera hinzufügen,
-        # damit sie nicht über die Levelgrenzen hinaus scrollt.
-
-        self.camera_rect = pygame.Rect(x, y, self.camera_rect.width, self.camera_rect.height)
+        self.camera_rect = pygame.Rect(x, y, self.camera_width, self.camera_height)
 
