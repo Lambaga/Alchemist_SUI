@@ -6,6 +6,7 @@ from settings import *
 from game import Game as GameLogic
 from camera import Camera
 from map_loader import MapLoader
+from demon_manager import DemonManager
 
 class GameRenderer:
     """Rendering-System für das Level"""
@@ -181,6 +182,9 @@ class Level:
         self.camera = Camera(surface_width, surface_height, DEFAULT_ZOOM)
         self.renderer = GameRenderer(self.screen)
         
+        # Demon Manager initialisieren (BEFORE map loading!)
+        self.demon_manager = DemonManager()
+        
         # Map laden
         self.load_map()
         
@@ -199,7 +203,8 @@ class Level:
             map_path = path.join(MAP_DIR, "Map1.tmx") # Verwende MAP_DIR aus settings
             
             self.map_loader = MapLoader(map_path)
-            if self.map_loader.tmx_data:
+            
+            if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
                 
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
@@ -214,12 +219,15 @@ class Level:
                 self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
                 
         except Exception as e:
-            self.map_loader = None
-            self.use_map = False
-            # Fallback: Standard-Position (nur wenn Map fehlschlägt)
-            self.game_logic.player.rect.bottom = self.screen.get_height() - 200
-            self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-            self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+            if self.map_loader and self.map_loader.tmx_data:
+                self.use_map = True
+            else:
+                self.map_loader = None
+                self.use_map = False
+                # Fallback: Standard-Position (nur wenn Map fehlschlägt)
+                self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
+                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
     
     def spawn_entities_from_map(self):
         """Spawnt Entities basierend auf Tiled-Map Objekten (datengesteuert)"""
@@ -243,13 +251,28 @@ class Level:
                         player_spawned = True
                     
                     # Weitere Spawn-Typen für zukünftige Erweiterung
-                    elif obj.name and obj.name.lower() in ['enemy', 'orc', 'monster']:
+                    elif obj.name and obj.name.lower() in ['enemy', 'orc', 'monster', 'demon']:
                         # Hier könnte später Enemy-Spawning implementiert werden
                         pass
                         
                     elif obj.name and obj.name.lower() in ['item', 'treasure', 'ingredient']:
                         # Hier könnte später Item-Spawning implementiert werden
                         pass
+        
+        # Demons aus der Map spawnen
+        self.demon_manager.add_demons_from_map(self.map_loader)
+        
+        # Teste Demons manuell (entferne das später wenn deine Map Demon-Objekte hat)
+        if self.map_loader and self.map_loader.tmx_data:
+            # Hole die Player-Position für relative Spawns
+            player_x = self.game_logic.player.rect.centerx
+            player_y = self.game_logic.player.rect.centery
+            
+            # Spawne Demons relativ zum Player (einige Tiles entfernt)
+            # 64 Pixel = etwa 1 Tile, spawne sehr nah zum Player
+            demon1 = self.demon_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)  # Direkt rechts vom Player
+            demon2 = self.demon_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)   # Direkt links vom Player  
+            demon3 = self.demon_manager.add_demon(player_x, player_y - 100, scale=3.0, facing_right=False) # Direkt über dem Player
         
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
@@ -334,6 +357,9 @@ class Level:
         # Spiel-Logik updaten mit Delta Time
         self.game_logic.update(dt)
         
+        # Demons updaten mit Player-Referenz für AI
+        self.demon_manager.update(dt, self.game_logic.player)
+        
         # Kamera updaten
         self.camera.update(self.game_logic.player)
     
@@ -380,10 +406,15 @@ class Level:
         # Spieler
         self.renderer.draw_player(self.game_logic.player, self.camera)
         
+        # Demons zeichnen
+        self.demon_manager.draw(self.screen, self.camera)
+        
         # Debug: Kollisionsboxen zeichnen (falls aktiviert)
         if hasattr(self, 'show_collision_debug') and self.show_collision_debug:
             self.renderer.draw_collision_debug(self.game_logic.player, self.camera, 
                                              self.map_loader.collision_objects if self.map_loader else [])
+            # Demon debug hitboxes
+            self.demon_manager.draw_debug(self.screen, self.camera)
         
         # UI
         self.renderer.draw_ui(self.game_logic)
