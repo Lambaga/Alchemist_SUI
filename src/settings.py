@@ -1,6 +1,18 @@
 # src/settings.py
 # Zentrale Einstellungen für das gesamte Spiel
 import pygame
+from os import path
+
+# === PFAD DEFINITIONEN (ROBUST) ===
+# __file__ ist der Pfad zur aktuellen Datei (settings.py)
+# path.dirname() holt das Verzeichnis davon (der 'src' Ordner)
+# path.join() fügt Verzeichnisse plattformunabhängig zusammen
+SRC_DIR = path.dirname(__file__)
+ROOT_DIR = path.join(SRC_DIR, '..') # Geht ein Verzeichnis hoch zum Projekt-Root
+ASSETS_DIR = path.join(ROOT_DIR, 'assets')
+MAP_DIR = path.join(ASSETS_DIR, 'maps')
+SOUND_DIR = path.join(ASSETS_DIR, 'sounds')
+SPRITES_DIR = path.join(ASSETS_DIR, 'Wizard Pack')
 
 # === BILDSCHIRM EINSTELLUNGEN ===
 SCREEN_WIDTH = 1920
@@ -12,14 +24,14 @@ FPS = 60
 # === SPIEL EINSTELLUNGEN ===
 GAME_TITLE = "🧙‍♂️ Der Alchemist"
 
-# === PFADE ===
-ASSETS_PATH = "assets"
-MAPS_PATH = "assets/maps"
-SOUNDS_PATH = "assets/sounds"
-SPRITES_PATH = "assets/Wizard Pack"
+# === PFADE (veraltet, jetzt oben definiert) ===
+# ASSETS_PATH = "assets"
+# MAPS_PATH = "assets/maps"
+# SOUNDS_PATH = "assets/sounds"
+# SPRITES_PATH = "assets/Wizard Pack"
 
 # === MUSIK ===
-BACKGROUND_MUSIC = "assets/sounds/korol.mp3"
+BACKGROUND_MUSIC = path.join(SOUND_DIR, "korol.mp3")
 MUSIC_VOLUME = 0.7
 
 # === FARBEN ===

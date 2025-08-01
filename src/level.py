@@ -1,11 +1,12 @@
 # src/level.py
 # Level/Gameplay-Zustand - Hier läuft das eigentliche Spiel
 import pygame
-import os
+from os import path
 from settings import *
 from game import Game as GameLogic
 from camera import Camera
 from map_loader import MapLoader
+from demon_manager import DemonManager
 
 class GameRenderer:
     """Rendering-System für das Level"""
@@ -36,7 +37,7 @@ class GameRenderer:
     def draw_background(self, map_loader=None, camera=None):
         """Zeichnet den Hintergrund"""
         if map_loader and camera and map_loader.tmx_data:
-            self.screen.fill((50, 50, 50))
+            self.screen.fill((0, 0, 0))  # Schwarzer Hintergrund für besseren Kontrast
             map_loader.render(self.screen, camera)
         else:
             self.screen.fill(BACKGROUND_COLOR)
@@ -67,9 +68,22 @@ class GameRenderer:
             scaled_image = pygame.transform.scale(player.image, (player_pos.width, player_pos.height))
             self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
         else:
-            # Fallback für fehlende Sprites - camera.apply() gibt bereits skaliertes Rect
+            # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
             player_pos = camera.apply(player)
-            pygame.draw.rect(self.screen, (100, 255, 100), player_pos)
+            pygame.draw.rect(self.screen, (255, 255, 0), player_pos)  # Gelb statt grün
+            # Zusätzlicher Rahmen für noch bessere Sichtbarkeit
+            pygame.draw.rect(self.screen, (255, 255, 255), player_pos, 3)
+    
+    def draw_collision_debug(self, player, camera, collision_objects):
+        """Zeichnet Kollisionsboxen für Debugging"""
+        # Player-Hitbox zeichnen
+        player_hitbox_transformed = camera.apply_rect(player.hitbox)
+        pygame.draw.rect(self.screen, (255, 0, 0), player_hitbox_transformed, 2)  # Rot für Player-Hitbox
+        
+        # Kollisionsobjekte zeichnen
+        for collision_rect in collision_objects:
+            collision_transformed = camera.apply_rect(collision_rect)
+            pygame.draw.rect(self.screen, (0, 255, 255), collision_transformed, 2)  # Cyan für Kollisionsobjekte
     
     def draw_ui(self, game_logic):
         """Zeichnet die Benutzeroberfläche"""
@@ -119,6 +133,19 @@ class GameRenderer:
                 result_surface = self.small_font.render(line, True, TEXT_COLOR)
                 self.screen.blit(result_surface, (40, y_offset))
                 y_offset += 30
+        
+        # Map-Status anzeigen
+        y_offset += 10
+        map_status = "🗺️ Map geladen" if hasattr(game_logic, 'level') and game_logic.level and game_logic.level.use_map else "⚠️ Standard-Grafik"
+        # Fallback für wenn game_logic keine level-Referenz hat
+        try:
+            level_instance = getattr(game_logic, '_level_ref', None)
+            if level_instance and hasattr(level_instance, 'use_map') and level_instance.use_map:
+                map_status = "🗺️ Map geladen"
+        except:
+            pass
+        map_surface = self.small_font.render(map_status, True, (150, 255, 150))
+        self.screen.blit(map_surface, (40, y_offset))
     
     def draw_controls(self):
         """Zeichnet die Steuerungshinweise"""
@@ -131,6 +158,7 @@ class GameRenderer:
             "+ / - : Zoom ein/aus",
             "R: Reset",
             "M: Musik ein/aus",
+            "F1: Kollisions-Debug",
             "ESC: Beenden"
         ]
         
@@ -146,48 +174,60 @@ class Level:
     def __init__(self, screen):
         self.screen = screen  # Verwende die übergebene Surface
         self.game_logic = GameLogic()
+        # Referenz für UI-Status-Anzeige
+        self.game_logic._level_ref = self
         # FIX: Verwende die Surface-Dimensionen für die Kamera, nicht SCREEN_-Konstanten
         surface_width = screen.get_width()
         surface_height = screen.get_height()
         self.camera = Camera(surface_width, surface_height, DEFAULT_ZOOM)
         self.renderer = GameRenderer(self.screen)
         
+        # Demon Manager initialisieren (BEFORE map loading!)
+        self.demon_manager = DemonManager()
+        
         # Map laden
         self.load_map()
+        
+        # Kollisionsobjekte einmalig setzen (nicht bei jeder Bewegung!)
+        self.setup_collision_objects()
         
         # Input-Status
         self.keys_pressed = {'left': False, 'right': False, 'up': False, 'down': False}
         
-        print("🎮 Level initialisiert!")
+        # Debug-Optionen
+        self.show_collision_debug = False  # Standardmäßig aus, mit F1 aktivierbar
     
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(script_dir)
-            map_path = os.path.join(project_root, "assets", "maps", "Map1.tmx")
+            map_path = path.join(MAP_DIR, "Map1.tmx") # Verwende MAP_DIR aus settings
             
             self.map_loader = MapLoader(map_path)
-            if self.map_loader.tmx_data:
-                print(f"🗺️ Map erfolgreich geladen")
+            
+            if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
                 
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
                 self.spawn_entities_from_map()
                 
             else:
-                print("⚠️ Verwende Standard-Hintergrund")
                 self.map_loader = None
                 self.use_map = False
-                # Fallback: Standard-Position
-                self.game_logic.player.rect.bottom = SCREEN_HEIGHT - 200
+                # Fallback: Standard-Position (nur wenn keine Map)
+                self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
+                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
                 
         except Exception as e:
-            print(f"⚠️ Map-Fehler: {e}")
-            self.map_loader = None
-            self.use_map = False
-            # Fallback: Standard-Position
-            self.game_logic.player.rect.bottom = SCREEN_HEIGHT - 200
+            if self.map_loader and self.map_loader.tmx_data:
+                self.use_map = True
+            else:
+                self.map_loader = None
+                self.use_map = False
+                # Fallback: Standard-Position (nur wenn Map fehlschlägt)
+                self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
+                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
     
     def spawn_entities_from_map(self):
         """Spawnt Entities basierend auf Tiled-Map Objekten (datengesteuert)"""
@@ -205,27 +245,62 @@ class Level:
                     
                     # Player Spawn-Punkt
                     if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
-                        print(f"🧙‍♂️ Player-Spawn gefunden bei: ({obj.x}, {obj.y})")
                         self.game_logic.player.rect.centerx = obj.x
                         self.game_logic.player.rect.centery = obj.y
+                        self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
                         player_spawned = True
                     
                     # Weitere Spawn-Typen für zukünftige Erweiterung
-                    elif obj.name and obj.name.lower() in ['enemy', 'orc', 'monster']:
-                        print(f"👹 Enemy-Spawn gefunden bei: ({obj.x}, {obj.y}) - noch nicht implementiert")
+                    elif obj.name and obj.name.lower() in ['enemy', 'orc', 'monster', 'demon']:
                         # Hier könnte später Enemy-Spawning implementiert werden
+                        pass
                         
                     elif obj.name and obj.name.lower() in ['item', 'treasure', 'ingredient']:
-                        print(f"💎 Item-Spawn gefunden bei: ({obj.x}, {obj.y}) - noch nicht implementiert")
                         # Hier könnte später Item-Spawning implementiert werden
+                        pass
+        
+        # Demons aus der Map spawnen
+        self.demon_manager.add_demons_from_map(self.map_loader)
+        
+        # Teste Demons manuell (entferne das später wenn deine Map Demon-Objekte hat)
+        if self.map_loader and self.map_loader.tmx_data:
+            # Hole die Player-Position für relative Spawns
+            player_x = self.game_logic.player.rect.centerx
+            player_y = self.game_logic.player.rect.centery
+            
+            # Spawne Demons relativ zum Player (einige Tiles entfernt)
+            # 64 Pixel = etwa 1 Tile, spawne sehr nah zum Player
+            demon1 = self.demon_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)  # Direkt rechts vom Player
+            demon2 = self.demon_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)   # Direkt links vom Player  
+            demon3 = self.demon_manager.add_demon(player_x, player_y - 100, scale=3.0, facing_right=False) # Direkt über dem Player
         
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
-            print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
-            self.game_logic.player.rect.bottom = SCREEN_HEIGHT - 200
-            self.game_logic.player.rect.centerx = SCREEN_WIDTH // 2
-        
-        print(f"📊 Spawn-Analyse: {spawn_count} Objekte durchsucht, Player gespawnt: {player_spawned}")
+            # Positioniere Player innerhalb der Map-Grenzen, nicht außerhalb!
+            if self.map_loader and self.map_loader.tmx_data:
+                # Setze Player in die untere Hälfte der Map, aber oberhalb der Kollisionen
+                map_height = self.map_loader.height
+                self.game_logic.player.rect.centerx = self.map_loader.width // 2  # Mitte der Map
+                self.game_logic.player.rect.centery = map_height - 100  # 100 Pixel vom unteren Rand
+                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+            else:
+                # Fallback für wenn keine Map geladen ist
+                self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
+                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+    
+    def setup_collision_objects(self):
+        """Setzt die Kollisionsobjekte für den Player (einmalig)"""
+        if self.use_map and self.map_loader and self.map_loader.collision_objects:
+            # Konvertiere collision_objects zu einer Sprite-Gruppe
+            collision_sprites = pygame.sprite.Group()
+            for collision_rect in self.map_loader.collision_objects:
+                # Erstelle ein temporäres Sprite für jedes Kollisionsobjekt
+                sprite = pygame.sprite.Sprite()
+                sprite.hitbox = collision_rect
+                sprite.rect = collision_rect  # Auch rect setzen für Konsistenz
+                collision_sprites.add(sprite)
+            self.game_logic.player.set_obstacle_sprites(collision_sprites)
     
     def handle_input(self, event):
         """Behandelt Input-Events"""
@@ -246,10 +321,8 @@ class Level:
                 self.toggle_music()
             elif event.key in ACTION_KEYS['zoom_in']:
                 self.camera.zoom_in()
-                print(f"🔍 Zoom: {self.camera.zoom_factor:.1f}x")
             elif event.key == ACTION_KEYS['zoom_out']:
                 self.camera.zoom_out()
-                print(f"🔍 Zoom: {self.camera.zoom_factor:.1f}x")
             
             # Test-Zutaten
             elif event.key == pygame.K_1:
@@ -258,6 +331,10 @@ class Level:
                 self.game_logic.add_zutat("feueressenz")
             elif event.key == pygame.K_3:
                 self.game_logic.add_zutat("erdkristall")
+            
+            # Debug-Toggle
+            elif event.key == pygame.K_F1:
+                self.show_collision_debug = not self.show_collision_debug
         
         elif event.type == pygame.KEYUP:
             # Bewegung stoppen
@@ -269,10 +346,8 @@ class Level:
         """Schaltet Musik ein/aus"""
         if pygame.mixer.music.get_busy():
             pygame.mixer.music.pause()
-            print("🔇 Musik pausiert")
         else:
             pygame.mixer.music.unpause()
-            print("🔊 Musik fortgesetzt")
     
     def update(self, dt):
         """Update-Schleife mit Delta Time"""
@@ -282,56 +357,42 @@ class Level:
         # Spiel-Logik updaten mit Delta Time
         self.game_logic.update(dt)
         
+        # Demons updaten mit Player-Referenz für AI
+        self.demon_manager.update(dt, self.game_logic.player)
+        
         # Kamera updaten
         self.camera.update(self.game_logic.player)
     
     def handle_movement(self, dt):
-        """Behandelt kontinuierliche Bewegung mit Delta Time"""
-        total_dx = 0
-        total_dy = 0
+        """Behandelt Spieler-Bewegung mit dt-System"""
+        import pygame
+        
+        # Sammle alle Eingaben als Richtungsvektor
+        direction = pygame.math.Vector2(0, 0)
         is_moving = False
         
-        # Basis-Bewegung sammeln
         if self.keys_pressed['left']:
-            dx, dy = self.game_logic.player.get_movement_left()
-            total_dx += dx
+            direction.x -= 1
             is_moving = True
         if self.keys_pressed['right']:
-            dx, dy = self.game_logic.player.get_movement_right()
-            total_dx += dx
+            direction.x += 1
             is_moving = True
         if self.keys_pressed['up']:
-            dx, dy = self.game_logic.player.get_movement_up()
-            total_dy += dy
+            direction.y -= 1
             is_moving = True
         if self.keys_pressed['down']:
-            dx, dy = self.game_logic.player.get_movement_down()
-            total_dy += dy
+            direction.y += 1
             is_moving = True
         
-        # Delta Time anwenden für framerate-unabhängige Bewegung
-        if total_dx != 0 or total_dy != 0:
-            # Basis-Geschwindigkeit mit Delta Time multiplizieren
-            base_speed = self.game_logic.player.speed
-            total_dx *= dt * 60  # * 60 für 60 FPS Referenz
-            total_dy *= dt * 60
-            
-            # Diagonalbewegung normalisieren
-            if total_dx != 0 and total_dy != 0:
-                import math
-                length = math.sqrt(total_dx * total_dx + total_dy * total_dy)
-                if length > 0:
-                    total_dx = (total_dx / length) * (base_speed * dt * 60)
-                    total_dy = (total_dy / length) * (base_speed * dt * 60)
+        # Setze die Bewegungsrichtung im Player
+        self.game_logic.player.direction = direction
         
-        # Bewegung stoppen wenn keine Taste gedrückt
-        if not is_moving:
+        # Führe die Bewegung aus (Player macht dt-Berechnung intern)
+        if is_moving:
+            self.game_logic.player.move(dt)
+        else:
+            # Bewegung stoppen
             self.game_logic.player.stop_moving()
-        
-        # Bewegung mit Kollision ausführen
-        if total_dx != 0 or total_dy != 0:
-            collision_objects = self.map_loader.collision_objects if self.use_map and self.map_loader else None
-            self.game_logic.move_player_with_collision(total_dx, total_dy, collision_objects)
     
     def render(self):
         """Rendering des Levels"""
@@ -344,6 +405,16 @@ class Level:
         
         # Spieler
         self.renderer.draw_player(self.game_logic.player, self.camera)
+        
+        # Demons zeichnen
+        self.demon_manager.draw(self.screen, self.camera)
+        
+        # Debug: Kollisionsboxen zeichnen (falls aktiviert)
+        if hasattr(self, 'show_collision_debug') and self.show_collision_debug:
+            self.renderer.draw_collision_debug(self.game_logic.player, self.camera, 
+                                             self.map_loader.collision_objects if self.map_loader else [])
+            # Demon debug hitboxes
+            self.demon_manager.draw_debug(self.screen, self.camera)
         
         # UI
         self.renderer.draw_ui(self.game_logic)

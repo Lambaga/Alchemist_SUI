@@ -2,7 +2,7 @@
 # Erweiterte Alchemist-Spiel Logik mit animiertem Spieler
 
 import pygame
-import os
+from os import path
 from player import Player
 from settings import *
 
@@ -18,34 +18,29 @@ class Game:
         if not pygame.get_init():
             pygame.init()
         
-        # === PATH SETUP (ROBUST) ===
-        # Erstelle absolute Pfade, um Probleme zu vermeiden
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(script_dir)
-        
         # Spieler erstellen (mit Multi-Animation System)
         # Versuche zuerst das Wizard Pack, dann Fallbacks
         sprite_paths = [
-            os.path.join(project_root, "assets", "Wizard Pack"),  # Absoluter Pfad
-            os.path.join(project_root, "assets", "wizard_char.png"),
-            os.path.join(project_root, "assets", "wizard_char_demo.png")
+            SPRITES_DIR,  # Absoluter Pfad aus settings.py
+            path.join(ASSETS_DIR, "wizard_char.png"),
+            path.join(ASSETS_DIR, "wizard_char_demo.png")
         ]
         
         player_created = False
         # Player in der Mitte der Game-Surface platzieren
         start_x, start_y = PLAYER_START_POS  # Verwende Settings-Konstante
-        for path in sprite_paths:
+        for asset_path in sprite_paths:
             try:
-                self.player = Player(path, start_x, start_y)
+                self.player = Player(asset_path, start_x, start_y)
                 # Prüfen, ob der Player tatsächlich ein Bild hat
                 if self.player.image.get_width() > 1: # Placeholder ist 1x1
                     player_created = True
-                    print(f"✅ Spieler erfolgreich erstellt mit: {path}")
+                    print(f"✅ Spieler erfolgreich erstellt mit: {asset_path}")
                     break
                 else:
-                    print(f"⚠️ Spieler mit Pfad '{path}' erstellt, aber nur als Platzhalter.")
+                    print(f"⚠️ Spieler mit Pfad '{asset_path}' erstellt, aber nur als Platzhalter.")
             except Exception as e:
-                print(f"❌ Fehler beim Erstellen des Spielers mit Pfad '{path}': {e}")
+                print(f"❌ Fehler beim Erstellen des Spielers mit Pfad '{asset_path}': {e}")
                 continue
         
         if not player_created:
@@ -79,39 +74,18 @@ class Game:
         # Aktualisiere nur die Animation, Bewegung wird separat behandelt
         self.player.update(dt)
     
-    def move_player_with_collision(self, dx, dy, collision_objects):
-        """Bewegt den Spieler und überprüft Kollisionen separat für X und Y"""
-        if not collision_objects:
-            # Keine Kollisionsobjekte - normale Bewegung
-            self.player.rect.x += dx
-            self.player.rect.y += dy
-            return
+    def move_player_with_collision(self, dt, direction_vector, collision_objects):
+        """Bewegt den Spieler mit der neuen dt-basierten Bewegung und Kollisionserkennung"""
+        # Setze die Bewegungsrichtung
+        self.player.direction = direction_vector
         
-        # Bewegung in X-Richtung mit Kollisionsprüfung
-        if dx != 0:
-            self.player.rect.x += dx
-            # Überprüfe Kollisionen nach X-Bewegung
-            for collision_rect in collision_objects:
-                if self.player.rect.colliderect(collision_rect):
-                    # Kollision in X-Richtung - rückgängig machen
-                    if dx > 0:  # Bewegung nach rechts
-                        self.player.rect.right = collision_rect.left
-                    else:  # Bewegung nach links
-                        self.player.rect.left = collision_rect.right
-                    break
+        # Verwende die neue move-Methode mit dt
+        self.player.move(dt)
         
-        # Bewegung in Y-Richtung mit Kollisionsprüfung
-        if dy != 0:
-            self.player.rect.y += dy
-            # Überprüfe Kollisionen nach Y-Bewegung
-            for collision_rect in collision_objects:
-                if self.player.rect.colliderect(collision_rect):
-                    # Kollision in Y-Richtung - rückgängig machen
-                    if dy > 0:  # Bewegung nach unten
-                        self.player.rect.bottom = collision_rect.top
-                    else:  # Bewegung nach oben
-                        self.player.rect.top = collision_rect.bottom
-                    break
+        # Falls zusätzliche Kollisionsobjekte vorhanden sind, überprüfe diese auch
+        if collision_objects:
+            # Setze die obstacle_sprites für die Kollisionserkennung
+            self.player.set_obstacle_sprites(collision_objects)
 
     def add_zutat(self, zutat_name):
         """Fügt eine Zutat zur Brau-Liste hinzu (normalerweise durch NFC-Token)"""
@@ -157,7 +131,9 @@ class Game:
     def reset_game(self):
         """Setzt das Spiel zurück"""
         self.aktive_zutaten.clear()
-        self.player.x = 960  # Zurück zur Mitte
+        self.player.rect.centerx = PLAYER_START_POS[0]  # Verwende rect für Position
+        self.player.rect.centery = PLAYER_START_POS[1]
+        self.player.position = pygame.math.Vector2(self.player.rect.center)  # Synchronisiere Float-Position
         self.score = 0
         self.last_brew_result = "🔄 Spiel zurückgesetzt!"
         print("🔄 Spiel wurde zurückgesetzt!")
@@ -165,7 +141,7 @@ class Game:
     def get_game_state(self):
         """Gibt den aktuellen Spielzustand zurück"""
         return {
-            'player_pos': (self.player.x, self.player.y),
+            'player_pos': (self.player.rect.centerx, self.player.rect.centery),  # Verwende rect für Position
             'aktive_zutaten': self.aktive_zutaten.copy(),
             'last_brew_result': self.last_brew_result,
             'score': self.score
@@ -178,20 +154,25 @@ if __name__ == "__main__":
     
     game = Game()
     
-    print(f"🏁 Startposition Spieler: ({game.player.x}, {game.player.y})")
+    print(f"🏁 Startposition Spieler: ({game.player.rect.centerx}, {game.player.rect.centery})")
     print("🎯 NFC-Token System aktiviert - keine Boden-Kristalle!")
     
-    # Bewegungstest
+    # Bewegungstest mit neuer Methode
     print("\n🏃‍♂️ BEWEGUNGSTEST:")
-    print(f"Position vorher: {game.player.x}")
+    print(f"Position vorher: {game.player.rect.centerx}")
     
+    # Simuliere Bewegung nach rechts
+    import pygame
     for i in range(10):
-        game.player.move_right()
-    print(f"Nach 10x rechts: {game.player.x}")
+        game.player.direction.x = 1  # Bewegung nach rechts
+        game.player.move(1.0/60.0)  # Simuliere 60 FPS
+    print(f"Nach 10x rechts: {game.player.rect.centerx}")
     
+    # Simuliere Bewegung nach links
     for i in range(5):
-        game.player.move_left()
-    print(f"Nach 5x links: {game.player.x}")
+        game.player.direction.x = -1  # Bewegung nach links
+        game.player.move(1.0/60.0)  # Simuliere 60 FPS
+    print(f"Nach 5x links: {game.player.rect.centerx}")
     
     # Zutat-Test (simuliert)
     print("\n🎒 ZUTAT-SAMMEL-TEST:")
