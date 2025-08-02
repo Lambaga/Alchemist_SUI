@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# src/main.py
-# Main game file, based on main_simple.py
+# src/main_simple.py
+# Simple main file without special characters
 
 import pygame
 import sys

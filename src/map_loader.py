@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/map_loader.py
 import pygame
 import pytmx
@@ -14,9 +15,9 @@ class MapLoader:
         """
         try:
             self.tmx_data = pytmx.load_pygame(filename, pixelalpha=True)
-            print(f"✅ TMX-Datei geladen: {filename}")
+            print("✅ TMX-Datei geladen: {}".format(filename))
         except FileNotFoundError:
-            print(f"FEHLER: Kartendatei nicht gefunden: {filename}")
+            print("FEHLER: Kartendatei nicht gefunden: {}".format(filename))
             # Erstelle ein leeres tmx_data-Objekt, um Abstürze zu vermeiden
             self.tmx_data = None
             self.width = 0
@@ -24,7 +25,7 @@ class MapLoader:
             self.collision_objects = []
             return
         except Exception as e:
-            print(f"WARNUNG: Tileset-Fehler ignoriert: {e}")
+            print("WARNUNG: Tileset-Fehler ignoriert: {}".format(e))
             print("🎨 Versuche trotzdem zu laden...")
             # Versuche trotzdem zu laden, auch wenn Tilesets fehlen
             try:
@@ -116,7 +117,7 @@ class MapLoader:
                 for obj in collision_layer:
                     wall_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
                     self.collision_objects.append(wall_rect)
-                print(f"✅ {len(self.collision_objects)} Kollisionsobjekte aus Objektebene 'Collision' geladen.")
+                print("✅ {} Kollisionsobjekte aus Objektebene 'Collision' geladen.".format(len(self.collision_objects)))
                 
             elif isinstance(collision_layer, pytmx.TiledTileLayer):
                 # Tile-Ebene: Gehe durch alle Tiles und erstelle Kollisionen für nicht-leere Tiles
@@ -129,7 +130,7 @@ class MapLoader:
                                               self.tmx_data.tilewidth, 
                                               self.tmx_data.tileheight)
                         self.collision_objects.append(wall_rect)
-                print(f"✅ {len(self.collision_objects)} Kollisionsobjekte aus Tile-Ebene 'Collision' geladen.")
+                print("✅ {} Kollisionsobjekte aus Tile-Ebene 'Collision' geladen.".format(len(self.collision_objects)))
             else:
                 print("WARNUNG: Ebene 'Collision' ist weder eine Objekt- noch eine Tile-Ebene.")
 

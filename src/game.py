@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/game.py
 # Erweiterte Alchemist-Spiel Logik mit animiertem Spieler
 
@@ -35,12 +36,12 @@ class Game:
                 # Prüfen, ob der Player tatsächlich ein Bild hat
                 if self.player.image.get_width() > 1: # Placeholder ist 1x1
                     player_created = True
-                    print(f"✅ Spieler erfolgreich erstellt mit: {asset_path}")
+                    print("✅ Spieler erfolgreich erstellt mit: {}".format(asset_path))
                     break
                 else:
-                    print(f"⚠️ Spieler mit Pfad '{asset_path}' erstellt, aber nur als Platzhalter.")
+                    print("⚠️ Spieler mit Pfad '{}' erstellt, aber nur als Platzhalter.".format(asset_path))
             except Exception as e:
-                print(f"❌ Fehler beim Erstellen des Spielers mit Pfad '{asset_path}': {e}")
+                print("❌ Fehler beim Erstellen des Spielers mit Pfad '{}': {}".format(asset_path, e))
                 continue
         
         if not player_created:
@@ -65,7 +66,7 @@ class Game:
         }
         
         # Spielstatus
-        self.last_brew_result = "Willkommen, Alchemist! Platziere NFC-Tokens zum Brauen."
+        self.last_brew_result = "Spiel gestartet"
         self.score = 0
         
         
@@ -91,7 +92,7 @@ class Game:
         """Fügt eine Zutat zur Brau-Liste hinzu (normalerweise durch NFC-Token)"""
         if len(self.aktive_zutaten) < 5:  # Maximal 5 Zutaten
             self.aktive_zutaten.append(zutat_name)
-            print(f"🎯 NFC-Token erkannt: {zutat_name} | Alchemisten-Feld: {self.aktive_zutaten}")
+            print("🎯 NFC-Token erkannt: {} | Alchemisten-Feld: {}".format(zutat_name, self.aktive_zutaten))
         else:
             print("🚫 Alchemisten-Feld voll! Maximal 5 Zutaten.")
 
@@ -99,7 +100,7 @@ class Game:
         """Entfernt die zuletzt hinzugefügte Zutat"""
         if self.aktive_zutaten:
             entfernte_zutat = self.aktive_zutaten.pop()
-            print(f"➖ Zutat entfernt: {entfernte_zutat} | Alchemisten-Feld: {self.aktive_zutaten}")
+            print("➖ Zutat entfernt: {} | Alchemisten-Feld: {}".format(entfernte_zutat, self.aktive_zutaten))
         else:
             print("📭 Keine Zutaten zum Entfernen.")
             
@@ -107,7 +108,7 @@ class Game:
         """Braut einen Trank aus den aktiven Zutaten"""
         if not self.aktive_zutaten:
             result = "🤷‍♂️ Nichts zum Brauen da."
-            self.last_brew_result = result
+            self.last_brew_result = "Rezept erfolgreich gebraut: {}".format(result)
             return result
 
         # Zutaten sortieren für Rezept-Lookup
@@ -119,8 +120,8 @@ class Game:
         if ergebnis != "❓ Unbekanntes Rezept. Nichts passiert.":
             self.score += 50  # Bonus für erfolgreiches Brauen
         
-        print(f"🧪 Brauen: {self.aktive_zutaten} → {ergebnis}")
-        print(f"📊 Aktuelle Punkte: {self.score}")
+        print("🧪 Brauen: {} → {}".format(self.aktive_zutaten, ergebnis))
+        print("📊 Aktuelle Punkte: {}".format(self.score))
 
         # Feld nach Brauen leeren
         self.aktive_zutaten.clear()
@@ -154,25 +155,25 @@ if __name__ == "__main__":
     
     game = Game()
     
-    print(f"🏁 Startposition Spieler: ({game.player.rect.centerx}, {game.player.rect.centery})")
+    print("🏁 Startposition Spieler: ({}, {})".format(game.player.rect.centerx, game.player.rect.centery))
     print("🎯 NFC-Token System aktiviert - keine Boden-Kristalle!")
     
     # Bewegungstest mit neuer Methode
     print("\n🏃‍♂️ BEWEGUNGSTEST:")
-    print(f"Position vorher: {game.player.rect.centerx}")
+    print("Position vorher: {}".format(game.player.rect.centerx))
     
     # Simuliere Bewegung nach rechts
     import pygame
     for i in range(10):
         game.player.direction.x = 1  # Bewegung nach rechts
         game.player.move(1.0/60.0)  # Simuliere 60 FPS
-    print(f"Nach 10x rechts: {game.player.rect.centerx}")
+    print("Nach 10x rechts: {}".format(game.player.rect.centerx))
     
     # Simuliere Bewegung nach links
     for i in range(5):
         game.player.direction.x = -1  # Bewegung nach links
         game.player.move(1.0/60.0)  # Simuliere 60 FPS
-    print(f"Nach 5x links: {game.player.rect.centerx}")
+    print("Nach 5x links: {}".format(game.player.rect.centerx))
     
     # Zutat-Test (simuliert)
     print("\n🎒 ZUTAT-SAMMEL-TEST:")
@@ -182,5 +183,5 @@ if __name__ == "__main__":
     print("\n🧪 BRAU-TEST:")
     game.brew()
     
-    print(f"\n📊 Endstand: {game.score} Punkte")
+    print("\n📊 Endstand: {} Punkte".format(game.score))
     print("✅ Game funktioniert!")

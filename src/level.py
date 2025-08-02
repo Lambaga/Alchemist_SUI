@@ -1,12 +1,13 @@
+# -*- coding: utf-8 -*-
 # src/level.py
-# Level/Gameplay-Zustand - Hier läuft das eigentliche Spiel
+# Level/Gameplay state - Here the actual game runs
 import pygame
 from os import path
 from settings import *
 from game import Game as GameLogic
 from camera import Camera
 from map_loader import MapLoader
-from demon_manager import DemonManager
+from enemy_manager import EnemyManager
 
 class GameRenderer:
     """Rendering-System für das Level"""
@@ -100,13 +101,13 @@ class GameRenderer:
         y_offset += 50
         
         # Punkte
-        score_text = f"Punkte: {game_logic.score}"
+        score_text = "Punkte: {}".format(game_logic.score)
         score_surface = self.font.render(score_text, True, TEXT_COLOR)
         self.screen.blit(score_surface, (40, y_offset))
         y_offset += 40
         
         # Aktive Zutaten
-        zutaten_text = f"Inventar ({len(game_logic.aktive_zutaten)}/5):"
+        zutaten_text = "Inventar ({}/5):".format(len(game_logic.aktive_zutaten))
         zutaten_surface = self.font.render(zutaten_text, True, TEXT_COLOR)
         self.screen.blit(zutaten_surface, (40, y_offset))
         y_offset += 35
@@ -182,8 +183,8 @@ class Level:
         self.camera = Camera(surface_width, surface_height, DEFAULT_ZOOM)
         self.renderer = GameRenderer(self.screen)
         
-        # Demon Manager initialisieren (BEFORE map loading!)
-        self.demon_manager = DemonManager()
+        # Enemy Manager initialisieren (BEFORE map loading!)
+        self.enemy_manager = EnemyManager()
         
         # Map laden
         self.load_map()
@@ -260,7 +261,7 @@ class Level:
                         pass
         
         # Demons aus der Map spawnen
-        self.demon_manager.add_demons_from_map(self.map_loader)
+        self.enemy_manager.add_enemies_from_map(self.map_loader)
         
         # Teste Demons manuell (entferne das später wenn deine Map Demon-Objekte hat)
         if self.map_loader and self.map_loader.tmx_data:
@@ -268,11 +269,11 @@ class Level:
             player_x = self.game_logic.player.rect.centerx
             player_y = self.game_logic.player.rect.centery
             
-            # Spawne Demons relativ zum Player (einige Tiles entfernt)
+            # Spawne verschiedene Enemies relativ zum Player (einige Tiles entfernt)
             # 64 Pixel = etwa 1 Tile, spawne sehr nah zum Player
-            demon1 = self.demon_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)  # Direkt rechts vom Player
-            demon2 = self.demon_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)   # Direkt links vom Player  
-            demon3 = self.demon_manager.add_demon(player_x, player_y - 100, scale=3.0, facing_right=False) # Direkt über dem Player
+            demon1 = self.enemy_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)  # Direkt rechts vom Player
+            demon2 = self.enemy_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)   # Direkt links vom Player  
+            fireworm1 = self.enemy_manager.add_fireworm(player_x, player_y - 100, scale=2.0, facing_right=False) # FireWorm über dem Player
         
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
@@ -301,8 +302,11 @@ class Level:
                 sprite.rect = collision_rect  # Auch rect setzen für Konsistenz
                 collision_sprites.add(sprite)
             self.game_logic.player.set_obstacle_sprites(collision_sprites)
+            
+            # Set obstacle sprites for all enemies through enemy manager
+            self.enemy_manager.set_obstacle_sprites(collision_sprites)
     
-    def handle_input(self, event):
+    def handle_event(self, event):
         """Behandelt Input-Events"""
         if event.type == pygame.KEYDOWN:
             # Bewegung starten
@@ -358,7 +362,7 @@ class Level:
         self.game_logic.update(dt)
         
         # Demons updaten mit Player-Referenz für AI
-        self.demon_manager.update(dt, self.game_logic.player)
+        self.enemy_manager.update(dt, self.game_logic.player)
         
         # Kamera updaten
         self.camera.update(self.game_logic.player)
@@ -388,11 +392,7 @@ class Level:
         self.game_logic.player.direction = direction
         
         # Führe die Bewegung aus (Player macht dt-Berechnung intern)
-        if is_moving:
-            self.game_logic.player.move(dt)
-        else:
-            # Bewegung stoppen
-            self.game_logic.player.stop_moving()
+        self.game_logic.player.move(dt)
     
     def render(self):
         """Rendering des Levels"""
@@ -407,14 +407,14 @@ class Level:
         self.renderer.draw_player(self.game_logic.player, self.camera)
         
         # Demons zeichnen
-        self.demon_manager.draw(self.screen, self.camera)
+        self.enemy_manager.draw(self.screen, self.camera)
         
         # Debug: Kollisionsboxen zeichnen (falls aktiviert)
         if hasattr(self, 'show_collision_debug') and self.show_collision_debug:
             self.renderer.draw_collision_debug(self.game_logic.player, self.camera, 
                                              self.map_loader.collision_objects if self.map_loader else [])
             # Demon debug hitboxes
-            self.demon_manager.draw_debug(self.screen, self.camera)
+            self.enemy_manager.draw_debug(self.screen, self.camera)
         
         # UI
         self.renderer.draw_ui(self.game_logic)

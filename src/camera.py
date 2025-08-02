@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/camera.py
 import pygame
 from settings import *
