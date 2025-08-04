@@ -63,7 +63,17 @@ class Game:
             ("wasserkristall", "erdkristall"): "🌱 Wachstumstrank! Pflanzen sprießen.",
             ("feueressenz", "feueressenz"): "🔥 Feuerball! Mächtiger Angriffszauber.",
             ("erdkristall", "erdkristall"): "🏔️ Steinwall! Schutz vor Angriffen."
-        }
+        } 
+        #Wasser
+        #Erde
+        #Feuer
+
+        #Feuer+Feuer = Feuerball
+        #Wasser+Wasser= Wasserball
+        #Feuer+Wasser=  Heiltrank
+        #Erde+Feuer= Area Damage
+        #Erde+Erde= Schutz für 3 Sekunden
+        #Erde+Wasser= Verlangsamt Gegner?
         
         # Spielstatus
         self.last_brew_result = "Spiel gestartet"

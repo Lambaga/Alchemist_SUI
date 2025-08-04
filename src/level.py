@@ -201,7 +201,7 @@ class Level:
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            map_path = path.join(MAP_DIR, "Map1.tmx") # Verwende MAP_DIR aus settings
+            map_path = path.join(MAP_DIR, "Map2.tmx") # Verwende MAP_DIR aus settings
             
             self.map_loader = MapLoader(map_path)
             
