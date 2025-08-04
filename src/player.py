@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/player.py
 # Enthält die Klasse für den Spieler-Charakter (den Alchemisten) mit verschiedenen Animationen.
 

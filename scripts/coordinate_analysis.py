@@ -11,7 +11,7 @@ sys.path.append('src')
 from map_loader import MapLoader
 
 # Load map and analyze coordinates
-map_path = os.path.join('assets', 'maps', 'Map1.tmx')
+map_path = os.path.join('assets', 'maps', 'Map2.tmx')
 loader = MapLoader(map_path)
 
 print('=== COORDINATE ANALYSIS ===')

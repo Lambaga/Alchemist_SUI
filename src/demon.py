@@ -4,51 +4,31 @@
 import pygame
 import os
 from settings import *
+from enemy import Enemy
 
-class Demon(pygame.sprite.Sprite):
+class Demon(Enemy):
     """
-    Animated demon NPC with idle animation.
-    Can be placed on the map as a static or interactive element.
+    Animated demon NPC that inherits from Enemy base class.
     """
     def __init__(self, asset_path, pos_x, pos_y, scale_factor=1.0):
         """
         Initialize the demon.
-        :param asset_path: Path to demon sprite folder containing idle frames
-        :param pos_x: X position on the map
-        :param pos_y: Y position on the map  
-        :param scale_factor: Scale the demon size (1.0 = original size)
         """
-        super().__init__()
+        # Call parent constructor
+        super().__init__(asset_path, pos_x, pos_y, scale_factor)
         
-        # Animation configuration
-        self.animation_speed_ms = 300  # Slower animation for idle demons
-        self.last_update_time = pygame.time.get_ticks()
-        self.current_frame_index = 0
-        
-        # Demon properties
-        self.scale_factor = scale_factor
-        self.facing_right = True
-        
-        # AI and movement properties
+        # Demon specific properties (override parent values)
         self.speed = 100  # Pixel per second
         self.detection_range = 15 * 64  # 15 tiles * 64 pixels per tile = 960 pixels
-        self.state = "idle"  # "idle", "chasing", "attacking"
-        self.target_player = None
-        self.direction = pygame.math.Vector2(0, 0)
         
-        # Animation frames
-        self.idle_frames = []
+        # Animation specific to demon
+        self.animation_speed_ms = 300  # Slower animation for demons
+        
+        # Additional demon frames (for run animation compatibility)
         self.run_frames = []
-        self.current_animation = "idle"  # Track current animation type
         
+        # Initialize after setting up the additional frames
         self.load_animations(asset_path)
-        
-        # Set initial image and position
-        self.image = self.idle_frames[0] if self.idle_frames else self.create_placeholder()
-        self.rect = self.image.get_rect(center=(pos_x, pos_y))
-        
-        # Collision box (smaller for closer combat)
-        self.hitbox = self.rect.inflate(-60, -40)
         
     def load_animations(self, asset_path):
         """Load demon animation frames"""
@@ -125,36 +105,7 @@ class Demon(pygame.sprite.Sprite):
                 
         except Exception as e:
             print(f"❌ Error loading demon animations: {e}")
-            
-    def create_placeholder(self):
-        """Create a placeholder if no sprites are found"""
-        # Make a large, bright placeholder that's easy to see
-        placeholder = pygame.Surface((128, 128), pygame.SRCALPHA)
-        
-        # Large red circle for body
-        pygame.draw.circle(placeholder, (255, 0, 0), (64, 64), 60, 5)  # Red outline
-        pygame.draw.circle(placeholder, (200, 0, 0), (64, 64), 55)      # Red fill
-        
-        # Yellow eyes
-        pygame.draw.circle(placeholder, (255, 255, 0), (44, 44), 12)  # Left eye
-        pygame.draw.circle(placeholder, (255, 255, 0), (84, 44), 12)  # Right eye
-        
-        # Black pupils
-        pygame.draw.circle(placeholder, (0, 0, 0), (44, 44), 6)  # Left pupil
-        pygame.draw.circle(placeholder, (0, 0, 0), (84, 44), 6)  # Right pupil
-        
-        # Demon horns
-        pygame.draw.polygon(placeholder, (139, 0, 0), [(44, 20), (54, 0), (64, 20)])  # Left horn
-        pygame.draw.polygon(placeholder, (139, 0, 0), [(64, 20), (74, 0), (84, 20)])  # Right horn
-        
-        # Text label
-        font = pygame.font.Font(None, 24)
-        text = font.render("DEMON", True, (255, 255, 255))
-        text_rect = text.get_rect(center=(64, 100))
-        placeholder.blit(text, text_rect)
-        
-        return placeholder
-        
+    
     def get_current_frames(self):
         """Get the current animation frames based on state"""
         if self.state == "chasing" and self.run_frames:
@@ -162,39 +113,13 @@ class Demon(pygame.sprite.Sprite):
         else:
             return self.idle_frames
     
-    def update_animation(self, current_time):
-        """Update animation frame based on current state"""
-        current_frames = self.get_current_frames()
-        if not current_frames:
+    def update_ai(self, dt, player, other_enemies):
+        """Demon AI logic"""
+        if not player:
             return
             
-        # Check if enough time has passed to update frame
-        if current_time - self.last_update_time >= self.animation_speed_ms:
-            self.current_frame_index = (self.current_frame_index + 1) % len(current_frames)
-            self.last_update_time = current_time
-            
-            # Update current animation type
-            new_animation = "run" if self.state == "chasing" and self.run_frames else "idle"
-            if new_animation != self.current_animation:
-                self.current_animation = new_animation
-                self.current_frame_index = 0  # Reset frame when switching animations
-            
-            # Update the image
-            self.image = current_frames[self.current_frame_index]
-            
-            # Handle facing direction
-            if not self.facing_right:
-                self.image = pygame.transform.flip(self.image, True, False)
-        
-    def update(self, dt=None, player=None, other_demons=None):
-        """Update demon animation and AI with collision detection"""
-        if not self.idle_frames:
-            return
-            
-        current_time = pygame.time.get_ticks()
-        
         # AI Logic: Check for player in detection range
-        if player and self.target_player is None:
+        if self.target_player is None:
             distance_to_player = pygame.math.Vector2(
                 player.rect.centerx - self.rect.centerx,
                 player.rect.centery - self.rect.centery
@@ -241,9 +166,9 @@ class Demon(pygame.sprite.Sprite):
                         
                         # Check collision with other demons
                         collision_detected = False
-                        if other_demons:
-                            for other_demon in other_demons:
-                                if other_demon != self and temp_rect.colliderect(other_demon.rect):
+                        if other_enemies:
+                            for other_enemy in other_enemies:
+                                if other_enemy != self and temp_rect.colliderect(other_enemy.rect):
                                     collision_detected = True
                                     break
                         
@@ -258,9 +183,9 @@ class Demon(pygame.sprite.Sprite):
                             temp_rect = self.rect.copy()
                             temp_rect.centerx = new_x
                             horizontal_collision = False
-                            if other_demons:
-                                for other_demon in other_demons:
-                                    if other_demon != self and temp_rect.colliderect(other_demon.rect):
+                            if other_enemies:
+                                for other_enemy in other_enemies:
+                                    if other_enemy != self and temp_rect.colliderect(other_enemy.rect):
                                         horizontal_collision = True
                                         break
                             
@@ -272,23 +197,12 @@ class Demon(pygame.sprite.Sprite):
                                 temp_rect = self.rect.copy()
                                 temp_rect.centery = new_y
                                 vertical_collision = False
-                                if other_demons:
-                                    for other_demon in other_demons:
-                                        if other_demon != self and temp_rect.colliderect(other_demon.rect):
+                                if other_enemies:
+                                    for other_enemy in other_enemies:
+                                        if other_enemy != self and temp_rect.colliderect(other_enemy.rect):
                                             vertical_collision = True
                                             break
                                 
                                 if not vertical_collision:
                                     self.rect.centery = new_y
                                     self.hitbox.centery = self.rect.centery
-        
-        # Update animation using the new animation system
-        self.update_animation(current_time)
-            
-    def set_facing_direction(self, facing_right):
-        """Change the direction the demon is facing"""
-        self.facing_right = facing_right
-        
-    def get_interaction_rect(self):
-        """Get the area where player can interact with this demon"""
-        return self.hitbox.inflate(40, 40)  # Larger area for interaction

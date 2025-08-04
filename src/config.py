@@ -88,7 +88,7 @@ class Paths:
     # Spezifische Dateien
     BACKGROUND_MUSIC = "assets/sounds/korol.mp3"
     MUSIC_KOROL = "assets/sounds/korol.mp3"  # Alias für Kompatibilität
-    DEFAULT_MAP = "assets/maps/Map1.tmx"
+    DEFAULT_MAP = "assets/maps/Map2.tmx"
 
 # === SPIEL EINSTELLUNGEN ===
 MAX_INGREDIENTS = 5

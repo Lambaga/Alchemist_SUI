@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 # src/settings.py
-# Zentrale Einstellungen für das gesamte Spiel
+# Central settings for the entire game
 import pygame
 from os import path
 
