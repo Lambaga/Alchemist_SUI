@@ -87,9 +87,9 @@ Alchemist/
 
 The game has multiple entry points for different purposes:
 
-- `main.py` - Standard game version
+- `main.py` - **Main game version (recommended)**
 - `main_simple.py` - Simplified version for testing
-- `main_clean.py` - Clean version without hardware interface
+- `main_clean.py` - Clean version for development
 
 ### Dependencies
 
