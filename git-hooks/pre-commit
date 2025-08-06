@@ -1,0 +1,28 @@
+#!/bin/sh
+# Pre-commit Hook für automatische Cache-Bereinigung
+# Speichere diese Datei als .git/hooks/pre-commit
+
+echo "🧹 Automatische Cache-Bereinigung vor Commit..."
+
+# Prüfe ob Python verfügbar ist
+if command -v python >/dev/null 2>&1; then
+    # Führe intelligente Cache-Bereinigung aus
+    python smart_cache_cleaner.py --mode=smart
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Cache-Bereinigung erfolgreich"
+    else
+        echo "⚠️ Cache-Bereinigung fehlgeschlagen, führe Fallback aus"
+        
+        # Fallback: Einfache Bereinigung
+        find . -name "*.pyc" -delete 2>/dev/null
+        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
+        
+        echo "✅ Fallback-Bereinigung abgeschlossen"
+    fi
+else
+    echo "⚠️ Python nicht gefunden, überspringe Cache-Bereinigung"
+fi
+
+# Commit fortsetzen
+exit 0
