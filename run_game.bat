@@ -12,9 +12,9 @@ if errorlevel 1 (
 )
 
 REM Check if virtual environment exists
-if not exist "venv\" (
+if not exist ".venv\" (
     echo Creating virtual environment...
-    python -m venv venv
+    python -m venv .venv
     if errorlevel 1 (
         echo ERROR: Failed to create virtual environment
         pause
@@ -24,7 +24,7 @@ if not exist "venv\" (
 
 REM Activate virtual environment
 echo Activating virtual environment...
-call venv\Scripts\activate.bat
+call .venv\Scripts\activate.bat
 
 REM Install or update dependencies
 echo Installing/updating dependencies...

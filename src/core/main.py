@@ -8,16 +8,17 @@ Hauptspiel-Datei mit erweitertem FPS-Tracking und vollständigem Menu-System.
 import pygame
 import sys
 import os
-from typing import Optional
 
 # Add src subdirectories to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'core'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'managers'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'ui'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'entities'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'world'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'systems'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'managers'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'ui'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'entities'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'world'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'systems'))
 
+from typing import Optional
 from settings import *
 from level import Level
 from asset_manager import AssetManager
@@ -138,12 +139,6 @@ class Game:
                         self.hotkey_display.toggle_visibility()
                         status = "Ein" if self.hotkey_display.visible else "Aus"
                         print(f"🔧 Hotkey-Anzeige: {status}")
-                    
-                    # K: Test Game Over (K = Kill player)
-                    elif event.key == pygame.K_k and self.game_state == GameState.GAMEPLAY:
-                        if self.level and self.level.game_logic and self.level.game_logic.player:
-                            print("💀 TEST: Spieler wird getötet...")
-                            self.level.game_logic.player.take_damage(999)  # Tödlicher Schaden
             
             # Handle events based on current game state
             if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
@@ -151,10 +146,7 @@ class Game:
                 result = self.menu_system.handle_event(event)
                 if result:
                     if result == GameState.GAMEPLAY:
-                        if self.game_state == GameState.GAME_OVER:
-                            self.restart_game()
-                        else:
-                            self.start_new_game()
+                        self.start_new_game()
                     elif isinstance(result, tuple) and result[0] == "load_game":
                         self.load_game(result[1])
                     elif isinstance(result, tuple) and result[0] == "save_to_slot":
@@ -169,6 +161,8 @@ class Game:
                         self.return_to_menu()
                     elif result == GameState.QUIT:
                         self.running = False
+                    elif result == "restart_game":
+                        self.restart_current_game()
                     # Other state changes are handled by menu_system internally
             
             elif self.game_state == GameState.GAMEPLAY:
@@ -187,6 +181,19 @@ class Game:
         self.level.set_save_callback(self.save_current_game)
         
         print("✅ Level geladen, Spiel bereit!")
+    
+    def restart_current_game(self):
+        """Startet das aktuelle Level neu"""
+        print("🔄 Spiel wird neu gestartet...")
+        if self.level:
+            self.level.restart_level()
+        else:
+            # Fallback: Erstelle ein neues Level
+            self.level = Level(self.game_surface)
+            self.level.set_save_callback(self.save_current_game)
+        
+        self.game_state = GameState.GAMEPLAY
+        print("✅ Spiel neu gestartet!")
     
     def load_game(self, slot_number):
         """Lädt ein gespeichertes Spiel"""
@@ -335,34 +342,6 @@ class Game:
             self.level = None
         print("✅ Im Hauptmenü")
     
-    def trigger_game_over(self):
-        """Löst Game Over aus wenn der Spieler stirbt"""
-        print("💀 GAME OVER - Spieler ist gestorben!")
-        
-        # Input-Status leeren
-        if self.level:
-            self.level.clear_input_state()
-        
-        # Wechsle zu Game Over Bildschirm
-        self.game_state = GameState.GAME_OVER
-        self.menu_system.show_game_over()
-    
-    def restart_game(self):
-        """Startet das Spiel nach Game Over neu"""
-        print("🔄 Spiel wird neu gestartet...")
-        
-        # Spiel-Logik zurücksetzen falls vorhanden
-        if self.level and self.level.game_logic:
-            self.level.game_logic.reset_game()
-        
-        # Level neu laden
-        if self.level:
-            self.level.restart_level()
-        
-        # Zum Gameplay wechseln
-        self.game_state = GameState.GAMEPLAY
-        print("✅ Neues Spiel gestartet!")
-    
     def _print_performance_summary(self):
         """Gibt eine detaillierte Performance-Zusammenfassung aus."""
         summary = self.fps_monitor.get_performance_summary()
@@ -396,27 +375,27 @@ class Game:
         self.update_message_system()
         
         # Update based on current game state
-        if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
+        if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE]:
             # Update menu system
             self.menu_system.update(dt)
         elif self.game_state == GameState.GAMEPLAY:
             # Update gameplay level
             if self.level:
                 result = self.level.update(dt)
-                # Prüfe auf Game Over
+                # Prüfe auf Game Over Signal
                 if result == "game_over":
-                    self.trigger_game_over()
+                    print("💀 GAME OVER detected - switching to Game Over menu")
+                    self.game_state = GameState.GAME_OVER
+                    self.menu_system.show_game_over()
+        elif self.game_state == GameState.GAME_OVER:
+            # Update menu system for Game Over state
+            self.menu_system.update(dt)
     
     def draw(self) -> None:
         """Rendert das Spiel und das FPS-Display."""
         # Render based on current game state
-        if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.GAME_OVER]:
+        if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME]:
             # Draw menu system
-            self.menu_system.draw()
-        elif self.game_state == GameState.PAUSE:
-            # Draw level in background, then pause menu on top
-            if self.level:
-                self.level.render()
             self.menu_system.draw()
         elif self.game_state == GameState.GAMEPLAY:
             # Draw gameplay level
@@ -438,6 +417,12 @@ class Game:
             self.hotkey_display.draw()
             
             # Draw pause menu overlay
+            self.menu_system.draw()
+        elif self.game_state == GameState.GAME_OVER:
+            # Fill screen with black background first
+            self.game_surface.fill((0, 0, 0))
+            
+            # Draw Game Over menu overlay
             self.menu_system.draw()
         
         # Draw messages on top of everything
