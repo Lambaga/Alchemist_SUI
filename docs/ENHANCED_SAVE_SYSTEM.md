@@ -36,7 +36,7 @@ Clicking "Spiel speichern" opens a dedicated save menu with:
 - Messages appear with semi-transparent background
 
 ### 5. Save System Architecture
-- **Slot 0**: Automatic save when pausing
+- **Slot 0**: Reserved for automatic saves (currently disabled)
 - **Slots 1-4**: Manual save slots for player choice
 - **Visual indicators**: Clear feedback for all save actions
 - **Error handling**: Graceful failure with user notification

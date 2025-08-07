@@ -22,6 +22,8 @@ class Demon(Enemy):
         super().__init__(asset_path, pos_x, pos_y, scale_factor)
         
         # Demon specific properties (override parent values)
+        self.max_health = 200  # Erhöhte Health
+        self.current_health = self.max_health  # Vollständige Health beim Start
         self.speed = 100  # Pixel per second
         self.detection_range = 8 * 64  # 8 tiles * 64 pixels per tile = 512 pixels (verkürzt von 15)
         
@@ -79,7 +81,19 @@ class Demon(Enemy):
         if not player:
             return
             
-        # AI Logic: Check for player in detection range
+        # Prüfe ob Spieler unsichtbar ist
+        player_invisible = False
+        if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
+            player_invisible = True
+            # Unsichtbarer Spieler wird nicht verfolgt - stoppe Verfolgung
+            if self.target_player is not None:
+                self.state = "idle"
+                self.target_player = None
+                self.direction = pygame.math.Vector2(0, 0)
+                print(f"👹 Demon verliert unsichtbaren Spieler aus den Augen!")
+            return  # Früher Exit - keine weitere KI wenn Spieler unsichtbar
+            
+        # AI Logic: Check for player in detection range (nur wenn nicht unsichtbar)
         if self.target_player is None:
             distance_to_player = pygame.math.Vector2(
                 player.rect.centerx - self.rect.centerx,

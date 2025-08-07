@@ -120,7 +120,9 @@ class UniversalInputSystem:
                 'pause': pygame.K_ESCAPE,
                 'ingredient_1': pygame.K_1,
                 'ingredient_2': pygame.K_2,
-                'ingredient_3': pygame.K_3
+                'ingredient_3': pygame.K_3,
+                'cast_magic': pygame.K_c,
+                'clear_magic': pygame.K_x
             },
             InputDevice.JOYSTICK: {
                 'brew': GamepadButton.A.value,           # A/X Button
@@ -130,7 +132,13 @@ class UniversalInputSystem:
                 'pause': GamepadButton.START.value,      # Start/Options Button
                 'ingredient_1': GamepadButton.L1.value,  # Left Bumper
                 'ingredient_2': GamepadButton.R1.value,  # Right Bumper
-                'ingredient_3': GamepadButton.BACK.value # Back/Share Button
+                'ingredient_3': GamepadButton.BACK.value, # Back/Share Button
+                # Magie-Elemente (Zusätzliche Buttons)
+                'magic_fire': GamepadButton.L3.value,    # Left Stick Click
+                'magic_water': GamepadButton.R3.value,   # Right Stick Click  
+                'magic_stone': 14,  # Zusätzlicher Button falls vorhanden
+                'cast_magic': 15,   # Zusätzlicher Button falls vorhanden
+                'clear_magic': 16   # Zusätzlicher Button falls vorhanden
             }
         }
     

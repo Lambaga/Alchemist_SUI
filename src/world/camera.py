@@ -40,6 +40,14 @@ class Camera:
         x = (rect.x - self.camera_rect.x) * self.zoom_factor
         y = (rect.y - self.camera_rect.y) * self.zoom_factor
         return pygame.Rect(x, y, rect.width * self.zoom_factor, rect.height * self.zoom_factor)
+    
+    def reverse_apply_pos(self, screen_pos):
+        """
+        Konvertiert eine Bildschirm-Position zurück zur Welt-Position.
+        """
+        world_x = screen_pos[0] / self.zoom_factor + self.camera_rect.x
+        world_y = screen_pos[1] / self.zoom_factor + self.camera_rect.y
+        return (world_x, world_y)
 
     def update(self, target):
         """

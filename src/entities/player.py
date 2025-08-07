@@ -13,6 +13,7 @@ from settings import *
 from asset_manager import AssetManager
 from collision_optimizer import OptimizedCollisionSystem
 from combat_system import CombatEntity, DamageType
+from systems.magic_system import MagicSystem, ElementType
 
 class Player(pygame.sprite.Sprite, CombatEntity):
     """
@@ -98,6 +99,10 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         self.is_player_alive: bool = True
         self.last_attack_time: int = 0
         self.attack_cooldown: int = 1000  # 1 second attack cooldown
+        
+        # Magic System Integration
+        self.magic_system: MagicSystem = MagicSystem()
+        self.mouse_pos: Tuple[int, int] = (0, 0)  # Für Zielrichtung
     
     def update_hitbox(self) -> None:
         """
@@ -211,7 +216,7 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         #         self.status = 'attack'
         #         self.current_frame_index = 0
 
-    def update(self, dt: Optional[float] = None) -> None:
+    def update(self, dt: Optional[float] = None, enemies: Optional[List[Any]] = None) -> None:
         """
         Aktualisiert den Zustand und die Animation des Spielers.
         
@@ -219,10 +224,12 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         1. Status-Bestimmung basierend auf Bewegung
         2. Animation-Fortschritt
         3. Sprite-Aktualisierung mit Orientierung
+        4. Magie-System Update
         
         Args:
             dt: Delta Time in Sekunden für framerate-unabhängige Animation.
                 Bei None wird Fallback zu 60 FPS verwendet.
+            enemies: Liste der Feinde für Magie-Kollisionserkennung
                 
         Note:
             Diese Methode sollte einmal pro Frame aufgerufen werden.
@@ -253,6 +260,9 @@ class Player(pygame.sprite.Sprite, CombatEntity):
                 old_center = self.rect.center
                 self.image = new_image
                 self.rect = self.image.get_rect(center=old_center)
+        
+        # 3. Magie-System updaten
+        self.magic_system.update(dt, enemies)
 
     def move(self, dt: float = 1.0/60.0) -> None:
         """
@@ -570,6 +580,11 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         """
         if not self.is_player_alive:
             return False
+        
+        # Prüfe Magie-Schild
+        if self.magic_system.is_shielded(self):
+            print("🛡️ Schaden durch Magie-Schild blockiert!")
+            return True
             
         self.current_health -= damage
         if self.current_health <= 0:

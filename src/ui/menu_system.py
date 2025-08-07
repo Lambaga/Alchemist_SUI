@@ -443,6 +443,8 @@ class LoadGameMenuState(BaseMenuState):
         super().__init__(screen)
         self.save_slots = []
         self.selected_slot = None
+        self.show_delete_confirmation = False
+        self.delete_slot = None
         self.refresh_save_slots()
         self.setup_buttons()
     
@@ -456,19 +458,49 @@ class LoadGameMenuState(BaseMenuState):
         screen_width = self.screen.get_width()
         screen_height = self.screen.get_height()
         
-        # Save slot buttons
+        # Save slot buttons with delete buttons
         for i, save_slot in enumerate(self.save_slots):
             if save_slot["exists"]:
+                # Load button
                 button_text = f"{save_slot['name']} - {save_slot['level']}"
-                button = MenuButton(screen_width // 2 - 270, 180 + i * 70, 
-                                  540, 50, button_text, self.button_font)
-                button.action = ("load_slot", save_slot["slot"])  # Custom action with slot number
-                self.buttons.append(button)
+                load_button = MenuButton(screen_width // 2 - 270, 180 + i * 70, 
+                                       430, 50, button_text, self.button_font)
+                load_button.action = ("load_slot", save_slot["slot"])
+                self.buttons.append(load_button)
+                
+                # Delete button (smaller, red)
+                delete_button = MenuButton(screen_width // 2 + 180, 180 + i * 70,
+                                         90, 50, "🗑️ Löschen", self.button_font)
+                delete_button.action = ("delete_slot", save_slot["slot"])
+                delete_button.color = (150, 50, 50)  # Red background
+                delete_button.hover_color = (200, 70, 70)  # Lighter red on hover
+                self.buttons.append(delete_button)
         
         # Back button
         back_button = MenuButton(50, screen_height - 80, 180, 50, 
                                "← Zurück", self.button_font, GameState.MAIN_MENU)
         self.buttons.append(back_button)
+        
+        # Delete confirmation buttons (only show when needed)
+        if self.show_delete_confirmation:
+            # Position buttons better within the dialog
+            dialog_y = screen_height // 2 - 100
+            button_y = dialog_y + 120
+            
+            confirm_button = MenuButton(screen_width // 2 - 90, button_y,
+                                       80, 40, "Ja", self.button_font)
+            confirm_button.action = ("confirm_delete", self.delete_slot)
+            confirm_button.color = (150, 50, 50)
+            confirm_button.hover_color = (200, 70, 70)
+            self.buttons.append(confirm_button)
+            
+            cancel_button = MenuButton(screen_width // 2 + 10, button_y,
+                                     80, 40, "Nein", self.button_font)
+            cancel_button.action = ("cancel_delete", None)
+            cancel_button.color = (80, 80, 80)
+            cancel_button.hover_color = (120, 120, 120)
+            self.buttons.append(cancel_button)
+    
     
     def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
         """Handle events for load game menu"""
@@ -476,15 +508,58 @@ class LoadGameMenuState(BaseMenuState):
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
                 if button.update(mouse_pos, True):
-                    if isinstance(button.action, tuple) and button.action[0] == "load_slot":
-                        self.selected_slot = button.action[1]
-                        return ("load_game", self.selected_slot)  # Return special load action
+                    if isinstance(button.action, tuple):
+                        if button.action[0] == "load_slot":
+                            self.selected_slot = button.action[1]
+                            return ("load_game", self.selected_slot)  # Return special load action
+                        elif button.action[0] == "delete_slot":
+                            # Show delete confirmation
+                            self.delete_slot = button.action[1]
+                            self.show_delete_confirmation = True
+                            self.setup_buttons()  # Refresh buttons to show confirmation
+                            return None
+                        elif button.action[0] == "confirm_delete":
+                            # Actually delete the save
+                            if save_manager.delete_save(button.action[1]):
+                                print(f"🗑️ Save slot {button.action[1]} deleted successfully")
+                            else:
+                                print(f"❌ Failed to delete save slot {button.action[1]}")
+                            self.show_delete_confirmation = False
+                            self.delete_slot = None
+                            self.refresh_save_slots()  # Refresh save data
+                            self.setup_buttons()  # Refresh buttons
+                            return None
+                        elif button.action[0] == "cancel_delete":
+                            # Cancel delete confirmation
+                            self.show_delete_confirmation = False
+                            self.delete_slot = None
+                            self.setup_buttons()  # Refresh buttons to hide confirmation
+                            return None
                     else:
                         return button.action
         elif event.type == pygame.MOUSEMOTION:
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
                 button.update(mouse_pos, False)
+        
+        # Handle ESC key to cancel delete confirmation
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE and self.show_delete_confirmation:
+                self.show_delete_confirmation = False
+                self.delete_slot = None
+                self.setup_buttons()
+                return None
+            elif event.key == pygame.K_RETURN and self.show_delete_confirmation:
+                # Enter key confirms delete
+                if save_manager.delete_save(self.delete_slot):
+                    print(f"🗑️ Save slot {self.delete_slot} deleted successfully")
+                else:
+                    print(f"❌ Failed to delete save slot {self.delete_slot}")
+                self.show_delete_confirmation = False
+                self.delete_slot = None
+                self.refresh_save_slots()
+                self.setup_buttons()
+                return None
         
         return None
     
@@ -514,6 +589,59 @@ class LoadGameMenuState(BaseMenuState):
             text_surface = self.text_font.render(no_saves_text, True, (150, 150, 150))
             text_rect = text_surface.get_rect(center=(self.screen.get_width() // 2, 300))
             self.screen.blit(text_surface, text_rect)
+        
+        # Draw delete confirmation dialog
+        if self.show_delete_confirmation:
+            self.draw_delete_confirmation()
+    
+    def draw_delete_confirmation(self):
+        """Draw delete confirmation dialog"""
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+        
+        # Semi-transparent overlay
+        overlay = pygame.Surface((screen_width, screen_height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Dialog box
+        dialog_width = 400
+        dialog_height = 220
+        dialog_x = (screen_width - dialog_width) // 2
+        dialog_y = (screen_height - dialog_height) // 2
+        
+        dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_width, dialog_height)
+        pygame.draw.rect(self.screen, (40, 40, 60), dialog_rect)
+        pygame.draw.rect(self.screen, (200, 100, 100), dialog_rect, 3)
+        
+        # Warning icon and text
+        warning_text = "⚠️"
+        warning_surface = self.title_font.render(warning_text, True, (255, 200, 100))
+        warning_rect = warning_surface.get_rect(center=(screen_width // 2, dialog_y + 50))
+        self.screen.blit(warning_surface, warning_rect)
+        
+        # Confirmation message
+        slot_name = "Unbekannt"
+        for slot in self.save_slots:
+            if slot["slot"] == self.delete_slot:
+                slot_name = slot["name"]
+                break
+        
+        message_lines = [
+            "Spielstand löschen?",
+            f"'{slot_name}' wird unwiderruflich gelöscht!",
+            "Diese Aktion kann nicht rückgängig gemacht werden.",
+            "",
+            "Enter = Bestätigen, Esc = Abbrechen"
+        ]
+        
+        y_text = dialog_y + 90
+        for line in message_lines:
+            text_surface = self.text_font.render(line, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(screen_width // 2, y_text))
+            self.screen.blit(text_surface, text_rect)
+            y_text += 25
 
 class PauseMenuState(BaseMenuState):
     """Pause menu state (shown during gameplay)"""

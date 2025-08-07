@@ -144,6 +144,17 @@ class Game:
                         self.hotkey_display.toggle_visibility()
                         status = "Ein" if self.hotkey_display.visible else "Aus"
                         print(f"🔧 Hotkey-Anzeige: {status}")
+                    
+                    # GLOBAL MAGIC TEST HOTKEYS (funktionieren überall)
+                    elif event.key == pygame.K_F10:  # F10 für direkten Magie-Test
+                        print("🧪 GLOBAL MAGIC TEST: F10 gedrückt!")
+                        self._test_magic_system_global()
+                    elif event.key == pygame.K_F11:  # F11 für Feuer-Element
+                        print("🔥 GLOBAL MAGIC: Feuer hinzufügen!")  
+                        self._add_magic_element_global("fire")
+                    elif event.key == pygame.K_F12:  # F12 für Heilung
+                        print("💚 GLOBAL MAGIC: Heilung wirken!")
+                        self._cast_heal_global()
             
             # Handle events based on current game state
             if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
@@ -301,22 +312,13 @@ class Game:
             self.game_surface.blit(text_surface, text_pos)
     
     def pause_game(self):
-        """Pausiert das Spiel und speichert automatisch"""
+        """Pausiert das Spiel ohne automatisches Speichern"""
         if self.game_state == GameState.GAMEPLAY:
             print("⏸️ Spiel pausiert...")
             
             # Input-Status leeren um Bug zu vermeiden
             if self.level:
                 self.level.clear_input_state()
-            
-            # Automatisches Speichern beim Pausieren
-            if self.level and self.level.game_logic:
-                print("💾 Automatisches Speichern...")
-                success = self.save_current_game(0)  # Slot 0 für Auto-Save
-                if success:
-                    print("✅ Spiel automatisch gespeichert")
-                else:
-                    print("⚠️ Automatisches Speichern fehlgeschlagen")
             
             self.previous_state = self.game_state
             self.game_state = GameState.PAUSE
@@ -467,6 +469,69 @@ class Game:
         print("Game is shutting down...")
         pygame.quit()
         sys.exit()
+    
+    def _test_magic_system_global(self):
+        """Globaler Magie-System Test"""
+        print("🧪 === GLOBAL MAGIC SYSTEM TEST ===")
+        if self.level and self.level.game_logic and self.level.game_logic.player:
+            player = self.level.game_logic.player
+            print(f"🔍 Player gefunden: {player.__class__.__name__}")
+            print(f"🔍 Player HP: {player.current_health}/{player.max_health}")
+            
+            # Test Magie-System direkt
+            magic_system = player.magic_system
+            print(f"🔍 Magic System: {magic_system}")
+            print(f"🔍 Ausgewählte Elemente: {magic_system.selected_elements}")
+            
+        else:
+            print("❌ Kein Level/Player für Magie-Test gefunden!")
+            print(f"🔍 Game State: {self.game_state}")
+            print(f"🔍 Level: {self.level}")
+    
+    def _add_magic_element_global(self, element_name: str):
+        """Fügt global ein Magie-Element hinzu"""
+        if self.level and self.level.game_logic and self.level.game_logic.player:
+            from systems.magic_system import ElementType
+            
+            element_map = {
+                'fire': ElementType.FEUER,
+                'water': ElementType.WASSER, 
+                'stone': ElementType.STEIN
+            }
+            
+            element = element_map.get(element_name)
+            if element:
+                success = self.level.game_logic.player.magic_system.add_element(element)
+                print(f"🔥 Element {element_name} hinzugefügt: {success}")
+            else:
+                print(f"❌ Unbekanntes Element: {element_name}")
+        else:
+            print("❌ Kein Player für Element-Hinzufügung!")
+    
+    def _cast_heal_global(self):
+        """Wirkt global einen Heilungszauber"""
+        if self.level and self.level.game_logic and self.level.game_logic.player:
+            from systems.magic_system import ElementType
+            
+            player = self.level.game_logic.player
+            magic_system = player.magic_system
+            
+            # Elemente löschen und Feuer + Wasser hinzufügen
+            magic_system.clear_elements()
+            magic_system.add_element(ElementType.FEUER)
+            magic_system.add_element(ElementType.WASSER)
+            
+            # Schaden zufügen für Test
+            old_hp = player.current_health
+            player.current_health = max(1, player.current_health - 30)
+            print(f"🩸 Test-Schaden: {old_hp} -> {player.current_health} HP")
+            
+            # Heilung wirken
+            result = magic_system.cast_magic(caster=player)
+            print(f"💚 Heilung Ergebnis: {result}")
+            print(f"💚 HP nach Heilung: {player.current_health}/{player.max_health}")
+        else:
+            print("❌ Kein Player für Heilung!")
 
 
 def main() -> None:

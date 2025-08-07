@@ -22,6 +22,8 @@ class FireWorm(Enemy):
         super().__init__(asset_path, pos_x, pos_y, scale_factor)
         
         # FireWorm specific properties
+        self.max_health = 200  # Erhöhte Health
+        self.current_health = self.max_health  # Vollständige Health beim Start
         self.speed = 80  # Slightly slower than demon
         self.detection_range = 12 * 64  # 12 tiles detection range
         self.attack_range = 8 * 64  # 8 tiles attack range (longer range)
@@ -90,7 +92,17 @@ class FireWorm(Enemy):
             
         current_time = pygame.time.get_ticks()
         
-        # Calculate distance to player
+        # Prüfe ob Spieler unsichtbar ist
+        player_invisible = False
+        if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
+            player_invisible = True
+            # Unsichtbarer Spieler wird nicht erkannt - gehe zu Idle
+            if self.state != "idle":
+                self.state = "idle"
+                print(f"🐍 FireWorm verliert unsichtbaren Spieler aus den Augen!")
+            return  # Früher Exit - keine weitere KI wenn Spieler unsichtbar
+        
+        # Calculate distance to player (nur wenn nicht unsichtbar)
         distance_to_player = pygame.math.Vector2(
             player.rect.centerx - self.rect.centerx,
             player.rect.centery - self.rect.centery
