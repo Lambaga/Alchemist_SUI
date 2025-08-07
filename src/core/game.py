@@ -81,10 +81,10 @@ class Game:
         print("🔄 Spiel wurde zurückgesetzt!")
         
         
-    def update(self, dt=None, collision_objects=None):
-        """Update-Schleife mit Delta Time - aktualisiert Spieler-Animation"""
-        # Aktualisiere nur die Animation, Bewegung wird separat behandelt
-        self.player.update(dt)
+    def update(self, dt=None, collision_objects=None, enemies=None):
+        """Update-Schleife mit Delta Time - aktualisiert Spieler-Animation und Magie-System"""
+        # Aktualisiere Spieler-Animation und Magie-System
+        self.player.update(dt, enemies)
         
         # Prüfe, ob der Spieler gestorben ist
         if self.player.is_dead():

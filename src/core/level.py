@@ -69,20 +69,51 @@ class GameRenderer:
     
     def draw_player(self, player, camera):
         """Zeichnet den Spieler mit Kamera und Zoom - Performance-optimiert"""
-        if hasattr(player, 'image') and player.image:
-            player_pos = camera.apply(player)  # Gibt bereits skaliertes Rect zurück
-            # Performance-Optimierung: Nutze gecachte Skalierung statt jedes Mal neu zu skalieren
-            scaled_image = self.asset_manager.get_scaled_sprite(
-                player.image, 
-                (player_pos.width, player_pos.height)
-            )
-            self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
+        # Prüfe Unsichtbarkeit
+        if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
+            # Spieler ist unsichtbar - halb-transparente Darstellung
+            if hasattr(player, 'image') and player.image:
+                player_pos = camera.apply(player)
+                scaled_image = self.asset_manager.get_scaled_sprite(
+                    player.image, 
+                    (player_pos.width, player_pos.height)
+                )
+                # Transparente Darstellung erstellen
+                transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
+                transparent_surface.blit(scaled_image, (0, 0))
+                transparent_surface.set_alpha(80)  # 30% Sichtbarkeit
+                self.screen.blit(transparent_surface, (player_pos.x, player_pos.y))
+            else:
+                # Transparenter Fallback
+                player_pos = camera.apply(player)
+                transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
+                pygame.draw.rect(transparent_surface, (255, 255, 0, 80), (0, 0, player_pos.width, player_pos.height))
+                self.screen.blit(transparent_surface, (player_pos.x, player_pos.y))
         else:
-            # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
-            player_pos = camera.apply(player)
-            pygame.draw.rect(self.screen, (255, 255, 0), player_pos)  # Gelb statt grün
-            # Zusätzlicher Rahmen für noch bessere Sichtbarkeit
-            pygame.draw.rect(self.screen, (255, 255, 255), player_pos, 3)
+            # Normale Darstellung
+            if hasattr(player, 'image') and player.image:
+                player_pos = camera.apply(player)  # Gibt bereits skaliertes Rect zurück
+                # Performance-Optimierung: Nutze gecachte Skalierung statt jedes Mal neu zu skalieren
+                scaled_image = self.asset_manager.get_scaled_sprite(
+                    player.image, 
+                    (player_pos.width, player_pos.height)
+                )
+                self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
+                
+                # Schild-Effekt zeichnen
+                if hasattr(player, 'magic_system') and player.magic_system.is_shielded(player):
+                    # Blauer Schild-Ring um den Spieler
+                    import math
+                    shield_center = (player_pos.centerx, player_pos.centery)
+                    current_time = pygame.time.get_ticks()
+                    pulse = abs(math.sin(current_time * 0.01)) * 10 + 5  # Pulsierender Effekt
+                    pygame.draw.circle(self.screen, (100, 150, 255), shield_center, int(player_pos.width // 2 + pulse), 3)
+            else:
+                # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
+                player_pos = camera.apply(player)
+                pygame.draw.rect(self.screen, (255, 255, 0), player_pos)  # Gelb statt grün
+                # Zusätzlicher Rahmen für noch bessere Sichtbarkeit
+                pygame.draw.rect(self.screen, (255, 255, 255), player_pos, 3)
     
     def draw_collision_debug(self, player, camera, collision_objects):
         """Zeichnet Kollisionsboxen für Debugging"""
@@ -98,7 +129,7 @@ class GameRenderer:
     def draw_ui(self, game_logic):
         """Zeichnet die Benutzeroberfläche"""
         # UI-Hintergrund
-        ui_rect = pygame.Rect(20, 20, 600, 250)
+        ui_rect = pygame.Rect(20, 20, 600, 320)  # Größer für Magie-Anzeige
         pygame.draw.rect(self.screen, UI_BACKGROUND, ui_rect)
         pygame.draw.rect(self.screen, TEXT_COLOR, ui_rect, 3)
         
@@ -136,6 +167,11 @@ class GameRenderer:
         
         y_offset += 70
         
+        # Magie-System UI (falls Player verfügbar)
+        if hasattr(game_logic, 'player') and game_logic.player:
+            self.draw_magic_ui(game_logic.player.magic_system, 40, y_offset)
+            y_offset += 50
+        
         # Letztes Brau-Ergebnis
         result_lines = game_logic.last_brew_result.split('\n')
         for line in result_lines:
@@ -162,22 +198,70 @@ class GameRenderer:
         controls = [
             "🎮 STEUERUNG:",
             "← → ↑ ↓ / WASD Bewegung",
-            "1,2,3 Zutaten sammeln", 
+            "1,2,3 Magic-Elemente", 
             "Leertaste: Brauen",
             "Backspace: Zutat entfernen",
-            "R: Reset",
-            "M: Musik ein/aus",
+            "🔮 MAGIE:",
+            "1: Wasser, 2: Feuer, 3: Stein",
+            "C: Zaubern, X: Elemente löschen",
+            "R: Reset, M: Musik ein/aus",
             "F1: Kollisions-Debug",
             "F2: Health-Bars ein/aus",
+            "💾 SPEICHERN:",
             "F9-F12: Speichern (Slot 1-4)",
+            "Shift+F9-F12: Löschen (Slot 1-4)",
             "ESC: Zurück zum Menü"
         ]
         
-        start_y = SCREEN_HEIGHT - 325  # Etwas nach oben wegen zusätzlicher Zeile
+        start_y = SCREEN_HEIGHT - 380  # Mehr Platz für zusätzliche Zeilen
         for i, control in enumerate(controls):
             color = TEXT_COLOR if i > 0 else (255, 255, 0)
+            # Magie-Titel hervorheben
+            if control.startswith("🔮"):
+                color = (150, 255, 255)
+            # Speicher-Titel hervorheben
+            elif control.startswith("💾"):
+                color = (255, 200, 100)
             control_surface = self.small_font.render(control, True, color)
-            self.screen.blit(control_surface, (SCREEN_WIDTH - 350, start_y + i * 25))
+            self.screen.blit(control_surface, (SCREEN_WIDTH - 350, start_y + i * 23))
+    
+    def draw_magic_ui(self, magic_system, x, y):
+        """Zeichnet die Magie-System UI"""
+        # Titel
+        magic_title = self.small_font.render("🔮 Magie:", True, (150, 255, 255))
+        self.screen.blit(magic_title, (x, y))
+        
+        # Ausgewählte Elemente
+        if magic_system.selected_elements:
+            elements_text = f"Elemente: {magic_system.get_selected_elements_str()}"
+        else:
+            elements_text = "Elemente: Keine ausgewählt"
+            
+        elements_surface = self.small_font.render(elements_text, True, TEXT_COLOR)
+        self.screen.blit(elements_surface, (x, y + 25))
+        
+        # Element-Symbole zeichnen
+        element_colors = {
+            "feuer": (255, 100, 0),
+            "wasser": (0, 150, 255), 
+            "stein": (139, 69, 19)
+        }
+        
+        start_x = x + 200
+        for i, element in enumerate(magic_system.selected_elements):
+            color = element_colors.get(element.value, (200, 200, 200))
+            rect_x = start_x + i * 35
+            pygame.draw.circle(self.screen, color, (rect_x + 12, y + 35), 12)
+            # Element-Symbol
+            symbol = {"feuer": "🔥", "wasser": "💧", "stein": "🗿"}.get(element.value, "?")
+            # Kleiner Text für Symbole (falls Font verfügbar)
+            try:
+                symbol_surface = self.small_font.render(symbol, True, (255, 255, 255))
+                symbol_rect = symbol_surface.get_rect(center=(rect_x + 12, y + 35))
+                self.screen.blit(symbol_surface, symbol_rect)
+            except:
+                # Fallback: Einfache Farbe
+                pass
 
 class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
@@ -385,13 +469,25 @@ class Level:
     def add_enemy_health_bar(self, enemy):
         """Fügt eine Health-Bar für einen neuen Feind hinzu"""
         try:
+            # Größere Health-Bars für Gegner mit mehr HP
+            if hasattr(enemy, 'max_health') and enemy.max_health >= 200:
+                # Größere Health-Bar für stärkere Gegner
+                width = 80
+                height = 10
+                offset_y = -30
+            else:
+                # Normale Größe für schwächere Gegner
+                width = 60
+                height = 8
+                offset_y = -25
+                
             enemy_health_bar = create_enemy_health_bar(
                 enemy,
-                width=60,
-                height=8,
-                offset_y=-25,
-                show_when_full=False,  # Nur bei Schaden sichtbar
-                fade_delay=2.5
+                width=width,
+                height=height,
+                offset_y=offset_y,
+                show_when_full=True,  # Immer sichtbar für bessere Übersicht
+                fade_delay=3.0  # Länger sichtbar
             )
             self.health_bar_manager.add_entity(
                 enemy, 
@@ -402,7 +498,7 @@ class Level:
                 show_when_full=enemy_health_bar.show_when_full,
                 fade_delay=enemy_health_bar.fade_delay
             )
-            print(f"✅ Health-Bar für {type(enemy).__name__} hinzugefügt")
+            print(f"✅ Health-Bar für {type(enemy).__name__} hinzugefügt (HP: {enemy.max_health})")
         except Exception as e:
             print(f"⚠️ Fehler beim Hinzufügen der Enemy Health-Bar: {e}")
     
@@ -425,23 +521,47 @@ class Level:
                 # Pause wird vom Main Game gehandhabt
                 pass
             elif action == 'ingredient_1':
-                self.game_logic.add_zutat("wasserkristall")
+                # 1 = Wasser-Element für Magie
+                self.handle_magic_element('water')
             elif action == 'ingredient_2':
-                self.game_logic.add_zutat("feueressenz")
+                # 2 = Feuer-Element für Magie
+                self.handle_magic_element('fire')
             elif action == 'ingredient_3':
-                self.game_logic.add_zutat("erdkristall")
+                # 3 = Stein-Element für Magie
+                self.handle_magic_element('stone')
+            # Magie-System Actions
+            elif action == 'cast_magic':
+                self.handle_cast_magic()
+            elif action == 'clear_magic':
+                self.handle_clear_magic()
         
         # Traditionelle Tastatur-Events für Kompatibilität
         if event.type == pygame.KEYDOWN:
+            # Check for Shift modifier
+            keys_pressed = pygame.key.get_pressed()
+            shift_pressed = keys_pressed[pygame.K_LSHIFT] or keys_pressed[pygame.K_RSHIFT]
+            
             # Save game shortcuts (F9 - F12 for save slots)
             if event.key == pygame.K_F9:
-                self.trigger_save_game(1)
+                if shift_pressed:
+                    self.trigger_delete_save(1)
+                else:
+                    self.trigger_save_game(1)
             elif event.key == pygame.K_F10:
-                self.trigger_save_game(2)
+                if shift_pressed:
+                    self.trigger_delete_save(2)
+                else:
+                    self.trigger_save_game(2)
             elif event.key == pygame.K_F11:
-                self.trigger_save_game(3)
+                if shift_pressed:
+                    self.trigger_delete_save(3)
+                else:
+                    self.trigger_save_game(3)
             elif event.key == pygame.K_F12:
-                self.trigger_save_game(4)
+                if shift_pressed:
+                    self.trigger_delete_save(4)
+                else:
+                    self.trigger_save_game(4)
             
             # Debug-Toggle
             elif event.key == pygame.K_F1:
@@ -449,6 +569,22 @@ class Level:
             elif event.key == pygame.K_F2:
                 # Toggle Health-Bars ein/aus
                 self.toggle_health_bars()
+            # DIREKTER MAGIC-TEST
+            elif event.key == pygame.K_h:  # H für direkten Heilungstest
+                if self.game_logic and self.game_logic.player:
+                    player = self.game_logic.player
+                    # Schaden zum Test
+                    player.current_health = max(1, player.current_health - 20)
+                    # Direkte Heilung
+                    player.current_health = min(player.max_health, player.current_health + 50)
+            elif event.key == pygame.K_t:  # T für Test Magie
+                if self.game_logic and self.game_logic.player:
+                    from systems.magic_system import ElementType
+                    magic_system = self.game_logic.player.magic_system
+                    magic_system.clear_elements()
+                    magic_system.add_element(ElementType.FEUER)
+                    magic_system.add_element(ElementType.WASSER)
+                    magic_system.cast_magic(self.game_logic.player)
     
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
@@ -464,6 +600,30 @@ class Level:
             self._save_callback(slot_number)
         else:
             print(f"💾 Speichere Spiel in Slot {slot_number}...")
+    
+    def trigger_delete_save(self, slot_number: int):
+        """Trigger delete save event"""
+        from managers.save_system import save_manager
+        
+        # Check if save exists
+        save_slots = save_manager.get_save_slots_info()
+        slot_exists = False
+        slot_name = f"Slot {slot_number}"
+        
+        for slot in save_slots:
+            if slot["slot"] == slot_number and slot["exists"]:
+                slot_exists = True
+                slot_name = slot["name"]
+                break
+        
+        if slot_exists:
+            # Delete the save
+            if save_manager.delete_save(slot_number):
+                print(f"🗑️ Spielstand '{slot_name}' (Slot {slot_number}) gelöscht!")
+            else:
+                print(f"❌ Fehler beim Löschen von Slot {slot_number}")
+        else:
+            print(f"📭 Kein Spielstand in Slot {slot_number} vorhanden")
     
     def set_save_callback(self, callback):
         """Set callback function for save game functionality"""
@@ -494,11 +654,16 @@ class Level:
         self.handle_movement(dt)
         
         # Spiel-Logik updaten mit Delta Time
-        game_result = self.game_logic.update(dt)
+        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
         
         # Prüfe auf Game Over
         if game_result == "game_over":
             return "game_over"
+        
+        # Magic System explizit updaten mit Feindliste für Kollision
+        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
+            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
+            self.game_logic.player.magic_system.update(dt, enemies_list)
         
         # Demons updaten mit Player-Referenz für AI
         self.enemy_manager.update(dt, self.game_logic.player)
@@ -535,6 +700,10 @@ class Level:
         
         # Spieler
         self.renderer.draw_player(self.game_logic.player, self.camera)
+        
+        # Magie-Projektile zeichnen (nach Spieler, vor Feinden für korrekte Layering)
+        if self.game_logic and self.game_logic.player:
+            self.game_logic.player.magic_system.draw_projectiles(self.screen, self.camera)
         
         # Demons zeichnen
         self.enemy_manager.draw(self.screen, self.camera)
@@ -592,6 +761,44 @@ class Level:
         self.clear_input_state()
         
         print("✅ Level neu gestartet!")
+    
+    def handle_magic_element(self, element_name: str):
+        """Behandelt Magie-Element Eingabe"""
+        if self.game_logic and self.game_logic.player:
+            from systems.magic_system import ElementType
+            
+            # Element-Namen zu ElementType mappen
+            element_map = {
+                'fire': ElementType.FEUER,
+                'water': ElementType.WASSER, 
+                'stone': ElementType.STEIN
+            }
+            
+            element = element_map.get(element_name)
+            if element:
+                success = self.game_logic.player.magic_system.add_element(element)
+                if not success:
+                    print(f"❌ Element-Maximum erreicht!")
+    
+    def handle_cast_magic(self):
+        """Behandelt Magie wirken"""
+        if self.game_logic and self.game_logic.player:
+            # Feindesliste für Magie-Effekte bereitstellen
+            enemies = []
+            if self.enemy_manager:
+                enemies = list(self.enemy_manager.enemies)
+                
+            # target_pos wird jetzt ignoriert, da Projektile in Blickrichtung fliegen
+            result = self.game_logic.player.magic_system.cast_magic(
+                caster=self.game_logic.player,
+                target_pos=None,  # Wird ignoriert für Projektile
+                enemies=enemies
+            )
+    
+    def handle_clear_magic(self):
+        """Behandelt Magie-Auswahl löschen"""
+        if self.game_logic and self.game_logic.player:
+            self.game_logic.player.magic_system.clear_elements()
     
     def _setup_health_bars(self):
         """Private Methode zum Neuerstellen der Health-Bars nach Reset"""
