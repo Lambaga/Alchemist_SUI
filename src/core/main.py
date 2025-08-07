@@ -26,6 +26,7 @@ from fps_monitor import FPSMonitor, create_detailed_fps_display
 from menu_system import MenuSystem, GameState
 from save_system import save_manager
 from hotkey_display import HotkeyDisplay
+from input_system import init_universal_input
 
 class Game:
     """
@@ -43,6 +44,10 @@ class Game:
     def __init__(self):
         pygame.init()
         pygame.mixer.init()
+        
+        # Universal Input System initialisieren
+        self.input_system = init_universal_input()
+        self.input_system.print_control_scheme()
         
         # Initialize AssetManager
         self.asset_manager = AssetManager()
