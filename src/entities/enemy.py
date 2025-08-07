@@ -76,7 +76,7 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         
         # KI und Bewegungs-Eigenschaften
         self.speed: int = 100  # Pixel pro Sekunde
-        self.detection_range: int = 15 * 64  # 15 Kacheln * 64 Pixel = 960 Pixel
+        self.detection_range: int = 8 * 64  # 8 Kacheln * 64 Pixel = 512 Pixel (reduziert von 15)
         self.state: str = "idle"  # "idle", "walking", "attacking", "death"
         self.target_player: Optional[Any] = None  # Wird zur Laufzeit auf Player-Typ gesetzt
         self.direction: pygame.math.Vector2 = pygame.math.Vector2(0, 0)

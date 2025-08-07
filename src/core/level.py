@@ -284,11 +284,10 @@ class Level:
             player_x = self.game_logic.player.rect.centerx
             player_y = self.game_logic.player.rect.centery
             
-            # Spawne verschiedene Enemies relativ zum Player (einige Tiles entfernt)
-            # 64 Pixel = etwa 1 Tile, spawne sehr nah zum Player
-            demon1 = self.enemy_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)  # Direkt rechts vom Player
-            demon2 = self.enemy_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)   # Direkt links vom Player  
-            fireworm1 = self.enemy_manager.add_fireworm(player_x, player_y - 100, scale=2.0, facing_right=False) # FireWorm über dem Player
+            # Spawne verschiedene Enemies relativ zum Player
+            demon1 = self.enemy_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)
+            demon2 = self.enemy_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)  
+            fireworm1 = self.enemy_manager.add_fireworm(player_x, player_y - 100, scale=2.0, facing_right=False)
             
             # Health-Bars für alle gespawnten Enemies hinzufügen
             if demon1:
@@ -312,6 +311,32 @@ class Level:
                 self.game_logic.player.rect.bottom = self.screen.get_height() - 200
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
                 self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+    
+    def respawn_enemies_only(self):
+        """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
+        if not self.map_loader or not self.map_loader.tmx_data:
+            return
+        
+        # Demons aus der Map spawnen
+        self.enemy_manager.add_enemies_from_map(self.map_loader)
+        
+        # Teste Demons manuell (entferne das später wenn deine Map Demon-Objekte hat)
+        # Hole die Player-Position für relative Spawns
+        player_x = self.game_logic.player.rect.centerx
+        player_y = self.game_logic.player.rect.centery
+        
+        # Spawne verschiedene Enemies relativ zum Player
+        demon1 = self.enemy_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)
+        demon2 = self.enemy_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)  
+        fireworm1 = self.enemy_manager.add_fireworm(player_x, player_y - 100, scale=2.0, facing_right=False)
+        
+        # Health-Bars für alle gespawnten Enemies hinzufügen
+        if demon1:
+            self.add_enemy_health_bar(demon1)
+        if demon2:
+            self.add_enemy_health_bar(demon2)
+        if fireworm1:
+            self.add_enemy_health_bar(fireworm1)
     
     def setup_collision_objects(self):
         """Setzt die Kollisionsobjekte für den Player (einmalig)"""
@@ -559,11 +584,11 @@ class Level:
             self.game_logic.player.revive()
             print("💖 Spieler wiederbelebt mit voller Gesundheit")
         
-        # Gegner zurücksetzen
+        # Gegner komplett zurücksetzen - KEIN respawn_default_enemies mehr
         if self.enemy_manager:
             self.enemy_manager.reset_enemies()
-            # Neue Standard-Feinde spawnen
-            self.enemy_manager.respawn_default_enemies()
+            # Spawne nur die Feinde neu, ohne Spieler-Position zu verändern
+            self.respawn_enemies_only()
         
         # Health-Bar System zurücksetzen
         if self.health_bar_manager:

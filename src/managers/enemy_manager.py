@@ -147,20 +147,4 @@ class EnemyManager:
         """Setzt alle Feinde zurück (für Game Over / Neustart)"""
         # Alle aktuellen Feinde entfernen
         self.enemies.empty()
-        
-        # Hier könnten wir Feinde neu spawnen oder zu ursprünglichen Positionen zurücksetzen
-        # Für jetzt lassen wir es leer - Feinde werden beim Level-Neustart neu erstellt
         print("🔄 Alle Feinde zurückgesetzt")
-    
-    def respawn_default_enemies(self):
-        """Spawnt Standard-Feinde für einen Neustart"""
-        # Standard-Feinde spawnen
-        self.add_demon(800, 400, scale=0.8, facing_right=False)
-        self.add_demon(1200, 300, scale=0.9, facing_right=True)
-        self.add_demon(600, 500, scale=0.7, facing_right=False)
-        self.add_demon(1400, 450, scale=0.8, facing_right=True)
-        
-        # FireWorm spawnen
-        self.add_fireworm(960, 400, scale=1.0, facing_right=False)
-        
-        print("🐉 Standard-Feinde neu gespawnt")
