@@ -23,7 +23,7 @@ class Demon(Enemy):
         
         # Demon specific properties (override parent values)
         self.speed = 100  # Pixel per second
-        self.detection_range = 15 * 64  # 15 tiles * 64 pixels per tile = 960 pixels
+        self.detection_range = 8 * 64  # 8 tiles * 64 pixels per tile = 512 pixels (verkürzt von 15)
         
         # Animation specific to demon
         self.animation_speed_ms = 300  # Slower animation for demons
@@ -89,6 +89,15 @@ class Demon(Enemy):
             if distance_to_player <= self.detection_range:
                 self.target_player = player
                 self.state = "chasing"
+                # Debug nur gelegentlich anzeigen um Spam zu vermeiden
+                if hasattr(self, '_last_debug_time'):
+                    current_time = pygame.time.get_ticks()
+                    if current_time - self._last_debug_time > 3000:  # Alle 3 Sekunden
+                        print(f"👹 Demon verfolgt Spieler - Distanz: {distance_to_player:.0f}")
+                        self._last_debug_time = current_time
+                else:
+                    self._last_debug_time = pygame.time.get_ticks()
+                    print(f"👹 Demon startet Verfolgung - Distanz: {distance_to_player:.0f}")
         
         # Movement AI
         if self.state == "chasing" and self.target_player:
@@ -99,10 +108,12 @@ class Demon(Enemy):
             )
             
             # Check if still in range
-            if direction_to_player.length() > self.detection_range * 1.5:  # Stop chasing if too far
+            if direction_to_player.length() > self.detection_range * 1.2:  # Stop chasing if too far
                 self.state = "idle"
                 self.target_player = None
                 self.direction = pygame.math.Vector2(0, 0)
+                # Debug nur gelegentlich anzeigen
+                print(f"👹 Demon stoppt Verfolgung - zu weit: {direction_to_player.length():.0f}")
             else:
                 # Normalize and move towards player
                 if direction_to_player.length() > 0:

@@ -137,12 +137,12 @@ class Game:
         """Braut einen Trank aus den aktiven Zutaten"""
         recipe = self.alchemy_system.brew()
         
-        if recipe and recipe.name != "Nichts":
+        if recipe and recipe.result_name != "Nichts":
             # Erfolgreiche Alchemie!
-            points = recipe.complexity * 10
+            points = recipe.score_value
             self.score += points
-            self.last_brew_result = f"✨ {recipe.name} gebraut! (+{points} Punkte)"
-            print(f"🧪 Erfolgreich gebraut: {recipe.name} | Punkte: +{points} | Gesamt: {self.score}")
+            self.last_brew_result = f"✨ {recipe.result_name} gebraut! (+{points} Punkte)"
+            print(f"🧪 Erfolgreich gebraut: {recipe.result_name} | Punkte: +{points} | Gesamt: {self.score}")
             
             # Reset aktive_zutaten after brewing
             self.aktive_zutaten = []
