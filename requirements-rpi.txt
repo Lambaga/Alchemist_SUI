@@ -1,0 +1,23 @@
+# Raspberry Pi 4 Requirements für Der Alchemist
+# Optimiert für ARM64-Architektur und Virtual Environment
+
+# Core-Abhängigkeiten
+pygame>=2.5.2      # Neueste Version mit besserer ARM-Unterstützung
+pytmx>=3.31        # TMX-Map-Loader
+
+# Raspberry Pi spezifische Optimierungen
+RPi.GPIO>=0.7.1    # GPIO-Zugriff für zusätzliche Hardware (optional)
+
+# Performance-Bibliotheken
+numpy>=1.21.0      # Mathematische Operationen (falls benötigt)
+
+# Virtual Environment Utilities
+pip>=21.0          # Aktueller Package Manager
+setuptools>=65.0   # Build-Tools
+
+# Development Dependencies (optional für Debugging)
+psutil>=5.8.0      # System-Monitoring
+
+# Audio-Support für Raspberry Pi
+# Hinweis: Möglicherweise benötigt das System zusätzliche Audio-Treiber:
+# sudo apt install python3-pygame python3-dev libasound2-dev

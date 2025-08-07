@@ -9,6 +9,7 @@ from camera import Camera
 from map_loader import MapLoader
 from enemy_manager import EnemyManager
 from health_bar_py27 import HealthBarManager, create_player_health_bar, create_enemy_health_bar
+from input_system import get_input_system
 
 class GameRenderer:
     """Rendering-System für das Level"""
@@ -207,7 +208,10 @@ class Level:
         # Health-Bars für alle Entitäten hinzufügen
         self.setup_health_bars()
         
-        # Input-Status
+        # Input-System initialisieren
+        self.input_system = get_input_system()
+        
+        # Input-Status (wird jetzt vom Universal Input System verwaltet)
         self.keys_pressed = {'left': False, 'right': False, 'up': False, 'down': False}
         
         # Debug-Optionen
@@ -403,25 +407,34 @@ class Level:
             print(f"⚠️ Fehler beim Hinzufügen der Enemy Health-Bar: {e}")
     
     def handle_event(self, event):
-        """Behandelt Input-Events"""
-        if event.type == pygame.KEYDOWN:
-            # Bewegung starten
-            for direction, keys in MOVEMENT_KEYS.items():
-                if event.key in keys:
-                    self.keys_pressed[direction] = True
-            
-            # Aktionen
-            if event.key == ACTION_KEYS['brew']:
+        """Behandelt Input-Events - Erweitert für Joystick-Support"""
+        # Universal Input System für Actions verwenden
+        action = self.input_system.handle_event(event)
+        
+        if action:
+            # Action-Mapping
+            if action == 'brew':
                 self.game_logic.brew()
-            elif event.key == ACTION_KEYS['remove_ingredient']:
+            elif action == 'remove_ingredient':
                 self.game_logic.remove_last_zutat()
-            elif event.key == ACTION_KEYS['reset']:
+            elif action == 'reset':
                 self.game_logic.reset_game()
-            elif event.key == ACTION_KEYS['music_toggle']:
+            elif action == 'music_toggle':
                 self.toggle_music()
-            
+            elif action == 'pause':
+                # Pause wird vom Main Game gehandhabt
+                pass
+            elif action == 'ingredient_1':
+                self.game_logic.add_zutat("wasserkristall")
+            elif action == 'ingredient_2':
+                self.game_logic.add_zutat("feueressenz")
+            elif action == 'ingredient_3':
+                self.game_logic.add_zutat("erdkristall")
+        
+        # Traditionelle Tastatur-Events für Kompatibilität
+        if event.type == pygame.KEYDOWN:
             # Save game shortcuts (F9 - F12 for save slots)
-            elif event.key == pygame.K_F9:
+            if event.key == pygame.K_F9:
                 self.trigger_save_game(1)
             elif event.key == pygame.K_F10:
                 self.trigger_save_game(2)
@@ -430,26 +443,12 @@ class Level:
             elif event.key == pygame.K_F12:
                 self.trigger_save_game(4)
             
-            # Test-Zutaten
-            elif event.key == pygame.K_1:
-                self.game_logic.add_zutat("wasserkristall")
-            elif event.key == pygame.K_2:
-                self.game_logic.add_zutat("feueressenz")
-            elif event.key == pygame.K_3:
-                self.game_logic.add_zutat("erdkristall")
-            
             # Debug-Toggle
             elif event.key == pygame.K_F1:
                 self.show_collision_debug = not self.show_collision_debug
             elif event.key == pygame.K_F2:
                 # Toggle Health-Bars ein/aus
                 self.toggle_health_bars()
-        
-        elif event.type == pygame.KEYUP:
-            # Bewegung stoppen
-            for direction, keys in MOVEMENT_KEYS.items():
-                if event.key in keys:
-                    self.keys_pressed[direction] = False
     
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
@@ -487,8 +486,11 @@ class Level:
             pygame.mixer.music.unpause()
     
     def update(self, dt):
-        """Update-Schleife mit Delta Time"""
-        # Bewegung verarbeiten
+        """Update-Schleife mit Delta Time - Erweitert für Universal Input"""
+        # Universal Input System updaten
+        self.input_system.update()
+        
+        # Bewegung verarbeiten (nutzt jetzt Universal Input System)
         self.handle_movement(dt)
         
         # Spiel-Logik updaten mit Delta Time
@@ -510,25 +512,11 @@ class Level:
         return None
     
     def handle_movement(self, dt):
-        """Behandelt Spieler-Bewegung mit dt-System"""
+        """Behandelt Spieler-Bewegung mit Universal Input System"""
         import pygame
         
-        # Sammle alle Eingaben als Richtungsvektor
-        direction = pygame.math.Vector2(0, 0)
-        is_moving = False
-        
-        if self.keys_pressed['left']:
-            direction.x -= 1
-            is_moving = True
-        if self.keys_pressed['right']:
-            direction.x += 1
-            is_moving = True
-        if self.keys_pressed['up']:
-            direction.y -= 1
-            is_moving = True
-        if self.keys_pressed['down']:
-            direction.y += 1
-            is_moving = True
+        # Bewegungsvektor vom Universal Input System holen
+        direction = self.input_system.get_movement_vector()
         
         # Setze die Bewegungsrichtung im Player
         self.game_logic.player.direction = direction
