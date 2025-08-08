@@ -9,17 +9,98 @@ import pygame
 from os import path
 
 # === PFAD DEFINITIONEN (ROBUST) ===
-SRC_DIR = path.dirname(path.dirname(__file__))  # Go up one more level since we're in core/
-ROOT_DIR = path.join(SRC_DIR, '..')
-ASSETS_DIR = path.join(ROOT_DIR, 'assets')
+# Finde den absoluten Pfad zur src-Datei, dann gehe zu root
+SRC_DIR = path.dirname(path.dirname(path.abspath(__file__)))  # Geht von core/ zu src/
+ROOT_DIR = path.dirname(SRC_DIR)  # Geht von src/ zu root
+ASSETS_DIR = path.abspath(path.join(ROOT_DIR, 'assets'))
 
 class DisplayConfig:
-    """Display- und Fenster-Konfiguration"""
+    """Display- und Fenster-Konfiguration mit RPi4-Optimierung"""
+    # Standard-Einstellungen (PC)
     SCREEN_WIDTH = 1920
     SCREEN_HEIGHT = 1080
     WINDOW_WIDTH = 1280
     WINDOW_HEIGHT = 720
     FPS = 60
+    
+    # 🚀 RPi4-Performance-Profile
+    @staticmethod
+    def is_raspberry_pi():
+        """Erkennt ob das System ein Raspberry Pi ist"""
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                cpuinfo = f.read()
+                return 'Raspberry Pi' in cpuinfo or 'BCM' in cpuinfo
+        except:
+            # Windows/andere Systeme - kein RPi
+            return False
+    
+    @staticmethod
+    def get_optimized_settings():
+        """Gibt optimierte Einstellungen basierend auf Hardware zurück"""
+        if DisplayConfig.is_raspberry_pi():
+            print("🚀 Raspberry Pi erkannt - Performance-Optimierungen aktiviert!")
+            return {
+                'FPS': 30,              # 🚀 Reduzierte FPS für RPi4
+                'WINDOW_WIDTH': 1024,   # 🚀 Kleinere Auflösung
+                'WINDOW_HEIGHT': 576,   # 🚀 16:9 aber niedriger
+                'LOW_EFFECTS': True,    # 🚀 Reduzierte Effekte
+                'AUDIO_QUALITY': 'LOW', # 🚀 Niedrigere Audio-Qualität
+                'VSYNC': False,         # 🚀 VSync aus für RPi4
+                'TILE_CACHE_SIZE': 50,  # 🚀 Kleinerer Tile-Cache
+                'AUDIO_FREQUENCY': 22050,# 🚀 Niedrigere Audio-Frequenz
+                'AUDIO_BUFFER': 1024    # 🚀 Größerer Audio-Buffer für Stabilität
+            }
+        else:
+            print("🖥️ Desktop-System erkannt - Standard-Einstellungen")
+            return {
+                'FPS': 60,              # Standard FPS
+                'WINDOW_WIDTH': 1280,   # Standard Auflösung
+                'WINDOW_HEIGHT': 720,   
+                'LOW_EFFECTS': False,   # Alle Effekte
+                'AUDIO_QUALITY': 'HIGH',# Hohe Audio-Qualität
+                'VSYNC': True,          # VSync für flüssigeres Gameplay
+                'TILE_CACHE_SIZE': 100, # Größerer Cache
+                'AUDIO_FREQUENCY': 44100,# Standard Audio-Frequenz
+                'AUDIO_BUFFER': 512     # Optimaler Audio-Buffer für PC
+            }
+    
+    @staticmethod
+    def init_audio_for_hardware():
+        """🚀 Task 4: Initialisiert Audio mit hardware-spezifischen Einstellungen"""
+        import pygame
+        
+        # Nur initialisieren wenn noch nicht geschehen
+        if pygame.mixer.get_init():
+            return
+            
+        settings = DisplayConfig.get_optimized_settings()
+        
+        try:
+            # Hardware-spezifische Audio-Initialisierung
+            pygame.mixer.pre_init(
+                frequency=settings['AUDIO_FREQUENCY'],
+                size=-16,           # 16-bit signed samples
+                channels=2,         # Stereo
+                buffer=settings['AUDIO_BUFFER']
+            )
+            
+            # Mixer tatsächlich initialisieren
+            pygame.mixer.init()
+            
+            hardware_type = "RPi4" if DisplayConfig.is_raspberry_pi() else "Desktop"
+            print(f"🔊 Audio initialisiert für {hardware_type}:")
+            print(f"   Frequenz: {settings['AUDIO_FREQUENCY']}Hz")
+            print(f"   Buffer: {settings['AUDIO_BUFFER']} samples")
+            
+        except pygame.error as e:
+            print(f"⚠️ Audio-Initialisierung fehlgeschlagen: {e}")
+            # Fallback zu einfacherer Initialisierung
+            try:
+                pygame.mixer.init()
+                print("🔊 Audio-Fallback erfolgreich")
+            except:
+                print("❌ Audio komplett fehlgeschlagen - Spiel läuft stumm")
 
 class PlayerConfig:
     """Player-spezifische Konfiguration"""
@@ -105,11 +186,11 @@ class Paths:
         self.SPRITES_DIR = path.join(ASSETS_DIR, 'Wizard Pack')
         
         # Kompatibilitäts-Aliase für alte string-basierte Pfade
-        self.ASSETS = "assets"
-        self.SPRITES = "assets/Wizard Pack"
-        self.MAPS = "assets/maps"
-        self.SOUNDS = "assets/sounds"
-        self.MUSIC_KOROL = "assets/sounds/korol.mp3"
+        self.ASSETS = ASSETS_DIR
+        self.SPRITES = self.SPRITES_DIR
+        self.MAPS = self.MAPS_DIR
+        self.SOUNDS = self.SOUNDS_DIR
+        self.MUSIC_KOROL = path.join(self.SOUNDS_DIR, "korol.mp3")
     
     @property
     def BACKGROUND_MUSIC(self):

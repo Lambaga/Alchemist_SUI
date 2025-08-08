@@ -12,7 +12,7 @@ from health_bar_py27 import HealthBarManager, create_player_health_bar, create_e
 from input_system import get_input_system
 
 class GameRenderer:
-    """Rendering-System für das Level"""
+    """🚀 Task 6: Rendering-System mit Alpha/Transparenz-Optimierung"""
     
     def __init__(self, screen):
         self.screen = screen
@@ -24,15 +24,22 @@ class GameRenderer:
         from asset_manager import AssetManager
         self.asset_manager = AssetManager()
         
+        # 🚀 Task 6: Alpha-Caching für transparente Effekte (Performance-Optimierung)
+        self._alpha_cache = {}  # Cache für transparente Surfaces
+        self._max_alpha_cache_size = 50  # Begrenzt Memory-Verbrauch
+        
     def generate_ground_stones(self):
-        """Generiert zufällige Steine für den Boden"""
+        """🚀 Task 5: Generiert zufällige Steine - Multi-Resolution-kompatibel"""
         import random
         self.stones = []
-        world_width = SCREEN_WIDTH * 3
+        # 🚀 Task 5: Dynamische Screen-Größen
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+        world_width = screen_width * 3
         
         for _ in range(200):
             x = random.randint(-world_width // 2, world_width // 2)
-            y = random.randint(SCREEN_HEIGHT - 200 + 10, SCREEN_HEIGHT - 20)
+            y = random.randint(screen_height - 200 + 10, screen_height - 20)
             size = random.randint(3, 12)
             gray = random.randint(80, 140)
             color = (gray, gray, gray)
@@ -41,26 +48,63 @@ class GameRenderer:
                 'x': x, 'y': y, 'size': size, 'color': color
             })
     
+    def _get_cached_transparent_sprite(self, original_surface, alpha_value, size):
+        """🚀 Task 6: Erstellt gecachte transparente Sprite-Versionen für bessere Performance"""
+        cache_key = (id(original_surface), alpha_value, size)
+        
+        # Cache-Hit: Bereits erstellte transparente Version zurückgeben
+        if cache_key in self._alpha_cache:
+            return self._alpha_cache[cache_key]
+        
+        # Cache-Miss: Neue transparente Version erstellen
+        if len(self._alpha_cache) >= self._max_alpha_cache_size:
+            # Ältesten Cache-Eintrag entfernen (einfaches FIFO)
+            oldest_key = next(iter(self._alpha_cache))
+            del self._alpha_cache[oldest_key]
+        
+        # Skaliere erst das Original (mit vorhandenem Cache)
+        scaled_image = self.asset_manager.get_scaled_sprite(original_surface, size)
+        
+        # Erstelle transparente Version
+        transparent_surface = pygame.Surface(size, pygame.SRCALPHA)
+        transparent_surface.blit(scaled_image, (0, 0))
+        transparent_surface.set_alpha(alpha_value)
+        
+        # Cache die transparente Version
+        self._alpha_cache[cache_key] = transparent_surface
+        return transparent_surface
+    
+    def get_alpha_cache_info(self):
+        """🚀 Task 6: Debug-Info für Alpha-Cache"""
+        return {
+            'size': len(self._alpha_cache),
+            'max_size': self._max_alpha_cache_size,
+            'memory_usage': len(self._alpha_cache) * 50  # Geschätzt KB pro Entry
+        }
+    
     def draw_background(self, map_loader=None, camera=None):
-        """Zeichnet den Hintergrund"""
+        """🚀 Task 5: Zeichnet den Hintergrund - Multi-Resolution-kompatibel"""
         if map_loader and camera and map_loader.tmx_data:
             self.screen.fill((0, 0, 0))  # Schwarzer Hintergrund für besseren Kontrast
             map_loader.render(self.screen, camera)
         else:
             self.screen.fill(BACKGROUND_COLOR)
-            # Standard-Hintergrund mit Boden und Bäumen
-            tree_rect = pygame.Rect(0, SCREEN_HEIGHT - 400, SCREEN_WIDTH, 200)
+            # 🚀 Task 5: Standard-Hintergrund mit dynamischen Größen
+            screen_width = self.screen.get_width()
+            screen_height = self.screen.get_height()
+            tree_rect = pygame.Rect(0, screen_height - 400, screen_width, 200)
             pygame.draw.rect(self.screen, (34, 139, 34), tree_rect)
-            ground_rect = pygame.Rect(0, SCREEN_HEIGHT - 200, SCREEN_WIDTH, 200)
+            ground_rect = pygame.Rect(0, screen_height - 200, screen_width, 200)
             pygame.draw.rect(self.screen, (139, 69, 19), ground_rect)
     
     def draw_ground_stones(self, camera):
-        """Zeichnet Steine mit Kamera-Transformation"""
+        """🚀 Task 5: Zeichnet Steine mit Kamera-Transformation - Multi-Resolution"""
+        screen_width = self.screen.get_width()  # 🚀 Task 5: Dynamische Screen-Breite
         for stone in self.stones:
             stone_rect = pygame.Rect(stone['x'], stone['y'], stone['size'], stone['size'])
             stone_pos = camera.apply_rect(stone_rect)
             
-            if -50 < stone_pos.x < SCREEN_WIDTH + 50:
+            if -50 < stone_pos.x < screen_width + 50:
                 scaled_size = int(stone['size'] * camera.zoom_factor)
                 pygame.draw.circle(self.screen, stone['color'], 
                                  (int(stone_pos.x + scaled_size//2), 
@@ -68,27 +112,27 @@ class GameRenderer:
                                  max(1, scaled_size//2))
     
     def draw_player(self, player, camera):
-        """Zeichnet den Spieler mit Kamera und Zoom - Performance-optimiert"""
+        """🚀 Task 6: Zeichnet den Spieler - Alpha-optimiert für bessere Performance"""
         # Prüfe Unsichtbarkeit
         if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
-            # Spieler ist unsichtbar - halb-transparente Darstellung
+            # 🚀 Task 6: Nutze Alpha-Cache für unsichtbare Spieler
             if hasattr(player, 'image') and player.image:
                 player_pos = camera.apply(player)
-                scaled_image = self.asset_manager.get_scaled_sprite(
-                    player.image, 
-                    (player_pos.width, player_pos.height)
+                # Nutze optimierte Alpha-Caching statt per-Frame Surface-Erstellung
+                transparent_sprite = self._get_cached_transparent_sprite(
+                    player.image, 80, (player_pos.width, player_pos.height)
                 )
-                # Transparente Darstellung erstellen
-                transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
-                transparent_surface.blit(scaled_image, (0, 0))
-                transparent_surface.set_alpha(80)  # 30% Sichtbarkeit
-                self.screen.blit(transparent_surface, (player_pos.x, player_pos.y))
+                self.screen.blit(transparent_sprite, (player_pos.x, player_pos.y))
             else:
-                # Transparenter Fallback
+                # 🚀 Task 6: Transparenter Fallback mit Alpha-Cache-Pattern
                 player_pos = camera.apply(player)
-                transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
-                pygame.draw.rect(transparent_surface, (255, 255, 0, 80), (0, 0, player_pos.width, player_pos.height))
-                self.screen.blit(transparent_surface, (player_pos.x, player_pos.y))
+                # Erstelle einfachen transparenten Rechteck-Cache (für Fallback)
+                fallback_key = ('fallback_transparent_rect', player_pos.width, player_pos.height, 80)
+                if fallback_key not in self._alpha_cache:
+                    transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
+                    pygame.draw.rect(transparent_surface, (255, 255, 0, 80), (0, 0, player_pos.width, player_pos.height))
+                    self._alpha_cache[fallback_key] = transparent_surface
+                self.screen.blit(self._alpha_cache[fallback_key], (player_pos.x, player_pos.y))
         else:
             # Normale Darstellung
             if hasattr(player, 'image') and player.image:
@@ -100,14 +144,24 @@ class GameRenderer:
                 )
                 self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
                 
-                # Schild-Effekt zeichnen
+                # 🚀 Task 6: Schild-Effekt mit Low-Effects-Mode (RPi4-Optimierung)
                 if hasattr(player, 'magic_system') and player.magic_system.is_shielded(player):
-                    # Blauer Schild-Ring um den Spieler
-                    import math
-                    shield_center = (player_pos.centerx, player_pos.centery)
-                    current_time = pygame.time.get_ticks()
-                    pulse = abs(math.sin(current_time * 0.01)) * 10 + 5  # Pulsierender Effekt
-                    pygame.draw.circle(self.screen, (100, 150, 255), shield_center, int(player_pos.width // 2 + pulse), 3)
+                    from config import DisplayConfig
+                    settings = DisplayConfig.get_optimized_settings()
+                    
+                    if settings.get('LOW_EFFECTS', False):
+                        # 🚀 RPi4: Einfacher Schild-Kreis ohne Animation
+                        shield_center = (player_pos.centerx, player_pos.centery)
+                        pygame.draw.circle(self.screen, (100, 150, 255), shield_center, 
+                                         int(player_pos.width // 2 + 10), 3)
+                    else:
+                        # PC: Animierter Schild mit Pulsierender Effekt
+                        import math
+                        shield_center = (player_pos.centerx, player_pos.centery)
+                        current_time = pygame.time.get_ticks()
+                        pulse = abs(math.sin(current_time * 0.01)) * 10 + 5
+                        pygame.draw.circle(self.screen, (100, 150, 255), shield_center, 
+                                         int(player_pos.width // 2 + pulse), 3)
             else:
                 # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
                 player_pos = camera.apply(player)
@@ -169,8 +223,8 @@ class GameRenderer:
         
         # Magie-System UI (falls Player verfügbar)
         if hasattr(game_logic, 'player') and game_logic.player:
-            self.draw_magic_ui(game_logic.player.magic_system, 40, y_offset)
-            y_offset += 50
+            self.draw_magic_ui(game_logic.player, 40, y_offset)
+            y_offset += 80
         
         # Letztes Brau-Ergebnis
         result_lines = game_logic.last_brew_result.split('\n')
@@ -194,7 +248,7 @@ class GameRenderer:
         self.screen.blit(map_surface, (40, y_offset))
     
     def draw_controls(self):
-        """Zeichnet die Steuerungshinweise"""
+        """🚀 Task 5: Zeichnet die Steuerungshinweise - Multi-Resolution-optimiert"""
         controls = [
             "🎮 STEUERUNG:",
             "← → ↑ ↓ / WASD Bewegung",
@@ -213,7 +267,10 @@ class GameRenderer:
             "ESC: Zurück zum Menü"
         ]
         
-        start_y = SCREEN_HEIGHT - 380  # Mehr Platz für zusätzliche Zeilen
+        # 🚀 Task 5: Dynamische Screen-Größen statt Konstanten
+        screen_height = self.screen.get_height()
+        screen_width = self.screen.get_width()
+        start_y = screen_height - 380  # Mehr Platz für zusätzliche Zeilen
         for i, control in enumerate(controls):
             color = TEXT_COLOR if i > 0 else (255, 255, 0)
             # Magie-Titel hervorheben
@@ -223,10 +280,12 @@ class GameRenderer:
             elif control.startswith("💾"):
                 color = (255, 200, 100)
             control_surface = self.small_font.render(control, True, color)
-            self.screen.blit(control_surface, (SCREEN_WIDTH - 350, start_y + i * 23))
+            self.screen.blit(control_surface, (screen_width - 350, start_y + i * 23))
     
-    def draw_magic_ui(self, magic_system, x, y):
-        """Zeichnet die Magie-System UI"""
+    def draw_magic_ui(self, player, x, y):
+        """Zeichnet die Magie-System UI mit Mana-Anzeige"""
+        magic_system = player.magic_system
+        
         # Titel
         magic_title = self.small_font.render("🔮 Magie:", True, (150, 255, 255))
         self.screen.blit(magic_title, (x, y))
@@ -262,6 +321,25 @@ class GameRenderer:
             except:
                 # Fallback: Einfache Farbe
                 pass
+        
+        # Mana-Anzeige
+        mana_text = f"Mana: {int(player.current_mana)}/{player.max_mana}"
+        mana_surface = self.small_font.render(mana_text, True, (100, 100, 255))
+        self.screen.blit(mana_surface, (x, y + 60))
+        
+        # Mana-Balken
+        bar_width = 120
+        bar_height = 8
+        bar_x = x + 120
+        bar_y = y + 65
+        
+        # Hintergrund (schwarz)
+        pygame.draw.rect(self.screen, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        
+        # Mana-Füllstand (blau)
+        fill_width = int(bar_width * player.get_mana_percentage())
+        if fill_width > 0:
+            pygame.draw.rect(self.screen, (50, 150, 255), (bar_x, bar_y, fill_width, bar_height))
 
 class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
@@ -762,8 +840,9 @@ class Level:
         
         print("✅ Level neu gestartet!")
     
-    def handle_magic_element(self, element_name: str):
+    def handle_magic_element(self, element_name):
         """Behandelt Magie-Element Eingabe"""
+        print("🔮 handle_magic_element called with: {}".format(element_name))
         if self.game_logic and self.game_logic.player:
             from systems.magic_system import ElementType
             
@@ -776,17 +855,27 @@ class Level:
             
             element = element_map.get(element_name)
             if element:
+                print("🔮 Adding element: {}".format(element.value))
                 success = self.game_logic.player.magic_system.add_element(element)
-                if not success:
-                    print(f"❌ Element-Maximum erreicht!")
+                if success:
+                    print("✅ Element {} hinzugefügt!".format(element.value))
+                else:
+                    print("❌ Element-Maximum erreicht!")
+            else:
+                print("❌ Unbekanntes Element: {}".format(element_name))
+        else:
+            print("❌ Kein Player oder Game Logic verfügbar!")
     
     def handle_cast_magic(self):
         """Behandelt Magie wirken"""
+        print("🔮 handle_cast_magic called!")
         if self.game_logic and self.game_logic.player:
+            print("🔮 Player verfügbar, cast magic...")
             # Feindesliste für Magie-Effekte bereitstellen
             enemies = []
             if self.enemy_manager:
                 enemies = list(self.enemy_manager.enemies)
+                print("🔮 Enemies found: {}".format(len(enemies)))
                 
             # target_pos wird jetzt ignoriert, da Projektile in Blickrichtung fliegen
             result = self.game_logic.player.magic_system.cast_magic(
@@ -794,11 +883,18 @@ class Level:
                 target_pos=None,  # Wird ignoriert für Projektile
                 enemies=enemies
             )
+            print("🔮 Cast magic result: {}".format(result))
+        else:
+            print("❌ Kein Player oder Game Logic für Magic verfügbar!")
     
     def handle_clear_magic(self):
         """Behandelt Magie-Auswahl löschen"""
+        print("🔮 handle_clear_magic called!")
         if self.game_logic and self.game_logic.player:
             self.game_logic.player.magic_system.clear_elements()
+            print("🔮 Magic elements cleared!")
+        else:
+            print("❌ Kein Player für Clear Magic verfügbar!")
     
     def _setup_health_bars(self):
         """Private Methode zum Neuerstellen der Health-Bars nach Reset"""

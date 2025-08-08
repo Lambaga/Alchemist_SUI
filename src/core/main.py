@@ -10,13 +10,14 @@ import sys
 import os
 
 # Add src subdirectories to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'managers'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'ui'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'entities'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'world'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'systems'))
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, src_dir)
+sys.path.insert(0, os.path.join(src_dir, 'core'))
+sys.path.insert(0, os.path.join(src_dir, 'managers'))
+sys.path.insert(0, os.path.join(src_dir, 'ui'))
+sys.path.insert(0, os.path.join(src_dir, 'entities'))
+sys.path.insert(0, os.path.join(src_dir, 'world'))
+sys.path.insert(0, os.path.join(src_dir, 'systems'))
 
 from typing import Optional
 from settings import *
@@ -43,7 +44,13 @@ class Game:
     
     def __init__(self):
         pygame.init()
-        pygame.mixer.init()
+        
+        # 🚀 Task 4: Hardware-spezifische Audio-Initialisierung
+        from config import DisplayConfig
+        DisplayConfig.init_audio_for_hardware()
+        
+        # 🚀 Task 4: Hardware-optimierte Display-Einstellungen
+        self.optimized_settings = DisplayConfig.get_optimized_settings()
         
         # Universal Input System initialisieren
         self.input_system = init_universal_input()
@@ -52,7 +59,12 @@ class Game:
         # Initialize AssetManager
         self.asset_manager = AssetManager()
         
-        self.game_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        # 🚀 Nutze optimierte Auflösung basierend auf Hardware
+        window_width = self.optimized_settings['WINDOW_WIDTH']
+        window_height = self.optimized_settings['WINDOW_HEIGHT']
+        print(f"🚀 Display: {window_width}x{window_height} @ {self.optimized_settings['FPS']} FPS")
+        
+        self.game_surface = pygame.display.set_mode((window_width, window_height))
         pygame.display.set_caption(GAME_TITLE)
         
         self.clock = pygame.time.Clock()
@@ -145,15 +157,13 @@ class Game:
                         status = "Ein" if self.hotkey_display.visible else "Aus"
                         print(f"🔧 Hotkey-Anzeige: {status}")
                     
-                    # GLOBAL MAGIC TEST HOTKEYS (funktionieren überall)
-                    elif event.key == pygame.K_F10:  # F10 für direkten Magie-Test
-                        print("🧪 GLOBAL MAGIC TEST: F10 gedrückt!")
+                    # 🚀 GLOBAL MAGIC TEST HOTKEYS (F7-F8 statt F10-F12 - kein Konflikt mit Speicher-Slots!)
+                    elif event.key == pygame.K_F7:  # F7 für direkten Magie-Test (war F10)
+                        print("🧪 GLOBAL MAGIC TEST: F7 gedrückt!")
                         self._test_magic_system_global()
-                    elif event.key == pygame.K_F11:  # F11 für Feuer-Element
-                        print("🔥 GLOBAL MAGIC: Feuer hinzufügen!")  
+                    elif event.key == pygame.K_F8:  # F8 für Feuer + Heilung kombiniert (war F11+F12)
+                        print("🔥💚 GLOBAL MAGIC: Feuer + Heilung kombiniert!")  
                         self._add_magic_element_global("fire")
-                    elif event.key == pygame.K_F12:  # F12 für Heilung
-                        print("💚 GLOBAL MAGIC: Heilung wirken!")
                         self._cast_heal_global()
             
             # Handle events based on current game state
@@ -367,8 +377,9 @@ class Game:
     
     def update(self):
         """Aktualisiert das Spiel und die Performance-Metriken."""
-        # Delta-Time berechnen und FPS tracken
-        dt = self.clock.tick(FPS) / 1000.0
+        # 🚀 Task 4: Hardware-optimierte FPS verwenden
+        target_fps = self.optimized_settings['FPS']
+        dt = self.clock.tick(target_fps) / 1000.0
         current_fps = self.clock.get_fps()
         
         # Performance-Tracking
@@ -453,7 +464,9 @@ class Game:
         print("     F4: Detaillierte/Einfache Anzeige")
         print("     F5: Statistiken zurücksetzen")
         print("     F6: Performance-Zusammenfassung")
-        print("     F9-F12: Speichern in Slot 1-4")
+        print("     F7: Global Magic Test")  # 🚀 Verschoben von F10
+        print("     F8: Feuer + Heilung")   # 🚀 Kombiniert F11+F12
+        print("     F9-F12: Speichern in Slot 1-4")  # 🚀 Jetzt konfliktfrei!
         print("     H: Hotkey-Anzeige ein/aus")
         
         while self.running:
