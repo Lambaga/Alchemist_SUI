@@ -100,6 +100,11 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         self.last_attack_time: int = 0
         self.attack_cooldown: int = 1000  # 1 second attack cooldown
         
+        # Mana System Attributes
+        self.max_mana: int = MANA_MAX
+        self.current_mana: int = self.max_mana
+        self.mana_regen_rate: int = MANA_REGEN_PER_SEC
+        
         # Magic System Integration
         self.magic_system: MagicSystem = MagicSystem()
         self.mouse_pos: Tuple[int, int] = (0, 0)  # Für Zielrichtung
@@ -263,6 +268,9 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         
         # 3. Magie-System updaten
         self.magic_system.update(dt, enemies)
+        
+        # 4. Mana regenerieren
+        self.regen_mana(dt)
 
     def move(self, dt: float = 1.0/60.0) -> None:
         """
@@ -614,9 +622,10 @@ class Player(pygame.sprite.Sprite, CombatEntity):
     
     def revive(self) -> None:
         """
-        Wiederbelebt den Spieler mit voller Gesundheit.
+        Wiederbelebt den Spieler mit voller Gesundheit und Mana.
         """
         self.current_health = self.max_health
+        self.current_mana = self.max_mana
         self.is_player_alive = True
     
     def get_health_percentage(self) -> float:
@@ -627,3 +636,40 @@ class Player(pygame.sprite.Sprite, CombatEntity):
             float: Gesundheit als Prozentsatz (0.0 bis 1.0)
         """
         return self.current_health / self.max_health if self.max_health > 0 else 0.0
+    
+    # === MANA SYSTEM METHODS ===
+    
+    def spend_mana(self, amount: int) -> bool:
+        """
+        Versucht Mana auszugeben.
+        
+        Args:
+            amount: Menge des zu verbrauchenden Manas
+            
+        Returns:
+            bool: True wenn genug Mana vorhanden war und abgezogen wurde, False sonst
+        """
+        if self.current_mana >= amount:
+            self.current_mana -= amount
+            return True
+        return False
+    
+    def regen_mana(self, dt: float) -> None:
+        """
+        Regeneriert Mana über Zeit.
+        
+        Args:
+            dt: Delta-Zeit in Sekunden
+        """
+        if self.current_mana < self.max_mana:
+            mana_increase = self.mana_regen_rate * dt
+            self.current_mana = min(self.max_mana, self.current_mana + mana_increase)
+    
+    def get_mana_percentage(self) -> float:
+        """
+        Gibt den Mana-Prozentsatz zurück.
+        
+        Returns:
+            float: Mana als Prozentsatz (0.0 bis 1.0)
+        """
+        return self.current_mana / self.max_mana if self.max_mana > 0 else 0.0

@@ -10,6 +10,9 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
+# Import MANA_SPELL_COST constant
+MANA_SPELL_COST = 10  # Default value, can be overridden by settings
+
 class ElementType(Enum):
     """Verfügbare Elemente für Magie-Kombinationen"""
     FEUER = "feuer"
@@ -414,6 +417,13 @@ class MagicSystem:
             return None
         
         effect = self.magic_effects[element_key]
+        
+        # Mana-Kosten prüfen
+        if hasattr(caster, 'spend_mana') and not caster.spend_mana(MANA_SPELL_COST):
+            # Optionales Feedback für nicht genug Mana
+            print("⚠️ Nicht genug Mana!")
+            self.clear_elements()
+            return None
         
         # Effekt ausführen
         self._execute_effect(effect, caster, target_pos, enemies)
