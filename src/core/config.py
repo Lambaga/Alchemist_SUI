@@ -216,6 +216,23 @@ class InputConfig:
         'music_toggle': pygame.K_m,
         'quit': pygame.K_ESCAPE
     }
+    
+    # Element mixing keys (for magic system integration)
+    ELEMENT_KEYS = {
+        'water': pygame.K_1,   # 1 = Water
+        'fire': pygame.K_2,    # 2 = Fire  
+        'stone': pygame.K_3    # 3 = Stone
+    }
+    
+    # Legacy spell hotkeys (kept for compatibility)
+    SPELL_KEYS = [
+        pygame.K_1,
+        pygame.K_2, 
+        pygame.K_3,
+        pygame.K_4,
+        pygame.K_5,
+        pygame.K_6
+    ]
 
 class GameConfig:
     """Spiel-spezifische Konfiguration"""
@@ -232,6 +249,100 @@ class GameConfig:
     @property
     def GROUND_Y_POSITION(self):
         return 1080 - 200  # SCREEN_HEIGHT - 200
+
+class SpellConfig:
+    """Zauberspruch-System Konfiguration basierend auf Element-Mischungen"""
+    DEFAULT_COOLDOWN = 3.0  # 3 seconds default cooldown
+    
+    # Magic combination definitions (based on existing magic system)
+    MAGIC_COMBINATIONS = {
+        # Fire + Fire = Fireball
+        ('fire', 'fire'): {
+            "id": "fireball", 
+            "display_name": "Feuerball", 
+            "icon_path": "ui/spells/fireball.png", 
+            "cooldown": 3.0,
+            "elements": ["feuer", "feuer"]
+        },
+        # Water + Water = Waterbolt
+        ('water', 'water'): {
+            "id": "waterbolt", 
+            "display_name": "Wasserkugel", 
+            "icon_path": "ui/spells/waterbolt.png", 
+            "cooldown": 3.0,
+            "elements": ["wasser", "wasser"]
+        },
+        # Stone + Stone = Shield
+        ('stone', 'stone'): {
+            "id": "shield", 
+            "display_name": "Schutzschild", 
+            "icon_path": "ui/spells/shield.png", 
+            "cooldown": 3.0,
+            "elements": ["stein", "stein"]
+        },
+        # Fire + Water = Healing (both orders)
+        ('fire', 'water'): {
+            "id": "healing", 
+            "display_name": "Heilungstrank", 
+            "icon_path": "ui/spells/healing.png", 
+            "cooldown": 3.0,
+            "elements": ["feuer", "wasser"]
+        },
+        ('water', 'fire'): {
+            "id": "healing", 
+            "display_name": "Heilungstrank", 
+            "icon_path": "ui/spells/healing.png", 
+            "cooldown": 3.0,
+            "elements": ["wasser", "feuer"]
+        },
+        # Fire + Stone = Whirlwind (both orders)
+        ('fire', 'stone'): {
+            "id": "whirlwind", 
+            "display_name": "Wirbelattacke", 
+            "icon_path": "ui/spells/whirlwind.png", 
+            "cooldown": 3.0,
+            "elements": ["feuer", "stein"]
+        },
+        ('stone', 'fire'): {
+            "id": "whirlwind", 
+            "display_name": "Wirbelattacke", 
+            "icon_path": "ui/spells/whirlwind.png", 
+            "cooldown": 3.0,
+            "elements": ["stein", "feuer"]
+        },
+        # Water + Stone = Invisibility (both orders)
+        ('water', 'stone'): {
+            "id": "invisibility", 
+            "display_name": "Unsichtbarkeit", 
+            "icon_path": "ui/spells/invisibility.png", 
+            "cooldown": 3.0,
+            "elements": ["wasser", "stein"]
+        },
+        ('stone', 'water'): {
+            "id": "invisibility", 
+            "display_name": "Unsichtbarkeit", 
+            "icon_path": "ui/spells/invisibility.png", 
+            "cooldown": 3.0,
+            "elements": ["stein", "wasser"]
+        }
+    }
+    
+    # Legacy spell list (for compatibility)
+    SPELLS = [
+        {"id": "fireball", "display_name": "Feuerball", "icon_path": "ui/spells/fireball.png", "cooldown": 3.0},
+        {"id": "healing", "display_name": "Heilung", "icon_path": "ui/spells/healing.png", "cooldown": 3.0},
+        {"id": "shield", "display_name": "Schild", "icon_path": "ui/spells/shield.png", "cooldown": 3.0},
+        {"id": "whirlwind", "display_name": "Wirbel", "icon_path": "ui/spells/whirlwind.png", "cooldown": 3.0},
+        {"id": "invisibility", "display_name": "Unsichtbar", "icon_path": "ui/spells/invisibility.png", "cooldown": 3.0},
+        {"id": "waterbolt", "display_name": "Wasserkugel", "icon_path": "ui/spells/waterbolt.png", "cooldown": 3.0}
+    ]
+    
+    # UI Configuration for spell bar
+    BAR_POSITION = (20, -120)  # Bottom-left with 20px margin, 120px from bottom
+    SLOT_SIZE = 56  # 56x56 pixel slots
+    SLOT_SPACING = 8  # 8px between slots
+    BACKGROUND_PADDING = 10  # Padding around the bar
+    BACKGROUND_ALPHA = 180  # Semi-transparent background
 
 # === SINGLETON PATTERN FÜR GLOBALE KONFIGURATION ===
 class Config:
@@ -254,6 +365,7 @@ class Config:
         self.paths = Paths()
         self.input = InputConfig()
         self.game = GameConfig()
+        self.spells = SpellConfig()
         
         # Zutaten und Rezepte
         self.ingredient_colors = {
@@ -299,6 +411,10 @@ MUSIC_VOLUME = config.game.MUSIC_VOLUME
 
 INGREDIENT_COLORS = config.ingredient_colors
 RECIPES = config.recipes
+
+# Neue Spell-Konfiguration Exporte
+DEFAULT_COOLDOWN = config.spells.DEFAULT_COOLDOWN
+SPELL_KEYS = config.input.SPELL_KEYS
 
 # Alte Klassen für Kompatibilität
 Colors = config.colors

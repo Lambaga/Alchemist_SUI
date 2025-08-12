@@ -58,6 +58,10 @@ MANA_MAX = 100
 MANA_REGEN_PER_SEC = 3
 MANA_SPELL_COST = 10
 
+# === SPELL SYSTEM EINSTELLUNGEN ===
+DEFAULT_COOLDOWN = config.spells.DEFAULT_COOLDOWN
+SPELL_KEYS = config.input.SPELL_KEYS
+
 # === ZUGRIFF AUF DIE NEUE KONFIGURATION ===
 # Für moderneren Code kann direkt die config-Instanz verwendet werden:
 # from settings import config

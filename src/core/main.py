@@ -62,7 +62,7 @@ class Game:
         # 🚀 Nutze optimierte Auflösung basierend auf Hardware
         window_width = self.optimized_settings['WINDOW_WIDTH']
         window_height = self.optimized_settings['WINDOW_HEIGHT']
-        print(f"🚀 Display: {window_width}x{window_height} @ {self.optimized_settings['FPS']} FPS")
+        print("🚀 Display: {}x{} @ {} FPS".format(window_width, window_height, self.optimized_settings['FPS']))
         
         self.game_surface = pygame.display.set_mode((window_width, window_height))
         pygame.display.set_caption(GAME_TITLE)
@@ -93,6 +93,13 @@ class Game:
         # Performance-Tracking
         self.frame_count = 0
         self.total_time = 0.0
+        
+        # 🚀 Element Mixing System Integration
+        from systems.spell_cooldown_manager import SpellCooldownManager
+        from ui.element_mixer import ElementMixer
+        self.spell_cooldown_manager = SpellCooldownManager()
+        self.element_mixer = ElementMixer(self.spell_cooldown_manager)
+        print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
         
         self.load_background_music()
         
@@ -165,6 +172,16 @@ class Game:
                         print("🔥💚 GLOBAL MAGIC: Feuer + Heilung kombiniert!")  
                         self._add_magic_element_global("fire")
                         self._cast_heal_global()
+                    
+                    # ✨ ELEMENT MIXING: Handle element keys 1-3 (nur im Gameplay)
+                    elif self.game_state == GameState.GAMEPLAY:
+                        # Element selection: 1=Water, 2=Fire, 3=Stone
+                        if event.key == pygame.K_1:
+                            self.element_mixer.handle_element_press("water")
+                        elif event.key == pygame.K_2:
+                            self.element_mixer.handle_element_press("fire")
+                        elif event.key == pygame.K_3:
+                            self.element_mixer.handle_element_press("stone")
             
             # Handle events based on current game state
             if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
@@ -201,7 +218,7 @@ class Game:
         """Startet ein neues Spiel"""
         print("🎮 Neues Spiel wird gestartet...")
         self.game_state = GameState.GAMEPLAY
-        self.level = Level(self.game_surface)
+        self.level = Level(self.game_surface, main_game=self)
         
         # Set save callback for the level
         self.level.set_save_callback(self.save_current_game)
@@ -215,7 +232,7 @@ class Game:
             self.level.restart_level()
         else:
             # Fallback: Erstelle ein neues Level
-            self.level = Level(self.game_surface)
+            self.level = Level(self.game_surface, main_game=self)
             self.level.set_save_callback(self.save_current_game)
         
         self.game_state = GameState.GAMEPLAY
@@ -230,7 +247,7 @@ class Game:
         if save_data:
             # Create new level first
             self.game_state = GameState.GAMEPLAY
-            self.level = Level(self.game_surface)
+            self.level = Level(self.game_surface, main_game=self)
             
             # Set save callback for the level
             self.level.set_save_callback(self.save_current_game)
@@ -405,6 +422,10 @@ class Game:
                     print("💀 GAME OVER detected - switching to Game Over menu")
                     self.game_state = GameState.GAME_OVER
                     self.menu_system.show_game_over()
+            
+            # ✨ Update element mixing system
+            self.spell_cooldown_manager.update()
+            self.element_mixer.update(dt)
         elif self.game_state == GameState.GAME_OVER:
             # Update menu system for Game Over state
             self.menu_system.update(dt)
@@ -420,6 +441,10 @@ class Game:
             if self.level:
                 self.level.render()
             
+            # ✨ Draw element mixer
+            screen_height = self.game_surface.get_height()
+            self.element_mixer.render(self.game_surface, screen_height)
+            
             # FPS-Display zeichnen (falls aktiviert und im Gameplay)
             if self.show_fps:
                 self.fps_monitor.draw(self.game_surface)
@@ -430,6 +455,10 @@ class Game:
             # Draw gameplay in background, then pause menu on top
             if self.level:
                 self.level.render()
+            
+            # ✨ Draw element mixer (visible during pause for reference)
+            screen_height = self.game_surface.get_height()
+            self.element_mixer.render(self.game_surface, screen_height)
             
             # Draw hotkey display even when paused (useful for reference)
             self.hotkey_display.draw()
@@ -460,6 +489,8 @@ class Game:
         print("     W A S D: Spieler bewegen")
         print("     Maus: Blickrichtung")
         print("     Linksklick: Feuerball schießen")
+        print("     1-6: Zauberspruch auswählen (keine Cooldown)")
+        print("     C: Ausgewählten Zauber wirken (startet Cooldown)")
         print("     F3: FPS-Anzeige ein/aus")
         print("     F4: Detaillierte/Einfache Anzeige")
         print("     F5: Statistiken zurücksetzen")
