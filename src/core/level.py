@@ -344,8 +344,9 @@ class GameRenderer:
 class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
     
-    def __init__(self, screen):
+    def __init__(self, screen, main_game=None):
         self.screen = screen  # Verwende die übergebene Surface
+        self.main_game = main_game  # Reference to main game for spell bar access
         self.game_logic = GameLogic()
         # Referenz für UI-Status-Anzeige
         self.game_logic._level_ref = self
@@ -876,6 +877,44 @@ class Level:
             if self.enemy_manager:
                 enemies = list(self.enemy_manager.enemies)
                 print("🔮 Enemies found: {}".format(len(enemies)))
+            
+            # Check if an element combination is ready for casting
+            spell_id_to_cooldown = None
+            selected_spell_elements = None
+            can_cast_spell = False
+            
+            try:
+                # Access the element mixer from the main game instance
+                if hasattr(self, 'main_game') and hasattr(self.main_game, 'element_mixer'):
+                    element_mixer = self.main_game.element_mixer
+                    if element_mixer.current_combination:
+                        spell_id_to_cooldown = element_mixer.get_current_spell_id()
+                        selected_spell_elements = element_mixer.get_current_spell_elements()
+                        
+                        # ✅ CHECK COOLDOWN BEFORE CASTING
+                        cooldown_manager = self.main_game.spell_cooldown_manager
+                        if cooldown_manager.is_ready(spell_id_to_cooldown):
+                            can_cast_spell = True
+                            print("🔮 Spell ready to cast: {} (Elements: {})".format(spell_id_to_cooldown, selected_spell_elements))
+                            
+                            # Set magic elements based on combination
+                            if selected_spell_elements:
+                                self.game_logic.player.magic_system.elements = selected_spell_elements.copy()
+                        else:
+                            remaining_time = cooldown_manager.time_remaining(spell_id_to_cooldown)
+                            print("🚫 Spell {} on cooldown: {:.1f}s remaining".format(spell_id_to_cooldown, remaining_time))
+                            return  # Exit early - don't cast spell
+                    else:
+                        print("🚫 No spell combination ready")
+                        return  # Exit early - no combination ready
+            except Exception as e:
+                print("🔮 Could not access element mixer for cooldown tracking: {}".format(e))
+                return  # Exit early on error
+            
+            # Only cast magic if spell is ready and not on cooldown
+            if not can_cast_spell:
+                print("🚫 Cannot cast spell - not ready or on cooldown")
+                return
                 
             # target_pos wird jetzt ignoriert, da Projektile in Blickrichtung fliegen
             result = self.game_logic.player.magic_system.cast_magic(
@@ -884,8 +923,47 @@ class Level:
                 enemies=enemies
             )
             print("🔮 Cast magic result: {}".format(result))
+            
+            # If magic was successfully cast and we have a combination spell, start its cooldown
+            if result and spell_id_to_cooldown:
+                try:
+                    if hasattr(self, 'main_game') and hasattr(self.main_game, 'element_mixer'):
+                        success = self.main_game.element_mixer.handle_cast_spell()
+                        if success:
+                            print("✨ Started cooldown for spell: {} ({})".format(spell_id_to_cooldown, selected_spell_elements))
+                except Exception as e:
+                    print("⚠️ Error starting spell cooldown: {}".format(e))
         else:
             print("❌ Kein Player oder Game Logic für Magic verfügbar!")
+    
+    def _set_magic_elements_for_spell(self, spell_id):
+        """Set the magic elements based on the selected spell"""
+        if not self.game_logic or not self.game_logic.player:
+            return
+            
+        from systems.magic_system import ElementType
+        magic_system = self.game_logic.player.magic_system
+        
+        # Clear current elements
+        magic_system.clear_elements()
+        
+        # Map spell IDs to element combinations
+        spell_element_map = {
+            "fireball": [ElementType.FEUER, ElementType.FEUER],
+            "healing": [ElementType.FEUER, ElementType.WASSER],
+            "shield": [ElementType.STEIN, ElementType.STEIN],
+            "whirlwind": [ElementType.FEUER, ElementType.STEIN],
+            "invisibility": [ElementType.WASSER, ElementType.STEIN],
+            "waterbolt": [ElementType.WASSER, ElementType.WASSER]
+        }
+        
+        elements = spell_element_map.get(spell_id, [])
+        if elements:
+            for element in elements:
+                magic_system.add_element(element)
+            print("🔮 Set magic elements for {}: {}".format(spell_id, [e.value for e in elements]))
+        else:
+            print("⚠️ Unknown spell ID for element mapping: {}".format(spell_id))
     
     def handle_clear_magic(self):
         """Behandelt Magie-Auswahl löschen"""

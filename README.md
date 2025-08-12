@@ -1,15 +1,21 @@
 # 🧙‍♂️ Der Alchemist
 
-A Python-based 2D adventure game built with Pygame where you play as an alchemist collecting ingredients and brewing potions.
+A Python-based 2D adventure game built with Pygame where you play as an alchemist mastering elemental magic and battling monsters.
 
 ## 🎮 Game Features
 
-- **Character Control**: Move with arrow keys or WASD
-- **Alchemy System**: Collect ingredients (1, 2, 3 keys) and brew potions (Space)
-- **Enemy System**: Battle demons and fire worms with AI behavior
+- **Character Control**: Move with arrow keys or WASD, mouse for direction
+- **Magic System**: Combine elements (Fire, Water, Stone) to cast powerful spells
+- **Spell Bar**: 6-slot spell bar with individual cooldowns and animations
+- **Health System**: Visual health bars for player and enemies
+- **Combat System**: Battle demons and fire worms with strategic magic combat
+- **Mana System**: Manage mana resources for spell casting
+- **Enemy System**: AI-driven enemies with different behaviors
 - **Map System**: Tiled map integration with collision detection
 - **Camera System**: Dynamic camera with zoom controls
 - **Audio**: Background music and sound effects
+- **Save System**: Multiple save slots (F9-F12) with quick save/load
+- **Performance Monitoring**: Built-in FPS monitoring and optimization tools
 
 ## 🚀 Quick Start
 
@@ -93,17 +99,60 @@ The launcher scripts handle everything automatically - virtual environment creat
 
 ## 🎯 Game Controls
 
+### Movement & Basic Actions
 | Key | Action |
 |-----|--------|
-| `←→↑↓` or `WASD` | Move character |
-| `1, 2, 3` | Collect ingredients |
-| `Space` | Brew potion |
-| `Backspace` | Remove last ingredient |
+| `W A S D` or `←→↑↓` | Move character |
+| `Mouse` | Control look direction |
+| `Left Click` | Attack/Fireball |
+| `Space` | Attack/Cast selected spell |
+| `ESC` | Pause menu |
+
+### Magic System
+| Key | Action |
+|-----|--------|
+| `1` | Select Water element |
+| `2` | Select Fire element |
+| `3` | Select Stone element |
+| `1-6` | Cast spells from spell bar |
+| `Backspace` | Clear selected elements |
+
+### Interface & Debug
+| Key | Action |
+|-----|--------|
+| `H` | Toggle hotkey display |
+| `Tab` | Inventory (when available) |
+| `M` | Toggle music |
 | `+/-` | Zoom in/out |
 | `R` | Reset game |
-| `M` | Toggle music |
+
+### Save System
+| Key | Action |
+|-----|--------|
+| `F9-F12` | Save to slots 1-4 |
+| `Shift + F9-F12` | Delete save slots 1-4 |
+
+### Debug Controls
+| Key | Action |
+|-----|--------|
 | `F1` | Toggle collision debug |
-| `ESC` | Exit game |
+| `F2` | Toggle health bars |
+| `F3` | Toggle FPS display |
+| `F4` | Toggle detailed FPS info |
+| `F5` | Reset performance stats |
+| `F6` | Show performance summary |
+| `F7` | Magic system test |
+| `F8` | Fire + Healing test |
+
+## 🧙‍♂️ Magic System
+
+### Element Combinations
+- **Fire + Fire** → Fireball (projectile)
+- **Water + Water** → Water Bolt (anti-fire damage)
+- **Stone + Stone** → Shield (temporary invulnerability)
+- **Fire + Water** → Healing (restore HP)
+- **Fire + Stone** → Whirlwind (area attack)
+- **Water + Stone** → Invisibility (stealth mode)
 
 ## 📁 Project Structure
 
@@ -113,20 +162,29 @@ Alchemist/
 │   ├── core/      # Core game modules
 │   │   ├── main.py    # Main game entry point
 │   │   ├── game.py    # Core game logic
-│   │   └── ...        # Other core modules
+│   │   ├── level.py   # Level management
+│   │   └── config.py  # Game configuration
 │   ├── entities/  # Game entities (player, enemies)
 │   ├── managers/  # Game managers (assets, saves)
-│   └── ...        # Other game modules
+│   ├── systems/   # Game systems (magic, combat, etc.)
+│   ├── ui/        # User interface components
+│   └── world/     # World and map related code
 ├── assets/        # Game assets
 │   ├── Wizard Pack/    # Player sprites
 │   ├── Demon Pack/     # Enemy sprites
-│   ├── maps/           # Tiled maps
-│   └── sounds/         # Audio files
+│   ├── fireWorm/       # Fire worm sprites
+│   ├── maps/           # Tiled maps (.tmx files)
+│   ├── sounds/         # Audio files
+│   └── ui/             # UI assets and spell icons
 ├── docs/          # Documentation
-└── scripts/       # Utility scripts
+├── scripts/       # Utility scripts and tools
+├── saves/         # Save game files
+├── run_game.bat   # Windows launcher
+├── run_game.sh    # Linux/macOS launcher
+└── requirements.txt # Python dependencies
 ```
 
-## 🛠️ Development
+## 🛠️ Development & Advanced Usage
 
 ### Main Entry Point
 
@@ -134,10 +192,68 @@ The main game entry point is located at `src/core/main.py`. Run the game using:
 - Windows: `python -m core.main` (from inside src directory)
 - Linux/macOS: `python3 -m core.main` (from inside src directory)
 
+### Cache Management
+
+The project includes smart cache management tools:
+
+```bash
+# Smart cleanup (removes only orphaned/outdated cache)
+python smart_cache_cleaner.py --mode=smart
+
+# Remove only orphaned .pyc files
+python smart_cache_cleaner.py --mode=orphaned --verbose
+
+# Remove only outdated .pyc files
+python smart_cache_cleaner.py --mode=outdated --verbose
+
+# Traditional full cleanup
+python clean_cache_simple.py
+```
+
+### Performance Testing
+
+```bash
+# Run performance benchmarks
+python performance_demo.py
+
+# Simple performance test
+python simple_performance_demo.py
+```
+
+### Testing Tools
+
+```bash
+# Test magic system
+python test_magic.py
+python test_magic_direct.py
+
+# Test mana system
+python test_mana_system.py
+
+# Test spell cooldowns
+python test_spell_cooldown.py
+```
+
 ### Dependencies
 
-- **pygame**: Main game engine
-- **pytmx**: Tiled map loading support
+- **pygame**: Main game engine (≥2.0.0)
+- **pytmx**: Tiled map loading support (≥3.21.7)
+
+### Game Systems
+
+- **Magic System**: Elemental combination system with 6 different spells
+- **Spell Bar**: UI component with cooldown animations and key bindings
+- **Health System**: Visual health bars for all entities
+- **Mana System**: Resource management for magic spells
+- **Combat System**: Turn-based combat with buffs/debuffs
+- **Save System**: Multiple save slots with automatic backup
+- **Performance Monitoring**: FPS tracking and optimization tools
+
+### Development Tools
+
+- **Smart Cache Cleaner**: Intelligent Python cache management
+- **Performance Demo**: Benchmark and optimization tools
+- **Raspberry Pi Support**: Cross-platform compatibility testing
 
 ### Asset Credits
 
@@ -176,6 +292,16 @@ The main game entry point is located at `src/core/main.py`. Run the game using:
    - Ensure your system has audio drivers installed and pygame.mixer is working
    - The launcher scripts load audio from the correct absolute paths
 
+7. **Magic spells not working**:
+   - Press `1, 2, 3` to select elements, then `Space` or spell hotkeys to cast
+   - Check mana levels - spells require mana to cast
+   - Use `H` to toggle hotkey display for reference
+
+8. **Performance issues**:
+   - Use `F3` to monitor FPS
+   - Run cache cleanup tools: `python smart_cache_cleaner.py --mode=smart`
+   - Check system requirements and close other applications
+
 ## 🎯 **For Your Friends/New Contributors**
 
 **The Golden Rule**: Always start with the launcher scripts!
@@ -195,7 +321,7 @@ cd src && python main.py
 python -m main
 ```
 
-**Why this matters**: The launcher scripts solve ALL the common setup issues automatically.
+**Why this matters**: The launcher scripts solve ALL the common setup issues automatically and ensure proper initialization of all game systems including the magic system, spell bar, and asset loading.
 
 ### System Requirements
 
