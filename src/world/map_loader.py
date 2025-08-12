@@ -105,7 +105,7 @@ class MapLoader:
 
     def build_map(self):
         """
-        Erstellt Kollisionsobjekte aus einer speziellen Ebene namens 'Collision'.
+        Erstellt Kollisionsobjekte aus einer speziellen Ebene namens 'Collision' oder 'Walls'.
         Unterstützt sowohl Objektebenen als auch Tile-Ebenen.
         """
         if not self.tmx_data:
@@ -113,15 +113,27 @@ class MapLoader:
 
         print("Baue Kollisionsobjekte aus der Karte...")
         try:
-            # Suche nach einer Ebene mit dem Namen 'Collision'
-            collision_layer = self.tmx_data.get_layer_by_name('Collision')
+            # Suche nach einer Ebene mit dem Namen 'Walls' oder 'Collision'
+            collision_layer = None
+            for layer_name in ['Walls', 'Collision', 'walls', 'collision', 'Enemy', 'enemy']:
+                try:
+                    collision_layer = self.tmx_data.get_layer_by_name(layer_name)
+                    print(f"✅ Layer '{layer_name}' gefunden")
+                    break
+                except ValueError:
+                    continue
+            
+            if not collision_layer:
+                print("WARNUNG: Keine Ebene namens 'Walls' oder 'Collision' gefunden.")
+                return
             
             if isinstance(collision_layer, pytmx.TiledObjectGroup):
                 # Objektebene: Gehe durch alle Objekte (Rechtecke)
                 for obj in collision_layer:
                     wall_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
                     self.collision_objects.append(wall_rect)
-                print("✅ {} Kollisionsobjekte aus Objektebene 'Collision' geladen.".format(len(self.collision_objects)))
+                print("✅ {} Kollisionsobjekte aus Objektebene '{}' geladen.".format(
+                    len(self.collision_objects), collision_layer.name))
                 
             elif isinstance(collision_layer, pytmx.TiledTileLayer):
                 # Tile-Ebene: Gehe durch alle Tiles und erstelle Kollisionen für nicht-leere Tiles
@@ -134,10 +146,12 @@ class MapLoader:
                                               self.tmx_data.tilewidth, 
                                               self.tmx_data.tileheight)
                         self.collision_objects.append(wall_rect)
-                print("✅ {} Kollisionsobjekte aus Tile-Ebene 'Collision' geladen.".format(len(self.collision_objects)))
+                print("✅ {} Kollisionsobjekte aus Tile-Ebene '{}' geladen.".format(
+                    len(self.collision_objects), collision_layer.name))
             else:
-                print("WARNUNG: Ebene 'Collision' ist weder eine Objekt- noch eine Tile-Ebene.")
+                print("WARNUNG: Ebene '{}' ist weder eine Objekt- noch eine Tile-Ebene.".format(
+                    collision_layer.name))
 
-        except ValueError:
-            print("WARNUNG: Keine Ebene namens 'Collision' in der TMX-Datei gefunden.")
+        except Exception as e:
+            print("FEHLER beim Laden der Kollisionsobjekte: {}".format(e))
 

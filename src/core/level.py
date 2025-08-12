@@ -216,7 +216,7 @@ class Level:
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            map_path = path.join(MAP_DIR, "Map2.tmx") # Verwende MAP_DIR aus settings
+            map_path = path.join(MAP_DIR, "Map3.tmx") # Verwende MAP_DIR aus settings
             
             self.map_loader = MapLoader(map_path)
             
@@ -246,72 +246,58 @@ class Level:
                 self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
     
     def spawn_entities_from_map(self):
-        """Spawnt Entities basierend auf Tiled-Map Objekten (datengesteuert)"""
+        """Lädt Entities aus der Map oder verwendet Fallback"""
         if not self.map_loader or not self.map_loader.tmx_data:
             return
-            
+
         player_spawned = False
         spawn_count = 0
-        
+
         # Durchsuche alle Objekt-Layer nach Spawn-Punkten
         for layer in self.map_loader.tmx_data.visible_layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
+                print(f"🔍 Durchsuche Layer '{layer.name}' nach Spawn-Punkten...")
+
                 for obj in layer.objects:
                     spawn_count += 1
-                    
+
                     # Player Spawn-Punkt
                     if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
                         self.game_logic.player.rect.centerx = obj.x
                         self.game_logic.player.rect.centery = obj.y
-                        self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+                        self.game_logic.player.update_hitbox()
                         player_spawned = True
-                    
-                    # Weitere Spawn-Typen für zukünftige Erweiterung
-                    elif obj.name and obj.name.lower() in ['enemy', 'orc', 'monster', 'demon']:
-                        # Hier könnte später Enemy-Spawning implementiert werden
-                        pass
-                        
-                    elif obj.name and obj.name.lower() in ['item', 'treasure', 'ingredient']:
-                        # Hier könnte später Item-Spawning implementiert werden
-                        pass
-        
-        # Demons aus der Map spawnen
+                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
+
+                    # Enemy Spawns (für alle Enemy-Layer)
+                    elif (obj.name and 
+                          obj.name.lower() in ['enemy', 'demon', 'monster', 'fireworm', 'orc']):
+                        print(f"🔍 Enemy-Objekt gefunden: {obj.name} bei ({obj.x}, {obj.y})")
+
+        # Demons aus der Map spawnen (Das macht die eigentliche Arbeit!)
+        print("🎯 Lade Gegner aus Enemy-Layer...")
         self.enemy_manager.add_enemies_from_map(self.map_loader)
         
-        # Teste Demons manuell (entferne das später wenn deine Map Demon-Objekte hat)
-        if self.map_loader and self.map_loader.tmx_data:
-            # Hole die Player-Position für relative Spawns
-            player_x = self.game_logic.player.rect.centerx
-            player_y = self.game_logic.player.rect.centery
-            
-            # Spawne verschiedene Enemies relativ zum Player (einige Tiles entfernt)
-            # 64 Pixel = etwa 1 Tile, spawne sehr nah zum Player
-            demon1 = self.enemy_manager.add_demon(player_x + 100, player_y, scale=3.0, facing_right=False)  # Direkt rechts vom Player
-            demon2 = self.enemy_manager.add_demon(player_x - 100, player_y, scale=3.0, facing_right=True)   # Direkt links vom Player  
-            fireworm1 = self.enemy_manager.add_fireworm(player_x, player_y - 100, scale=2.0, facing_right=False) # FireWorm über dem Player
-            
-            # Health-Bars für alle gespawnten Enemies hinzufügen
-            if demon1:
-                self.add_enemy_health_bar(demon1)
-            if demon2:
-                self.add_enemy_health_bar(demon2)
-            if fireworm1:
-                self.add_enemy_health_bar(fireworm1)
-        
+        # FALLBACK: Falls keine Gegner aus Map geladen wurden
+        if len(self.enemy_manager.enemies) == 0:
+            print("⚠️ Keine Gegner aus Map geladen - verwende Test-Gegner")
+            self.enemy_manager.respawn_default_enemies()
+
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
-            # Positioniere Player innerhalb der Map-Grenzen, nicht außerhalb!
+            # Positioniere Player innerhalb der Map-Grenzen, WEITER OBEN!
             if self.map_loader and self.map_loader.tmx_data:
-                # Setze Player in die untere Hälfte der Map, aber oberhalb der Kollisionen
+                # Setze Player in die OBERE Hälfte der Map
                 map_height = self.map_loader.height
                 self.game_logic.player.rect.centerx = self.map_loader.width // 2  # Mitte der Map
-                self.game_logic.player.rect.centery = map_height - 100  # 100 Pixel vom unteren Rand
-                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+                self.game_logic.player.rect.centery = map_height // 4  # 25% von oben
+                self.game_logic.player.update_hitbox()
+                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
             else:
-                # Fallback für wenn keine Map geladen ist
-                self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+                # Fallback für wenn keine Map geladen ist - AUCH WEITER OBEN
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+                self.game_logic.player.rect.centery = self.screen.get_height() // 4  # Oberes Viertel
+                self.game_logic.player.update_hitbox()
     
     def setup_collision_objects(self):
         """Setzt die Kollisionsobjekte für den Player (einmalig)"""
@@ -555,20 +541,18 @@ class Level:
             self.game_logic.player.rect.centerx = start_x
             self.game_logic.player.rect.centery = start_y
             self.game_logic.player.update_hitbox()
-            # Wichtig: Spieler wiederbeleben!
             self.game_logic.player.revive()
             print("💖 Spieler wiederbelebt mit voller Gesundheit")
         
         # Gegner zurücksetzen
         if self.enemy_manager:
             self.enemy_manager.reset_enemies()
-            # Neue Standard-Feinde spawnen
+            # TEMPORÄR: Verwende Test-Gegner statt Map-Gegner
             self.enemy_manager.respawn_default_enemies()
         
         # Health-Bar System zurücksetzen
         if self.health_bar_manager:
             self.health_bar_manager.reset()
-            # Health-Bars für Player und neue Feinde erstellen
             self._setup_health_bars()
         
         # Kamera zurücksetzen

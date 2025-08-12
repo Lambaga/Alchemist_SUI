@@ -43,4 +43,3 @@ if [ $? -ne 0 ]; then
     echo
     echo "Game exited with an error."
     read -p "Press Enter to continue..."
-fi

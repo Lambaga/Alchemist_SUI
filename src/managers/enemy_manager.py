@@ -36,35 +36,64 @@ class EnemyManager:
         return fireworm
         
     def add_enemies_from_map(self, map_loader):
-        """Add enemies based on map object layer"""
+        """Spawnt ALLE Gegner aus Tiled-Objekten auf allen passenden Ebenen."""
+        print("🔍 START: add_enemies_from_map aufgerufen")
+        
         if not map_loader or not map_loader.tmx_data:
             return
-            
-        # Look for enemy spawn points in Tiled map
-        for layer in map_loader.tmx_data.visible_layers:
-            if hasattr(layer, 'objects'):
+
+        enemy_count = 0
+
+        # Versuche zuerst pytmx (bevorzugt)
+        pytmx_success = False
+        for layer in map_loader.tmx_data.layers:
+            if hasattr(layer, 'objects') and len(layer.objects) > 0:
                 for obj in layer.objects:
-                    if obj.name and obj.name.lower() in ['demon', 'monster', 'enemy']:
-                        # Get scale from properties if available
-                        scale = getattr(obj, 'scale', 1.0) if hasattr(obj, 'scale') else 1.0
+                    obj_name = getattr(obj, 'name', None)
+                    if obj_name and obj_name.lower() in ['demon', 'monster', 'enemy', 'fireworm', 'orc']:
+                        print(f"✅ PYTMX: Spawne {obj_name} bei ({obj.x}, {obj.y})")
                         
-                        # Get facing direction from properties
-                        facing_right = True
-                        if hasattr(obj, 'properties') and 'facing' in obj.properties:
-                            facing_right = obj.properties['facing'].lower() != 'left'
-                            
-                        # Get enemy type from properties
-                        enemy_type = "demon"  # default
-                        if hasattr(obj, 'properties') and 'type' in obj.properties:
-                            enemy_type = obj.properties['type'].lower()
-                        
-                        if enemy_type == "fireworm":
-                            enemy = self.add_fireworm(obj.x, obj.y, scale, facing_right)
-                            print(f"🐍 FireWorm spawned at ({obj.x}, {obj.y})")
+                        if obj_name.lower() == 'fireworm':
+                            self.add_fireworm(obj.x, obj.y, 2.0, True)
                         else:
-                            enemy = self.add_demon(obj.x, obj.y, scale, facing_right)
-                            print(f"👹 Demon spawned at ({obj.x}, {obj.y})")
-                        
+                            self.add_demon(obj.x, obj.y, 2.0, True)
+                        enemy_count += 1
+                        pytmx_success = True
+
+        # Fallback: XML-Parsing nur wenn pytmx versagt
+        if not pytmx_success:
+            print("⚠️ pytmx failed, using XML fallback...")
+            try:
+                import xml.etree.ElementTree as ET
+                # Dynamischer Pfad basierend auf map_loader
+                map_path = getattr(map_loader, 'map_path', None)
+                if not map_path:
+                    # Fallback für Map3
+                    map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map3.tmx"
+                
+                tree = ET.parse(map_path)
+                root = tree.getroot()
+                
+                for objectgroup in root.findall('objectgroup'):
+                    if objectgroup.get('name') == 'Enemy':
+                        for obj in objectgroup.findall('object'):
+                            name = obj.get('name', 'NO_NAME')
+                            x = float(obj.get('x', 0))
+                            y = float(obj.get('y', 0))
+                            
+                            if name.lower() in ['demon', 'fireworm', 'enemy', 'monster']:
+                                print(f"✅ XML: Spawne {name} bei ({x}, {y})")
+                                if name.lower() == 'fireworm':
+                                    self.add_fireworm(x, y, 2.0, True)
+                                else:
+                                    self.add_demon(x, y, 2.0, True)
+                                enemy_count += 1
+            except Exception as e:
+                print(f"❌ XML Fallback failed: {e}")
+
+        print(f"🎮 ENDE: {enemy_count} Gegner gespawnt!")
+        print(f"📊 Aktuelle Anzahl Enemies in Gruppe: {len(self.enemies)}")
+
     def update(self, dt, player=None):
         """Update all enemies with player reference for AI and collision detection"""
         for enemy in self.enemies:
@@ -153,14 +182,8 @@ class EnemyManager:
         print("🔄 Alle Feinde zurückgesetzt")
     
     def respawn_default_enemies(self):
-        """Spawnt Standard-Feinde für einen Neustart"""
-        # Standard-Feinde spawnen
+        """Spawnt Standard-Feinde für Tests"""
         self.add_demon(800, 400, scale=0.8, facing_right=False)
         self.add_demon(1200, 300, scale=0.9, facing_right=True)
-        self.add_demon(600, 500, scale=0.7, facing_right=False)
-        self.add_demon(1400, 450, scale=0.8, facing_right=True)
-        
-        # FireWorm spawnen
         self.add_fireworm(960, 400, scale=1.0, facing_right=False)
-        
-        print("🐉 Standard-Feinde neu gespawnt")
+        print("🐉 3 Test-Feinde gespawnt")
