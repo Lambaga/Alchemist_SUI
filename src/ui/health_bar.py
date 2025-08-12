@@ -159,15 +159,15 @@ class HealthBar:
     
     def __init__(self, 
                  entity: CombatEntity,
-                 width: int = 60,
-                 height: int = 8,
+                 width: int = None,
+                 height: int = None,
                  offset_x: int = 0,
                  offset_y: int = -15,
                  renderer: Optional[HealthBarRenderer] = None,
                  show_when_full: bool = False,
                  fade_delay: float = 3.0):
         """
-        Initialisiert eine Health-Bar für eine CombatEntity.
+        Initialisiert eine Health-Bar für eine CombatEntity mit 7-Zoll Display-Optimierung.
         
         Args:
             entity: Das CombatEntity-Objekt (Player, Enemy, etc.)
@@ -180,8 +180,27 @@ class HealthBar:
             fade_delay: Zeit in Sekunden bevor die Bar ausgeblendet wird
         """
         self.entity = entity
-        self.width = width
-        self.height = height
+        
+        # Größe basierend auf UI-Settings anpassen
+        try:
+            from core.config import config
+            ui_settings = config.ui.get_ui_settings()
+            
+            # Standard-Größen basierend auf UI-Skalierung
+            if width is None:
+                self.width = ui_settings.get('HEALTH_BAR_WIDTH', 60)
+            else:
+                self.width = width
+                
+            if height is None:
+                self.height = ui_settings.get('HEALTH_BAR_HEIGHT', 8)
+            else:
+                self.height = height
+        except ImportError:
+            # Fallback wenn config nicht verfügbar
+            self.width = width if width is not None else 60
+            self.height = height if height is not None else 8
+        
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.show_when_full = show_when_full

@@ -35,10 +35,10 @@ class FPSMonitor:
         >>> fps_monitor.draw(screen)
     """
     
-    def __init__(self, position: Tuple[int, int] = (10, 10), font_size: int = 24, 
+    def __init__(self, position: Tuple[int, int] = None, font_size: int = None, 
                  show_detailed: bool = True, history_size: int = 60) -> None:
         """
-        Initialisiert den FPS-Monitor.
+        Initialisiert den FPS-Monitor mit 7-Zoll Display-Optimierung.
         
         Args:
             position: Position (x, y) für die Anzeige auf dem Bildschirm
@@ -46,15 +46,42 @@ class FPSMonitor:
             show_detailed: Ob erweiterte Metriken angezeigt werden sollen
             history_size: Anzahl der Frame-Times die gespeichert werden
         """
-        self.position: Tuple[int, int] = position
-        self.font_size: int = font_size
+        # Import config für Display-Settings
+        try:
+            from core.config import config
+            ui_settings = config.ui.get_ui_settings()
+            display_settings = config.display.get_optimized_settings()
+        except ImportError:
+            ui_settings = {}
+            display_settings = {}
+        
+        # Position basierend auf Display-Typ
+        if position is None:
+            self.position = (
+                ui_settings.get('FPS_POSITION_X', 10),
+                ui_settings.get('FPS_POSITION_Y', 10)
+            )
+        else:
+            self.position = position
+        
+        # Schriftgröße basierend auf Display-Typ
+        if font_size is None:
+            if display_settings.get('HOTKEY_DISPLAY_COMPACT', False):
+                self.font_size = int(20 * ui_settings.get('UI_SCALE', 1.0))  # 7-Zoll kleiner
+            else:
+                self.font_size = 24  # Standard
+        else:
+            self.font_size = font_size
+            
+        self.show_detailed = show_detailed
+        self.history_size = history_size
         self.show_detailed: bool = show_detailed
         self.history_size: int = history_size
         
         # Font für Text-Rendering
         pygame.font.init()
-        self.font: pygame.font.Font = pygame.font.Font(None, font_size)
-        self.small_font: pygame.font.Font = pygame.font.Font(None, font_size - 4)
+        self.font: pygame.font.Font = pygame.font.Font(None, self.font_size)
+        self.small_font: pygame.font.Font = pygame.font.Font(None, self.font_size - 4)
         
         # Performance-Daten
         self.current_fps: float = 0.0

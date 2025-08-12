@@ -15,13 +15,18 @@ ROOT_DIR = path.dirname(SRC_DIR)  # Geht von src/ zu root
 ASSETS_DIR = path.abspath(path.join(ROOT_DIR, 'assets'))
 
 class DisplayConfig:
-    """Display- und Fenster-Konfiguration mit RPi4-Optimierung"""
+    """Display- und Fenster-Konfiguration mit RPi4-Optimierung und 7-Zoll Monitor Support"""
     # Standard-Einstellungen (PC)
     SCREEN_WIDTH = 1920
     SCREEN_HEIGHT = 1080
     WINDOW_WIDTH = 1280
     WINDOW_HEIGHT = 720
     FPS = 60
+    
+    # 7-Zoll Monitor Einstellungen (1024x600)
+    SMALL_SCREEN_WIDTH = 1024
+    SMALL_SCREEN_HEIGHT = 600
+    SMALL_SCREEN_THRESHOLD = 1200  # Auflösungen unter 1200px Breite gelten als "klein"
     
     # 🚀 RPi4-Performance-Profile
     @staticmethod
@@ -36,20 +41,63 @@ class DisplayConfig:
             return False
     
     @staticmethod
+    def is_small_screen():
+        """Erkennt ob ein kleiner Bildschirm (7-Zoll) verwendet wird"""
+        import pygame
+        
+        # Versuche die Display-Informationen zu bekommen
+        try:
+            pygame.display.init()
+            display_info = pygame.display.Info()
+            return display_info.current_w <= DisplayConfig.SMALL_SCREEN_THRESHOLD
+        except:
+            return False
+    
+    @staticmethod
     def get_optimized_settings():
         """Gibt optimierte Einstellungen basierend auf Hardware zurück"""
-        if DisplayConfig.is_raspberry_pi():
-            print("🚀 Raspberry Pi erkannt - Performance-Optimierungen aktiviert!")
+        is_rpi = DisplayConfig.is_raspberry_pi()
+        is_small = DisplayConfig.is_small_screen()
+        
+        if is_small:
+            print("📱 7-Zoll Monitor (1024x600) erkannt - Anpassungen für kleinen Bildschirm!")
+            return {
+                'FPS': 45,              # 📱 Moderate FPS für 7-Zoll
+                'WINDOW_WIDTH': 1024,   # 📱 Exakte Bildschirmbreite
+                'WINDOW_HEIGHT': 600,   # 📱 Exakte Bildschirmhöhe
+                'FULLSCREEN': True,     # 📱 Vollbild für 7-Zoll optimal
+                'LOW_EFFECTS': False,   # 📱 Effekte können bleiben bei 1024x600
+                'AUDIO_QUALITY': 'MEDIUM', # 📱 Mittlere Audio-Qualität
+                'VSYNC': True,          # 📱 VSync für flüssigeres Bild
+                'TILE_CACHE_SIZE': 75,  # 📱 Optimierter Cache für 7-Zoll
+                'AUDIO_FREQUENCY': 44100,# 📱 Standard Audio-Frequenz
+                'AUDIO_BUFFER': 512,    # � Optimaler Audio-Buffer
+                'UI_SCALE': 0.8,        # 📱 UI etwas kleiner skalieren
+                'FONT_SIZE_SMALL': 14,  # 📱 Kleinere Schriftgrößen
+                'FONT_SIZE_NORMAL': 18,
+                'FONT_SIZE_LARGE': 24,
+                'SPELL_BAR_SCALE': 0.9, # 📱 Spell Bar etwas kleiner
+                'HOTKEY_DISPLAY_COMPACT': True  # 📱 Kompakte Hotkey-Anzeige
+            }
+        elif is_rpi:
+            print("�🚀 Raspberry Pi erkannt - Performance-Optimierungen aktiviert!")
             return {
                 'FPS': 30,              # 🚀 Reduzierte FPS für RPi4
                 'WINDOW_WIDTH': 1024,   # 🚀 Kleinere Auflösung
                 'WINDOW_HEIGHT': 576,   # 🚀 16:9 aber niedriger
+                'FULLSCREEN': False,    # 🚀 Fenstermodus für RPi
                 'LOW_EFFECTS': True,    # 🚀 Reduzierte Effekte
                 'AUDIO_QUALITY': 'LOW', # 🚀 Niedrigere Audio-Qualität
                 'VSYNC': False,         # 🚀 VSync aus für RPi4
                 'TILE_CACHE_SIZE': 50,  # 🚀 Kleinerer Tile-Cache
                 'AUDIO_FREQUENCY': 22050,# 🚀 Niedrigere Audio-Frequenz
-                'AUDIO_BUFFER': 1024    # 🚀 Größerer Audio-Buffer für Stabilität
+                'AUDIO_BUFFER': 1024,   # 🚀 Größerer Audio-Buffer für Stabilität
+                'UI_SCALE': 1.0,        # 🚀 Standard UI-Skalierung
+                'FONT_SIZE_SMALL': 16,
+                'FONT_SIZE_NORMAL': 20,
+                'FONT_SIZE_LARGE': 28,
+                'SPELL_BAR_SCALE': 1.0,
+                'HOTKEY_DISPLAY_COMPACT': False
             }
         else:
             print("🖥️ Desktop-System erkannt - Standard-Einstellungen")
@@ -57,12 +105,19 @@ class DisplayConfig:
                 'FPS': 60,              # Standard FPS
                 'WINDOW_WIDTH': 1280,   # Standard Auflösung
                 'WINDOW_HEIGHT': 720,   
+                'FULLSCREEN': False,    # Fenstermodus für Desktop
                 'LOW_EFFECTS': False,   # Alle Effekte
                 'AUDIO_QUALITY': 'HIGH',# Hohe Audio-Qualität
                 'VSYNC': True,          # VSync für flüssigeres Gameplay
                 'TILE_CACHE_SIZE': 100, # Größerer Cache
                 'AUDIO_FREQUENCY': 44100,# Standard Audio-Frequenz
-                'AUDIO_BUFFER': 512     # Optimaler Audio-Buffer für PC
+                'AUDIO_BUFFER': 512,    # Optimaler Audio-Buffer für PC
+                'UI_SCALE': 1.0,        # Standard UI-Skalierung
+                'FONT_SIZE_SMALL': 16,
+                'FONT_SIZE_NORMAL': 20,
+                'FONT_SIZE_LARGE': 28,
+                'SPELL_BAR_SCALE': 1.0,
+                'HOTKEY_DISPLAY_COMPACT': False
             }
     
     @staticmethod
@@ -101,6 +156,44 @@ class DisplayConfig:
                 print("🔊 Audio-Fallback erfolgreich")
             except:
                 print("❌ Audio komplett fehlgeschlagen - Spiel läuft stumm")
+
+class UIConfig:
+    """UI-Konfiguration für verschiedene Bildschirmgrößen"""
+    
+    @staticmethod
+    def get_ui_settings():
+        """Gibt UI-Einstellungen basierend auf der Bildschirmgröße zurück"""
+        display_settings = DisplayConfig.get_optimized_settings()
+        
+        return {
+            # Schriftgrößen
+            'FONT_SIZE_SMALL': display_settings.get('FONT_SIZE_SMALL', 16),
+            'FONT_SIZE_NORMAL': display_settings.get('FONT_SIZE_NORMAL', 20),
+            'FONT_SIZE_LARGE': display_settings.get('FONT_SIZE_LARGE', 28),
+            
+            # UI-Skalierung
+            'UI_SCALE': display_settings.get('UI_SCALE', 1.0),
+            'SPELL_BAR_SCALE': display_settings.get('SPELL_BAR_SCALE', 1.0),
+            
+            # Kompakte Anzeige für kleine Bildschirme
+            'HOTKEY_DISPLAY_COMPACT': display_settings.get('HOTKEY_DISPLAY_COMPACT', False),
+            
+            # Spell Bar Anpassungen für kleine Bildschirme
+            'SPELL_SLOT_SIZE': int(56 * display_settings.get('SPELL_BAR_SCALE', 1.0)),
+            'SPELL_SLOT_SPACING': int(8 * display_settings.get('UI_SCALE', 1.0)),
+            
+            # Health Bar Anpassungen
+            'HEALTH_BAR_WIDTH': int(100 * display_settings.get('UI_SCALE', 1.0)),
+            'HEALTH_BAR_HEIGHT': int(8 * display_settings.get('UI_SCALE', 1.0)),
+            
+            # FPS Monitor Position (für kleine Bildschirme)
+            'FPS_POSITION_X': 10 if display_settings.get('HOTKEY_DISPLAY_COMPACT') else 10,
+            'FPS_POSITION_Y': 10,
+            
+            # Hotkey Display Anpassungen
+            'HOTKEY_LINE_HEIGHT': int(20 * display_settings.get('UI_SCALE', 1.0)),
+            'HOTKEY_PADDING': int(8 * display_settings.get('UI_SCALE', 1.0)),
+        }
 
 class PlayerConfig:
     """Player-spezifische Konfiguration"""
@@ -201,7 +294,7 @@ class Paths:
         return path.join(self.MAPS_DIR, "Map2.tmx")
 
 class InputConfig:
-    """Input-Konfiguration"""
+    """Input- und Tastatur-Konfiguration mit Hardware-Support"""
     MOVEMENT_KEYS = {
         'left': [pygame.K_LEFT, pygame.K_a],
         'right': [pygame.K_RIGHT, pygame.K_d],
@@ -233,6 +326,106 @@ class InputConfig:
         pygame.K_5,
         pygame.K_6
     ]
+    
+    # Action System Mappings - Zentraler ACTION Block
+    ACTIONS = {
+        # Bewegung
+        'move_left': {
+            'keyboard': [pygame.K_LEFT, pygame.K_a],
+            'gamepad': {'dpad': 'left', 'axis': (0, -0.5)},  # Left stick X < -0.5
+            'hardware': 'MOVE_LEFT'
+        },
+        'move_right': {
+            'keyboard': [pygame.K_RIGHT, pygame.K_d],
+            'gamepad': {'dpad': 'right', 'axis': (0, 0.5)},  # Left stick X > 0.5
+            'hardware': 'MOVE_RIGHT'
+        },
+        'move_up': {
+            'keyboard': [pygame.K_UP, pygame.K_w],
+            'gamepad': {'dpad': 'up', 'axis': (1, -0.5)},    # Left stick Y < -0.5
+            'hardware': 'MOVE_UP'
+        },
+        'move_down': {
+            'keyboard': [pygame.K_DOWN, pygame.K_s],
+            'gamepad': {'dpad': 'down', 'axis': (1, 0.5)},   # Left stick Y > 0.5  
+            'hardware': 'MOVE_DOWN'
+        },
+        
+        # Magic System - KORREKTE ZUORDNUNG: 1=Water, 2=Fire, 3=Stone
+        'magic_fire': {
+            'keyboard': [pygame.K_2],           # Taste 2
+            'gamepad': {'button': 5},           # R1/RB Button
+            'hardware': 'FIRE'                  # Hardware Button "FIRE"
+        },
+        'magic_water': {
+            'keyboard': [pygame.K_1],           # Taste 1  
+            'gamepad': {'button': 4},           # L1/LB Button
+            'hardware': 'WATER'                 # Hardware Button "WATER"
+        },
+        'magic_stone': {
+            'keyboard': [pygame.K_3],           # Taste 3
+            'gamepad': {'button': 6},           # Back/Select Button
+            'hardware': 'STONE'                 # Hardware Button "STONE"
+        },
+        'cast_magic': {
+            'keyboard': [pygame.K_c, pygame.K_SPACE],  # C oder Space
+            'gamepad': {'button': 0},                  # A/X Button
+            'hardware': 'CAST'                         # Hardware Button "CAST"
+        },
+        'clear_magic': {
+            'keyboard': [pygame.K_x, pygame.K_BACKSPACE],  # X oder Backspace
+            'gamepad': {'button': 1},                      # B/Circle Button
+            'hardware': 'CLEAR'                            # Hardware Button "CLEAR"
+        },
+        
+        # System Actions
+        'attack': {
+            'keyboard': [pygame.K_SPACE],
+            'gamepad': {'button': 0},           # A/X Button
+            'hardware': None
+        },
+        'pause': {
+            'keyboard': [pygame.K_ESCAPE],
+            'gamepad': {'button': 7},           # Start/Options Button
+            'hardware': None
+        },
+        'music_toggle': {
+            'keyboard': [pygame.K_m],
+            'gamepad': {'button': 2},           # X/Square Button
+            'hardware': None
+        },
+        'reset_game': {
+            'keyboard': [pygame.K_r],
+            'gamepad': {'button': 3},           # Y/Triangle Button
+            'hardware': None
+        },
+        
+        # Debug
+        'toggle_debug': {
+            'keyboard': [pygame.K_F1],
+            'gamepad': None,
+            'hardware': None
+        },
+        'toggle_fps': {
+            'keyboard': [pygame.K_F3],
+            'gamepad': None,
+            'hardware': None
+        }
+    }
+    
+    # Source Priority (höchste zu niedrigste)
+    INPUT_SOURCE_PRIORITY = ['hardware', 'gamepad', 'keyboard']
+    
+    # Hardware-spezifische Einstellungen
+    HARDWARE_CONFIG = {
+        'port': '/dev/ttyUSB0',              # Standard serieller Port (Linux/Pi)
+        'baud_rate': 115200,                 # Baudrate für ESP32
+        'mock_mode': True,                   # Entwicklungsmodus ohne echte Hardware
+        'heartbeat_timeout': 3.0,            # Sekunden bis Hardware als getrennt gilt
+        'joystick_deadzone': 0.1,           # Deadzone für Hardware-Joystick
+        'auto_reconnect': True,              # Automatischer Reconnect-Versuch
+        'debug_logging': False               # Debug-Ausgaben für Hardware-Events
+    }
 
 class GameConfig:
     """Spiel-spezifische Konfiguration"""
@@ -253,6 +446,31 @@ class GameConfig:
 class SpellConfig:
     """Zauberspruch-System Konfiguration basierend auf Element-Mischungen"""
     DEFAULT_COOLDOWN = 3.0  # 3 seconds default cooldown
+    
+    # UI Configuration for spell bar - Dynamisch basierend auf Bildschirmgröße
+    @staticmethod
+    def get_bar_config():
+        """Gibt Spell Bar Konfiguration basierend auf Bildschirmgröße zurück"""
+        ui_settings = UIConfig.get_ui_settings()
+        display_settings = DisplayConfig.get_optimized_settings()
+        
+        # Für 7-Zoll Displays (1024x600) kompaktere Anordnung
+        if display_settings.get('WINDOW_HEIGHT', 720) <= 600:
+            return {
+                'BAR_POSITION': (10, -80),  # Höher positioniert für 7-Zoll
+                'SLOT_SIZE': ui_settings['SPELL_SLOT_SIZE'],
+                'SLOT_SPACING': ui_settings['SPELL_SLOT_SPACING'], 
+                'BACKGROUND_PADDING': ui_settings['HOTKEY_PADDING'],
+                'BACKGROUND_ALPHA': 200,  # Etwas undurchsichtiger für bessere Sichtbarkeit
+            }
+        else:
+            return {
+                'BAR_POSITION': (20, -120),  # Standard Position
+                'SLOT_SIZE': ui_settings['SPELL_SLOT_SIZE'],
+                'SLOT_SPACING': ui_settings['SPELL_SLOT_SPACING'],
+                'BACKGROUND_PADDING': ui_settings['HOTKEY_PADDING'],
+                'BACKGROUND_ALPHA': 180,
+            }
     
     # Magic combination definitions (based on existing magic system)
     MAGIC_COMBINATIONS = {
@@ -337,12 +555,26 @@ class SpellConfig:
         {"id": "waterbolt", "display_name": "Wasserkugel", "icon_path": "ui/spells/waterbolt.png", "cooldown": 3.0}
     ]
     
-    # UI Configuration for spell bar
-    BAR_POSITION = (20, -120)  # Bottom-left with 20px margin, 120px from bottom
-    SLOT_SIZE = 56  # 56x56 pixel slots
-    SLOT_SPACING = 8  # 8px between slots
-    BACKGROUND_PADDING = 10  # Padding around the bar
-    BACKGROUND_ALPHA = 180  # Semi-transparent background
+    # Legacy UI Properties für Kompatibilität
+    @property
+    def BAR_POSITION(self):
+        return self.get_bar_config()['BAR_POSITION']
+    
+    @property  
+    def SLOT_SIZE(self):
+        return self.get_bar_config()['SLOT_SIZE']
+        
+    @property
+    def SLOT_SPACING(self):
+        return self.get_bar_config()['SLOT_SPACING']
+        
+    @property
+    def BACKGROUND_PADDING(self):
+        return self.get_bar_config()['BACKGROUND_PADDING']
+        
+    @property
+    def BACKGROUND_ALPHA(self):
+        return self.get_bar_config()['BACKGROUND_ALPHA']
 
 # === SINGLETON PATTERN FÜR GLOBALE KONFIGURATION ===
 class Config:
@@ -360,6 +592,7 @@ class Config:
             return
         
         self.display = DisplayConfig()
+        self.ui = UIConfig()
         self.player = PlayerConfig()
         self.colors = Colors()
         self.paths = Paths()

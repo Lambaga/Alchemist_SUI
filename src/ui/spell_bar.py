@@ -37,11 +37,15 @@ class SpellBar:
         self.cooldown_manager = spell_cooldown_manager
         self.spells = config.spells.SPELLS.copy()
         
-        # UI Configuration
-        self.slot_size = config.spells.SLOT_SIZE
-        self.slot_spacing = config.spells.SLOT_SPACING
-        self.background_padding = config.spells.BACKGROUND_PADDING
-        self.background_alpha = config.spells.BACKGROUND_ALPHA
+        # UI Configuration - Dynamisch basierend auf Bildschirmgröße
+        bar_config = config.spells.get_bar_config()
+        ui_settings = config.ui.get_ui_settings()
+        
+        self.slot_size = bar_config['SLOT_SIZE']
+        self.slot_spacing = bar_config['SLOT_SPACING']
+        self.background_padding = bar_config['BACKGROUND_PADDING']
+        self.background_alpha = bar_config['BACKGROUND_ALPHA']
+        self.ui_scale = ui_settings['UI_SCALE']
         
         # Calculate bar dimensions
         self.bar_width = (6 * self.slot_size) + (5 * self.slot_spacing) + (2 * self.background_padding)
@@ -58,16 +62,22 @@ class SpellBar:
         self.background_surface = None
         self.create_background_surface()
         
-        # Font for countdown and key labels
+        # Font for countdown and key labels - Angepasst für kleine Bildschirme
         pygame.font.init()
-        self.font = pygame.font.Font(None, 20)
-        self.small_font = pygame.font.Font(None, 16)
+        font_size_normal = ui_settings.get('FONT_SIZE_NORMAL', 20)
+        font_size_small = ui_settings.get('FONT_SIZE_SMALL', 16)
+        
+        self.font = pygame.font.Font(None, font_size_normal)
+        self.small_font = pygame.font.Font(None, font_size_small)
         
         # Animation states
         self.slot_animations = [0.0] * 6  # For press feedback animation
         self.selected_spell_index = -1    # Currently selected spell (-1 = none)
         
-        print("✨ SpellBar initialized with {} spells".format(len(self.spells)))
+        display_settings = config.display.get_optimized_settings()
+        screen_info = f"({display_settings.get('WINDOW_WIDTH')}x{display_settings.get('WINDOW_HEIGHT')})"
+        print(f"✨ SpellBar initialized for {screen_info} with {len(self.spells)} spells")
+        print(f"   📊 Slot size: {self.slot_size}px, UI scale: {self.ui_scale}")
     
     def load_spell_icons(self):
         """Load spell icons or create placeholders if not found"""
@@ -196,8 +206,9 @@ class SpellBar:
         Returns:
             (x, y) position for the spell bar
         """
-        x = config.spells.BAR_POSITION[0]  # 20px from left
-        y = screen_height + config.spells.BAR_POSITION[1] - self.bar_height  # -120px from bottom
+        bar_config = config.spells.get_bar_config()
+        x = bar_config['BAR_POSITION'][0]  # Variable px from left (10 for 7-inch, 20 for standard)
+        y = screen_height + bar_config['BAR_POSITION'][1] - self.bar_height  # Variable px from bottom
         return (x, y)
     
     def handle_spell_selection(self, spell_index: int) -> bool:

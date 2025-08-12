@@ -2,11 +2,19 @@
 """
 Universelles Input-System für Der Alchemist
 Unterstützt Tastatur, Maus und Joystick/Gamepad für Raspberry Pi 4
+Erweitert mit Action System Integration
 """
 
 import pygame
 from typing import Dict, List, Tuple, Optional, Union
 from enum import Enum
+
+try:
+    from systems.action_system import get_action_system, ActionType
+    ACTION_SYSTEM_AVAILABLE = True
+except ImportError:
+    ACTION_SYSTEM_AVAILABLE = False
+    print("⚠️ Action System nicht verfügbar - Input System läuft im Legacy-Mode")
 
 class InputDevice(Enum):
     """Input-Device Typen"""
@@ -35,12 +43,20 @@ class UniversalInputSystem:
     """
     Universelles Input-System das Tastatur, Maus und Joystick unterstützt
     Perfekt für Raspberry Pi 4 mit angeschlossenen Gamepads
+    Erweitert mit Action System Integration
     """
     
-    def __init__(self):
+    def __init__(self, use_action_system=True):
         """Initialisiert das Input-System"""
         self.joysticks = []
         self.active_joystick = None
+        self.use_action_system = use_action_system and ACTION_SYSTEM_AVAILABLE
+        
+        # Action System Integration
+        if self.use_action_system:
+            self.action_system = get_action_system()
+        else:
+            self.action_system = None
         
         # Input-Mappings
         self.movement_mapping = self._create_movement_mapping()
@@ -61,7 +77,8 @@ class UniversalInputSystem:
         # Joystick initialisieren
         self._init_joysticks()
         
-        print("🎮 Universal Input System initialisiert")
+        mode = "Action System" if self.use_action_system else "Legacy"
+        print(f"🎮 Universal Input System initialisiert ({mode})")
         print(f"📱 Gefundene Joysticks: {len(self.joysticks)}")
         
     def _init_joysticks(self):
@@ -113,6 +130,7 @@ class UniversalInputSystem:
         """Erstellt Action-Mappings für alle Input-Devices"""
         return {
             InputDevice.KEYBOARD: {
+                # Legacy actions
                 'brew': pygame.K_SPACE,
                 'remove_ingredient': pygame.K_BACKSPACE,
                 'reset': pygame.K_r,
@@ -122,9 +140,18 @@ class UniversalInputSystem:
                 'ingredient_2': pygame.K_2,
                 'ingredient_3': pygame.K_3,
                 'cast_magic': pygame.K_c,
-                'clear_magic': pygame.K_x
+                'clear_magic': pygame.K_x,
+                
+                # New Action System mappings
+                'magic_fire': pygame.K_2,      # Key 2 = Fire
+                'magic_water': pygame.K_1,     # Key 1 = Water  
+                'magic_stone': pygame.K_3,     # Key 3 = Stone
+                'attack': pygame.K_SPACE,
+                'toggle_debug': pygame.K_F1,
+                'toggle_fps': pygame.K_F3
             },
             InputDevice.JOYSTICK: {
+                # Legacy actions
                 'brew': GamepadButton.A.value,           # A/X Button
                 'remove_ingredient': GamepadButton.B.value,  # B/Circle Button
                 'reset': GamepadButton.Y.value,          # Y/Triangle Button
@@ -133,12 +160,14 @@ class UniversalInputSystem:
                 'ingredient_1': GamepadButton.L1.value,  # Left Bumper
                 'ingredient_2': GamepadButton.R1.value,  # Right Bumper
                 'ingredient_3': GamepadButton.BACK.value, # Back/Share Button
+                
                 # Magie-Elemente (Zusätzliche Buttons)
-                'magic_fire': GamepadButton.L3.value,    # Left Stick Click
-                'magic_water': GamepadButton.R3.value,   # Right Stick Click  
-                'magic_stone': 14,  # Zusätzlicher Button falls vorhanden
-                'cast_magic': 15,   # Zusätzlicher Button falls vorhanden
-                'clear_magic': 16   # Zusätzlicher Button falls vorhanden
+                'magic_fire': GamepadButton.L1.value,    # Left Bumper = Fire
+                'magic_water': GamepadButton.R1.value,   # Right Bumper = Water
+                'magic_stone': GamepadButton.BACK.value, # Back = Stone
+                'cast_magic': GamepadButton.A.value,     # A = Cast
+                'clear_magic': GamepadButton.B.value,    # B = Clear
+                'attack': GamepadButton.A.value
             }
         }
     
@@ -261,6 +290,7 @@ class UniversalInputSystem:
         """
         Behandelt Input-Events und gibt Action-Namen zurück
         Kompatibel mit dem bestehenden Event-System
+        Erweitert mit Action System Integration
         """
         action = None
         
@@ -269,6 +299,18 @@ class UniversalInputSystem:
             joystick_actions = self.action_mapping[InputDevice.JOYSTICK]
             for action_name, button in joystick_actions.items():
                 if event.button == button:
+                    # Action System Integration
+                    if self.use_action_system:
+                        self._dispatch_action(action_name, True, "gamepad")
+                    return action_name
+        
+        elif event.type == pygame.JOYBUTTONUP:
+            joystick_actions = self.action_mapping[InputDevice.JOYSTICK]
+            for action_name, button in joystick_actions.items():
+                if event.button == button:
+                    # Action System Integration
+                    if self.use_action_system:
+                        self._dispatch_action(action_name, False, "gamepad")
                     return action_name
         
         # Joystick-Verbindung/Trennung
@@ -283,14 +325,55 @@ class UniversalInputSystem:
             if self.active_joystick and self.active_joystick.get_instance_id() == event.instance_id:
                 self.active_joystick = self.joysticks[0] if self.joysticks else None
         
-        # Tastatur-Events (für Kompatibilität)
+        # Tastatur-Events
         elif event.type == pygame.KEYDOWN:
             keyboard_actions = self.action_mapping[InputDevice.KEYBOARD]
             for action_name, key in keyboard_actions.items():
                 if event.key == key:
+                    # Action System Integration
+                    if self.use_action_system:
+                        self._dispatch_action(action_name, True, "keyboard")
+                    return action_name
+        
+        elif event.type == pygame.KEYUP:
+            keyboard_actions = self.action_mapping[InputDevice.KEYBOARD]
+            for action_name, key in keyboard_actions.items():
+                if event.key == key:
+                    # Action System Integration
+                    if self.use_action_system:
+                        self._dispatch_action(action_name, False, "keyboard")
                     return action_name
         
         return None
+    
+    def _dispatch_action(self, action_name: str, pressed: bool, source: str):
+        """Dispatch action to Action System"""
+        if not self.action_system:
+            return
+        
+        # Map legacy action names to ActionType
+        action_map = {
+            'magic_fire': ActionType.MAGIC_FIRE,
+            'magic_water': ActionType.MAGIC_WATER,
+            'magic_stone': ActionType.MAGIC_STONE,
+            'cast_magic': ActionType.CAST_MAGIC,
+            'clear_magic': ActionType.CLEAR_MAGIC,
+            'attack': ActionType.ATTACK,
+            'pause': ActionType.PAUSE,
+            'music_toggle': ActionType.MUSIC_TOGGLE,
+            'reset': ActionType.RESET_GAME,
+            'toggle_debug': ActionType.TOGGLE_DEBUG,
+            'toggle_fps': ActionType.TOGGLE_FPS
+        }
+        
+        action_type = action_map.get(action_name)
+        if action_type:
+            # Special handling for magic actions
+            if action_type in [ActionType.MAGIC_FIRE, ActionType.MAGIC_WATER, ActionType.MAGIC_STONE, 
+                             ActionType.CAST_MAGIC, ActionType.CLEAR_MAGIC]:
+                self.action_system.handle_magic_action(action_type, pressed, source)
+            else:
+                self.action_system.dispatch_action(action_type, pressed, source)
     
     def get_joystick_info(self) -> Dict:
         """Gibt Informationen über angeschlossene Joysticks zurück"""
@@ -363,8 +446,8 @@ def get_input_system() -> UniversalInputSystem:
         universal_input = UniversalInputSystem()
     return universal_input
 
-def init_universal_input() -> UniversalInputSystem:
+def init_universal_input(use_action_system=True) -> UniversalInputSystem:
     """Initialisiert das universelle Input-System"""
     global universal_input
-    universal_input = UniversalInputSystem()
+    universal_input = UniversalInputSystem(use_action_system=use_action_system)
     return universal_input
