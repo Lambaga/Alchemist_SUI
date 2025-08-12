@@ -1,8 +1,74 @@
 # 🧙‍♂️ Der Alchemist
 
-A Python-based 2D adventure game built with Pygame where you play as an alchemist mastering elemental magic and battling monsters.
+A Python-based 2D adventure game built with Pygame where you play as an alchemist mastering elemental magic and battling mons## 🎯 Game Controls
 
-## 🎮 Game Features
+### Movement & Basic Actions
+| Key | Action |
+|-----|--------|
+| `W A S D` or `←→↑↓` | Move character |
+| `Mouse` | Control look direction |
+| `Left Click` | Attack/Fireball |
+| `Space` | Attack/Cast selected spell |
+| `ESC` | Pause menu |
+
+### Magic System
+| Key | Action |
+|-----|--------|
+| `1` | Select Water element |
+| `2` | Select Fire element |
+| `3` | Select Stone element |
+| `1-6` | Cast spells from spell bar |
+| `Backspace` | Clear selected elements |
+
+### 🔌 Hardware-Steuerung (ESP32)
+
+**🎮 Hardware-Setup:**
+- **1x Analog-Joystick**: Bewegung (X/Y-Achse)
+- **5x Buttons**: 
+  - B1 = Feuer-Element (🔥)
+  - B2 = Wasser-Element (💧) 
+  - B3 = Stein-Element (🗿)
+  - B4 = Zauber ausführen (✨)
+  - B5 = Kombination löschen (🧹)
+
+**🔧 Aktivierung:**
+```bash
+# Hardware-Modus aktivieren
+export ALCHEMIST_HW=1
+
+# Spiel starten
+./run_game.sh
+```
+
+**📡 Protokoll (Option B - Serial JSON):**
+```json
+{"type":"PING","fw":"1.0"}
+{"type":"BUTTON","id":"FIRE","state":1}
+{"type":"BUTTON","id":"FIRE","state":0}
+{"type":"JOYSTICK","x":0.18,"y":-0.62}
+{"type":"HEARTBEAT"}
+```
+
+**🔌 ESP32 Pin-Mapping:**
+- **Digitale Pins**: 5 Buttons mit Debounce (10-20ms)
+- **Analoge Pins**: Joystick X/Y (ADC mit Deadzone & Mittelwert)
+- **Serial**: 115200 Baud USB/UART
+- **Heartbeat**: 1s Intervall für Verbindungsüberwachung
+
+**⚡ Features:**
+- ✅ **Input-Priorität**: Hardware > Gamepad > Keyboard
+- ✅ **Automatischer Fallback** bei Hardware-Timeout (3s)
+- ✅ **Thread-sichere** Kommunikation
+- ✅ **Deadzone-Filterung** für Joystick-Rauschen
+- ✅ **Edge-Detection** für Buttons (nur Änderungen senden)
+- ✅ **Mock-Mode** für Entwicklung ohne Hardware
+
+**🧪 Hardware testen:**
+```bash
+# Aktiviere venv und teste Hardware-System
+.\.venv\Scripts\Activate.ps1
+python test_hardware_input.py
+``` Features
 
 - **Character Control**: Move with arrow keys or WASD, mouse for direction
 - **Magic System**: Combine elements (Fire, Water, Stone) to cast powerful spells
@@ -32,13 +98,64 @@ The launcher scripts handle everything automatically - virtual environment creat
 
 **Windows:**
 ```bash
-.\run_game.bat
+.\run_game.bat      # Standard-Modus (1280x720)
+.\run_game_7inch.bat # 7-Zoll Monitor (1024x600)
 ```
 
 **Linux/macOS:**
 ```bash
-./run_game.sh
+./run_game.sh       # Standard-Modus (1280x720)
+./run_game_7inch.sh # 7-Zoll Monitor (1024x600)
 ```
+
+**🥧 Raspberry Pi (mit 7-Zoll Display):**
+```bash
+# 1. System-Updates (wichtig für Pi)
+sudo apt update && sudo apt upgrade -y
+
+# 2. Python und Git installieren (falls noch nicht vorhanden)
+sudo apt install python3 python3-pip python3-venv git -y
+
+# 3. SDL2 Abhängigkeiten für Pygame installieren
+sudo apt install python3-dev libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev -y
+
+# 4. Repository klonen und zum Verzeichnis wechseln
+git clone https://github.com/Lambaga/Alchemist_SUI.git
+cd Alchemist_SUI
+
+# 5. Ausführbar machen
+chmod +x run_game_7inch.sh
+
+# 6. Spiel für 7-Zoll Monitor starten
+./run_game_7inch.sh
+```
+
+**🔧 Raspberry Pi Konfiguration für optimale Performance:**
+```bash
+# GPU Memory auf 128MB setzen (für bessere Grafik-Performance)
+sudo raspi-config
+# → Advanced Options → Memory Split → 128
+
+# Oder direkt in /boot/config.txt:
+echo "gpu_mem=128" | sudo tee -a /boot/config.txt
+
+# 7-Zoll Display Auflösung forcieren (falls Auto-Erkennung fehlschlägt)
+echo "hdmi_group=2" | sudo tee -a /boot/config.txt
+echo "hdmi_mode=87" | sudo tee -a /boot/config.txt
+echo "hdmi_cvt=1024 600 60 6 0 0 0" | sudo tee -a /boot/config.txt
+
+# Nach Änderungen neu starten
+sudo reboot
+```
+
+**📱 7-Zoll Monitor Support:**
+- 🎯 **Raspberry Pi optimiert**: Automatische Hardware-Erkennung
+- 📱 **1024x600 Auflösung**: Speziell für 7-Zoll Displays angepasst  
+- ⚡ **Performance**: 45 FPS für flüssiges Gameplay auf RPi4
+- 🖼️ **Vollbild-Modus**: Optimale Bildschirmnutzung
+- 🎨 **UI-Skalierung**: Kompakte, lesbare Oberfläche
+- 🔧 **Smart Cache**: Reduzierte Speichernutzung
+- 🎵 **Audio**: Angepasste Audio-Einstellungen für Pi
 
 **What the scripts do:**
 1. ✅ Check if `.venv` virtual environment exists, create if needed
@@ -114,8 +231,29 @@ The launcher scripts handle everything automatically - virtual environment creat
 | `1` | Select Water element |
 | `2` | Select Fire element |
 | `3` | Select Stone element |
-| `1-6` | Cast spells from spell bar |
-| `Backspace` | Clear selected elements |
+| `C` or `Space` | Cast spell |
+| `Backspace` or `X` | Clear selected elements |
+
+### 🔌 Hardware Controller (ESP32 + Joystick + 5 Buttons)
+
+**Physical Layout:**
+- 1 Analog Joystick (X/Y movement)
+- 5 Buttons:
+  - **B1 (Fire)**: Select Fire element
+  - **B2 (Water)**: Select Water element  
+  - **B3 (Stone)**: Select Stone element
+  - **B4 (Cast)**: Cast current spell
+  - **B5 (Clear)**: Clear element selection
+
+**Protocol (Serial JSON over USB):**
+```json
+{"type":"BUTTON","id":"FIRE","state":1}    // Button press
+{"type":"BUTTON","id":"FIRE","state":0}    // Button release
+{"type":"JOYSTICK","x":0.18,"y":-0.62}     // Analog movement
+{"type":"HEARTBEAT"}                        // Keep-alive
+```
+
+**Hardware Priority:** Hardware > Gamepad > Keyboard (automatic fallback)
 
 ### Interface & Debug
 | Key | Action |
@@ -179,12 +317,71 @@ Alchemist/
 ├── docs/          # Documentation
 ├── scripts/       # Utility scripts and tools
 ├── saves/         # Save game files
-├── run_game.bat   # Windows launcher
-├── run_game.sh    # Linux/macOS launcher
+├── run_game.bat   # Windows launcher (Standard)
+├── run_game.sh    # Linux/macOS launcher (Standard)
+├── run_game_7inch.bat  # Windows launcher (7-Zoll Monitor)
+├── run_game_7inch.sh   # Linux/Pi launcher (7-Zoll Monitor)
+├── test_7inch_display.py # Test-Script für 7-Zoll Optimierungen
 └── requirements.txt # Python dependencies
 ```
 
 ## 🛠️ Development & Advanced Usage
+
+### Hardware Controller Development
+
+**🔌 ESP32 Setup (für externe Hardware-Steuerung):**
+```bash
+# 1. ESP32 Development Setup
+# Install Arduino IDE or PlatformIO
+# Install ESP32 board package
+
+# 2. Hardware Configuration
+# Pins: 5 digital inputs (buttons) + 2 analog (joystick X/Y)  
+# Debounce: 10-20ms software debounce
+# USB Serial: 115200 baud, JSON protocol
+
+# 3. Test mit Mock Mode
+python test_hardware_input.py
+
+# 4. Connect echte Hardware
+# In src/core/config.py: HARDWARE_CONFIG['mock_mode'] = False
+```
+
+**Hardware Pin-Mapping (ESP32 Beispiel):**
+```cpp
+// Button Pins (Digital Input mit Pull-up)
+#define BUTTON_FIRE    12  // B1 = Fire
+#define BUTTON_WATER   14  // B2 = Water  
+#define BUTTON_STONE   27  // B3 = Stone
+#define BUTTON_CAST    26  // B4 = Cast
+#define BUTTON_CLEAR   25  // B5 = Clear
+
+// Joystick Pins (Analog Input)
+#define JOYSTICK_X     34  // ADC1_CH6 (X-Axis)
+#define JOYSTICK_Y     35  // ADC1_CH7 (Y-Axis)
+```
+
+**Protokoll Implementation:**
+```cpp
+// Sende nur bei Änderungen (Edge-Detection + Delta > 0.05)
+void sendButtonEvent(String buttonId, int state) {
+  JsonDocument doc;
+  doc["type"] = "BUTTON";
+  doc["id"] = buttonId; 
+  doc["state"] = state;
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
+void sendJoystickEvent(float x, float y) {
+  JsonDocument doc;
+  doc["type"] = "JOYSTICK";
+  doc["x"] = x;
+  doc["y"] = y; 
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+```
 
 ### Main Entry Point
 
@@ -232,6 +429,12 @@ python test_mana_system.py
 
 # Test spell cooldowns
 python test_spell_cooldown.py
+
+# 🔌 NEW: Test hardware input system
+python test_hardware_input.py
+
+# Test 7-inch display optimizations  
+python test_7inch_display.py
 ```
 
 ### Dependencies
@@ -248,6 +451,27 @@ python test_spell_cooldown.py
 - **Combat System**: Turn-based combat with buffs/debuffs
 - **Save System**: Multiple save slots with automatic backup
 - **Performance Monitoring**: FPS tracking and optimization tools
+- **🔌 Hardware Input System**: ESP32-based physical controls with analog joystick and buttons
+
+### Input Architecture
+
+**🎯 Action System**: Zentrale Abstraktionsschicht für alle Input-Quellen
+- **Input-Priorität**: Hardware > Gamepad > Keyboard
+- **Automatischer Fallback**: Bei Hardware-Timeout zu Tastatur/Gamepad
+- **Thread-sichere Events**: Async Hardware-Kommunikation
+- **Abstrakte Actions**: `magic_fire`, `magic_water`, `cast_magic`, etc.
+
+**📱 Universal Input System**: Multi-Device Support
+- **Tastatur**: WASD/Arrow Keys + Magic Keys (1,2,3)  
+- **Gamepad**: Xbox/PS4 Controller mit Button-Mapping
+- **Hardware**: ESP32 mit Joystick und 5 Physical Buttons
+
+**🔌 Hardware Integration**: 
+- **Serial JSON Protocol**: Zeilenbasiert, Event-driven
+- **Mock Mode**: Entwicklung ohne Hardware möglich
+- **Auto-Reconnect**: Automatische Wiederverbindung
+- **Performance**: < 10ms Latenz, 60 FPS kompatibel
+- **🔌 Hardware Input System**: ESP32 joystick + buttons support with automatic fallback
 
 ### Development Tools
 
@@ -302,6 +526,28 @@ python test_spell_cooldown.py
    - Run cache cleanup tools: `python smart_cache_cleaner.py --mode=smart`
    - Check system requirements and close other applications
 
+9. **Raspberry Pi 7-Zoll Display Probleme**:
+   - ✅ **System-Vorbereitung**: Installiere SDL2-Bibliotheken: `sudo apt install python3-dev libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev -y`
+   - ✅ **GPU Memory**: Setze GPU-Speicher auf min. 128MB: `sudo raspi-config` → Advanced Options → Memory Split → 128
+   - ✅ **Display-Konfiguration**: Für 7-Zoll Displays in `/boot/config.txt`:
+     ```
+     hdmi_group=2
+     hdmi_mode=87
+     hdmi_cvt=1024 600 60 6 0 0 0
+     gpu_mem=128
+     ```
+   - ✅ **Automatische Erkennung**: Das Spiel erkennt 7-Zoll Displays automatisch
+   - ✅ **Manuell erzwingen**: `export ALCHEMIST_SMALL_SCREEN=1` vor dem Start
+   - ✅ **Performance**: Nutze immer `./run_game_7inch.sh` für beste Performance
+   - ✅ **Audio**: ALSA-Konfiguration: `sudo apt install alsa-utils -y && alsamixer`
+   - ✅ **Display prüfen**: `tvservice -s` für aktuelle Auflösung, `vcgencmd get_mem gpu` für GPU-Speicher
+
+10. **Virtuelle Umgebung Probleme**:
+    - ✅ **Windows**: Nutze `.\run_game.bat` oder `.\run_game_7inch.bat`
+    - ✅ **Linux/Pi**: Nutze `./run_game.sh` oder `./run_game_7inch.sh`
+    - Die Scripts erstellen und verwalten die .venv automatisch
+    - Keine manuelle venv-Aktivierung nötig
+
 ## 🎯 **For Your Friends/New Contributors**
 
 **The Golden Rule**: Always start with the launcher scripts!
@@ -310,9 +556,14 @@ python test_spell_cooldown.py
 # ✅ CORRECT way (everything works automatically):
 git clone <repo>
 cd Alchemist_SUI
-.\run_game.bat  # Windows
-# or
-./run_game.sh   # Linux/macOS
+
+# Windows:
+.\run_game.bat          # Standard
+.\run_game_7inch.bat    # 7-Zoll
+
+# Linux/macOS/Raspberry Pi:
+./run_game.sh           # Standard
+./run_game_7inch.sh     # 7-Zoll (Pi optimiert)
 
 # ❌ WRONG ways (will cause problems):
 python main.py
@@ -321,14 +572,25 @@ cd src && python main.py
 python -m main
 ```
 
+**🥧 Für Raspberry Pi Benutzer:** Nutzt immer `./run_game_7inch.sh` - das Script erkennt automatisch die Pi-Hardware und verwendet optimierte Einstellungen!
+
 **Why this matters**: The launcher scripts solve ALL the common setup issues automatically and ensure proper initialization of all game systems including the magic system, spell bar, and asset loading.
 
 ### System Requirements
 
+**Desktop/Laptop:**
 - **OS**: Windows 10+, macOS 10.14+, or Linux
 - **Python**: 3.7 or higher
 - **RAM**: 512MB minimum
 - **Graphics**: Any graphics card with OpenGL support
+
+**🥧 Raspberry Pi (empfohlen für 7-Zoll Displays):**
+- **Model**: Raspberry Pi 4B (4GB RAM empfohlen, 2GB minimum)
+- **OS**: Raspberry Pi OS (64-bit empfohlen) oder Ubuntu für Pi
+- **Display**: 7-Zoll Display mit 1024x600 Auflösung
+- **SD-Karte**: Class 10, min. 16GB (32GB empfohlen)
+- **Kühlung**: Passiver Kühlkörper oder Lüfter für längere Sessions
+- **GPU-Speicher**: Min. 128MB (in raspi-config eingestellt)
 
 ## 📄 License
 

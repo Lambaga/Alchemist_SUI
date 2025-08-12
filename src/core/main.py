@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Main Game File - Enhanced with FPS Monitoring and Menu System
+M# Action System Integration
+try:
+    from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
+    from systems.hardware_input_adapter import create_hardware_input_adapter
+    ACTION_SYSTEM_AVAILABLE = True
+    print("✅ Action System verfügbar")
+except ImportError as e:
+    ACTION_SYSTEM_AVAILABLE = False
+    print("⚠️ Action System nicht verfügbar: {}".format(e)) File - Enhanced with FPS Monitoring and Menu System
 
 Hauptspiel-Datei mit erweitertem FPS-Tracking und vollständigem Menu-System.
 """
@@ -29,6 +37,20 @@ from save_system import save_manager
 from hotkey_display import HotkeyDisplay
 from input_system import init_universal_input
 
+# Action System Integration (Auskommentiert wegen Unicode-Problemen)
+# try:
+#     from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
+#     from systems.hardware_input_adapter import create_hardware_input_adapter
+#     ACTION_SYSTEM_AVAILABLE = True
+# except ImportError as e:
+#     ACTION_SYSTEM_AVAILABLE = False
+#     print("Action System nicht verfuegbar: {}".format(e))
+
+# Temporär deaktiviert
+ACTION_SYSTEM_AVAILABLE = False
+
+import os
+
 class Game:
     """
     Hauptspiel-Klasse mit erweiterten Performance-Monitoring und Menu-System.
@@ -44,6 +66,7 @@ class Game:
     
     def __init__(self):
         pygame.init()
+        pygame.font.init()  # Explizit font system initialisieren
         
         # 🚀 Task 4: Hardware-spezifische Audio-Initialisierung
         from config import DisplayConfig
@@ -53,8 +76,30 @@ class Game:
         self.optimized_settings = DisplayConfig.get_optimized_settings()
         
         # Universal Input System initialisieren
-        self.input_system = init_universal_input()
+        self.input_system = init_universal_input(use_action_system=ACTION_SYSTEM_AVAILABLE)
         self.input_system.print_control_scheme()
+        
+        # Action System initialisieren (falls verfügbar)
+        self.action_system = None
+        self.hardware_adapter = None
+        if ACTION_SYSTEM_AVAILABLE:
+            self.action_system = init_action_system()
+            
+            # Versuche Hardware Input Adapter zu erstellen
+            try:
+                from core.config import config
+                hardware_config = config.input.HARDWARE_CONFIG
+                self.hardware_adapter = create_hardware_input_adapter(
+                    port=hardware_config['port'],
+                    mock_mode=hardware_config['mock_mode']
+                )
+                if self.hardware_adapter:
+                    print("✅ Hardware Input Adapter aktiviert")
+                else:
+                    print("⚠️ Hardware Input Adapter nicht verfügbar - Fallback auf Tastatur/Gamepad")
+            except Exception as e:
+                print("Hardware Input Adapter Fehler: {}".format(e))
+                self.hardware_adapter = None
         
         # Initialize AssetManager
         self.asset_manager = AssetManager()
@@ -62,9 +107,17 @@ class Game:
         # 🚀 Nutze optimierte Auflösung basierend auf Hardware
         window_width = self.optimized_settings['WINDOW_WIDTH']
         window_height = self.optimized_settings['WINDOW_HEIGHT']
-        print("🚀 Display: {}x{} @ {} FPS".format(window_width, window_height, self.optimized_settings['FPS']))
+        use_fullscreen = self.optimized_settings.get('FULLSCREEN', False)
         
-        self.game_surface = pygame.display.set_mode((window_width, window_height))
+        print("🚀 Display: {}x{} @ {} FPS{}".format(
+            window_width, window_height, 
+            self.optimized_settings['FPS'],
+            " (Vollbild)" if use_fullscreen else ""
+        ))
+        
+        # Display-Modus basierend auf Hardware-Einstellungen
+        display_flags = pygame.FULLSCREEN if use_fullscreen else 0
+        self.game_surface = pygame.display.set_mode((window_width, window_height), display_flags)
         pygame.display.set_caption(GAME_TITLE)
         
         self.clock = pygame.time.Clock()
@@ -100,6 +153,40 @@ class Game:
         self.spell_cooldown_manager = SpellCooldownManager()
         self.element_mixer = ElementMixer(self.spell_cooldown_manager)
         print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
+        
+        # 🔌 Action System & Hardware Integration (Temporär deaktiviert)
+        # if ACTION_SYSTEM_AVAILABLE:
+        #     self.action_system = init_action_system()
+        #     self.hardware_adapter = None
+        #     
+        #     # Try to initialize hardware adapter
+        #     import os
+        #     enable_hardware = os.environ.get('ALCHEMIST_HW', '0') == '1'
+        #     
+        #     if enable_hardware:
+        #         print("🔌 Hardware-Modus aktiviert - versuche Hardware-Verbindung...")
+        #         self.hardware_adapter = create_hardware_input_adapter(
+        #             port='/dev/ttyUSB0', 
+        #             mock_mode=True  # Erstmal Mock-Mode für Tests
+        #         )
+        #         
+        #         if self.hardware_adapter:
+        #             print("✅ Hardware Input Adapter erfolgreich initialisiert")
+        #         else:
+        #             print("⚠️ Hardware Input Adapter konnte nicht initialisiert werden - Fallback zu Standard-Input")
+        #     else:
+        #         print("💡 Hardware-Modus deaktiviert (ALCHEMIST_HW=1 zum Aktivieren)")
+        #         
+        #     self.action_system.debug_enabled = False  # Debug-Ausgaben standardmäßig aus
+        # else:
+        self.action_system = None
+        self.hardware_adapter = None
+        
+        # Magic System Adapter für Action System (falls verfügbar)
+        self.magic_adapter = None
+        if ACTION_SYSTEM_AVAILABLE and self.action_system:
+            # Magic Adapter wird erst nach Level-Erstellung gesetzt
+            pass
         
         self.load_background_music()
         
@@ -223,6 +310,12 @@ class Game:
         # Set save callback for the level
         self.level.set_save_callback(self.save_current_game)
         
+        # Magic System Adapter für Action System (falls verfügbar)
+        # if ACTION_SYSTEM_AVAILABLE and self.action_system and self.level:
+        #     self.magic_adapter = MagicSystemAdapter(self.level)
+        #     self.action_system.set_magic_handler(self.magic_adapter)
+        #     print("✅ Magic System Adapter für Action System konfiguriert")
+        
         print("✅ Level geladen, Spiel bereit!")
     
     def restart_current_game(self):
@@ -251,6 +344,12 @@ class Game:
             
             # Set save callback for the level
             self.level.set_save_callback(self.save_current_game)
+            
+            # Magic System Adapter für Action System (falls verfügbar)
+            # if ACTION_SYSTEM_AVAILABLE and self.action_system and self.level:
+            #     self.magic_adapter = MagicSystemAdapter(self.level)
+            #     self.action_system.set_magic_handler(self.magic_adapter)
+            #     print("✅ Magic System Adapter für Action System konfiguriert")
             
             # Apply save data to game logic
             if save_manager.apply_save_data(self.level.game_logic, save_data):
@@ -406,6 +505,18 @@ class Game:
         # FPS-Monitor aktualisieren
         self.fps_monitor.update(current_fps, dt)
         
+        # Hardware Input Adapter Update (non-blocking)
+        if self.hardware_adapter:
+            self.hardware_adapter.update()
+        
+        # Input System Update
+        self.input_system.update()
+        
+        # Element Mixer Update (für Animationen)
+        self.element_mixer.update(dt)
+        if self.input_system:
+            self.input_system.update()
+        
         # Update message system
         self.update_message_system()
         
@@ -414,6 +525,10 @@ class Game:
             # Update menu system
             self.menu_system.update(dt)
         elif self.game_state == GameState.GAMEPLAY:
+            # Update hardware input adapter (falls verfügbar)
+            if self.hardware_adapter:
+                self.hardware_adapter.update()
+            
             # Update gameplay level
             if self.level:
                 result = self.level.update(dt)
