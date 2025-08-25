@@ -218,7 +218,7 @@ class Level:
         try:
             map_path = path.join(MAP_DIR, "Map3.tmx") # Verwende MAP_DIR aus settings
             
-            self.map_loader = MapLoader(map_path)
+            self.map_loader = MapLoader(map_path)https://github.com/Lambaga/Alchemist_SUI
             
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
