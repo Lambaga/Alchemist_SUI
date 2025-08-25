@@ -28,7 +28,7 @@ call .venv\Scripts\activate.bat
 
 REM Install or update dependencies
 echo Installing/updating dependencies...
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 if errorlevel 1 (
     echo ERROR: Failed to install dependencies
     pause
@@ -39,7 +39,7 @@ REM Run the game
 echo.
 echo Starting game...
 cd src
-python main.py
+python -m core.main
 
 REM Keep window open if there was an error
 if errorlevel 1 (

@@ -5,7 +5,9 @@ import serial
 import json
 import threading
 import time
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Optional
+from collections import deque
+import pygame
 
 class HardwareInterface:
     """
@@ -18,11 +20,20 @@ class HardwareInterface:
         self.mock_mode = mock_mode
         self.serial_connection = None
         self.is_connected = False
+        
+        # Message handling
         self.message_callbacks = {}
+        self.message_queue = deque()  # Thread-safe queue for incoming messages
         
         # Thread für kontinuierliches Lesen
         self.read_thread = None
         self.running = False
+        
+        # Hardware state tracking
+        self.last_joystick_vector = pygame.math.Vector2(0, 0)
+        self.button_states = {}  # Track button states for edge detection
+        self.last_heartbeat = 0
+        self.heartbeat_timeout = 3.0  # Seconds
         
         # Mock-Daten für Entwicklung ohne Hardware
         self.mock_tokens = {}
@@ -111,13 +122,115 @@ class HardwareInterface:
     def _handle_message(self, message: Dict[str, Any]):
         """Empfangene Nachricht verarbeiten"""
         message_type = message.get('type')
-        data = message.get('data', {})
         
-        print(f"📨 Empfangen: {message_type} - {data}")
+        # Add to queue for thread-safe processing
+        self.message_queue.append(message)
         
-        # Callback aufrufen falls registriert
+        if self.mock_mode and message_type != "PING":
+            print(f"📨 Hardware empfangen: {message_type} - {message}")
+        
+        # Handle different message types
+        if message_type == "BUTTON":
+            self._handle_button_message(message)
+        elif message_type == "JOYSTICK":
+            self._handle_joystick_message(message)
+        elif message_type == "HEARTBEAT":
+            self.last_heartbeat = time.time()
+        elif message_type == "PING":
+            # Respond to ping
+            self.send_message("PONG", {"fw": "pi_1.0"})
+        elif message_type == "STATUS":
+            print(f"📡 Hardware Status: {message.get('code', 'unknown')}")
+        
+        # Legacy callback system
         if message_type in self.message_callbacks:
+            data = message.get('data', message)  # Backward compatibility
             self.message_callbacks[message_type](data)
+    
+    def _handle_button_message(self, message: Dict[str, Any]):
+        """Handle BUTTON message type"""
+        button_id = message.get('id')
+        state = message.get('state', 0)
+        
+        if button_id:
+            # Track state for edge detection
+            old_state = self.button_states.get(button_id, 0)
+            self.button_states[button_id] = state
+            
+            # Only trigger callback on state change
+            if old_state != state:
+                # Map hardware button IDs to logical actions
+                button_map = {
+                    "FIRE": "magic_fire",
+                    "WATER": "magic_water", 
+                    "STONE": "magic_stone",
+                    "CAST": "cast_magic",
+                    "CLEAR": "clear_magic"
+                }
+                
+                action = button_map.get(button_id)
+                if action and "BUTTON_ACTION" in self.message_callbacks:
+                    self.message_callbacks["BUTTON_ACTION"]({
+                        "action": action,
+                        "pressed": bool(state),
+                        "button_id": button_id
+                    })
+    
+    def _handle_joystick_message(self, message: Dict[str, Any]):
+        """Handle JOYSTICK message type"""
+        x = message.get('x', 0.0)
+        y = message.get('y', 0.0)
+        
+        # Only process if significant change (delta > 0.05)
+        new_vector = pygame.math.Vector2(x, y)
+        delta = new_vector.distance_to(self.last_joystick_vector)
+        
+        if delta > 0.05:
+            self.last_joystick_vector = new_vector
+            
+            if "JOYSTICK_MOVE" in self.message_callbacks:
+                self.message_callbacks["JOYSTICK_MOVE"]({
+                    "x": x,
+                    "y": y,
+                    "vector": new_vector
+                })
+    
+    def poll_messages(self) -> int:
+        """
+        Poll and process queued messages (non-blocking)
+        Should be called once per frame from main thread
+        
+        Returns:
+            Number of messages processed
+        """
+        processed = 0
+        
+        # Process all queued messages
+        while self.message_queue:
+            try:
+                message = self.message_queue.popleft()
+                # Message already processed in _handle_message, just count
+                processed += 1
+            except IndexError:
+                break
+        
+        return processed
+    
+    def is_hardware_active(self) -> bool:
+        """Check if hardware is actively connected and responsive"""
+        if not self.is_connected:
+            return False
+        
+        # In mock mode, always active
+        if self.mock_mode:
+            return True
+        
+        # Check heartbeat timeout
+        return (time.time() - self.last_heartbeat) < self.heartbeat_timeout
+    
+    def get_joystick_vector(self) -> pygame.math.Vector2:
+        """Get current joystick vector"""
+        return self.last_joystick_vector.copy()
     
     # Hardware-spezifische Methoden
     def set_led_effect(self, effect_type: str, color: str = "blue"):
@@ -147,13 +260,44 @@ class HardwareInterface:
                     "token_id": token_id
                 })
     
-    def simulate_button_press(self, button_name: str = "brew"):
+    def simulate_button_press(self, button_id: str = "FIRE"):
         """Mock: Button-Press simulieren (nur für Entwicklung)"""
         if self.mock_mode:
-            if "BUTTON_PRESSED" in self.message_callbacks:
-                self.message_callbacks["BUTTON_PRESSED"]({
-                    "button": button_name
+            # Send press event
+            self._handle_message({
+                "type": "BUTTON",
+                "id": button_id,
+                "state": 1
+            })
+            
+            # Send release event after short delay (simulated in separate thread)
+            def delayed_release():
+                time.sleep(0.1)  # 100ms press duration
+                self._handle_message({
+                    "type": "BUTTON",
+                    "id": button_id,
+                    "state": 0
                 })
+            
+            thread = threading.Thread(target=delayed_release)
+            thread.daemon = True
+            thread.start()
+    
+    def simulate_joystick_move(self, x: float, y: float):
+        """Mock: Joystick-Bewegung simulieren"""
+        if self.mock_mode:
+            self._handle_message({
+                "type": "JOYSTICK",
+                "x": x,
+                "y": y
+            })
+    
+    def simulate_heartbeat(self):
+        """Mock: Heartbeat simulieren"""
+        if self.mock_mode:
+            self._handle_message({
+                "type": "HEARTBEAT"
+            })
 
 # Beispiel für Integration in das Spiel
 if __name__ == "__main__":

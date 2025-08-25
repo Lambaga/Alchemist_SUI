@@ -13,6 +13,7 @@ from settings import *
 from asset_manager import AssetManager
 from collision_optimizer import OptimizedCollisionSystem
 from combat_system import CombatEntity, DamageType
+from systems.magic_system import MagicSystem, ElementType
 
 class Player(pygame.sprite.Sprite, CombatEntity):
     """
@@ -98,6 +99,15 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         self.is_player_alive: bool = True
         self.last_attack_time: int = 0
         self.attack_cooldown: int = 1000  # 1 second attack cooldown
+        
+        # Mana System Attributes
+        self.max_mana: int = MANA_MAX
+        self.current_mana: int = self.max_mana
+        self.mana_regen_rate: int = MANA_REGEN_PER_SEC
+        
+        # Magic System Integration
+        self.magic_system: MagicSystem = MagicSystem()
+        self.mouse_pos: Tuple[int, int] = (0, 0)  # Für Zielrichtung
     
     def update_hitbox(self) -> None:
         """
@@ -211,7 +221,7 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         #         self.status = 'attack'
         #         self.current_frame_index = 0
 
-    def update(self, dt: Optional[float] = None) -> None:
+    def update(self, dt: Optional[float] = None, enemies: Optional[List[Any]] = None) -> None:
         """
         Aktualisiert den Zustand und die Animation des Spielers.
         
@@ -219,10 +229,12 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         1. Status-Bestimmung basierend auf Bewegung
         2. Animation-Fortschritt
         3. Sprite-Aktualisierung mit Orientierung
+        4. Magie-System Update
         
         Args:
             dt: Delta Time in Sekunden für framerate-unabhängige Animation.
                 Bei None wird Fallback zu 60 FPS verwendet.
+            enemies: Liste der Feinde für Magie-Kollisionserkennung
                 
         Note:
             Diese Methode sollte einmal pro Frame aufgerufen werden.
@@ -253,6 +265,12 @@ class Player(pygame.sprite.Sprite, CombatEntity):
                 old_center = self.rect.center
                 self.image = new_image
                 self.rect = self.image.get_rect(center=old_center)
+        
+        # 3. Magie-System updaten
+        self.magic_system.update(dt, enemies)
+        
+        # 4. Mana regenerieren
+        self.regen_mana(dt)
 
     def move(self, dt: float = 1.0/60.0) -> None:
         """
@@ -570,6 +588,11 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         """
         if not self.is_player_alive:
             return False
+        
+        # Prüfe Magie-Schild
+        if self.magic_system.is_shielded(self):
+            print("🛡️ Schaden durch Magie-Schild blockiert!")
+            return True
             
         self.current_health -= damage
         if self.current_health <= 0:
@@ -599,9 +622,10 @@ class Player(pygame.sprite.Sprite, CombatEntity):
     
     def revive(self) -> None:
         """
-        Wiederbelebt den Spieler mit voller Gesundheit.
+        Wiederbelebt den Spieler mit voller Gesundheit und Mana.
         """
         self.current_health = self.max_health
+        self.current_mana = self.max_mana
         self.is_player_alive = True
     
     def get_health_percentage(self) -> float:
@@ -612,3 +636,40 @@ class Player(pygame.sprite.Sprite, CombatEntity):
             float: Gesundheit als Prozentsatz (0.0 bis 1.0)
         """
         return self.current_health / self.max_health if self.max_health > 0 else 0.0
+    
+    # === MANA SYSTEM METHODS ===
+    
+    def spend_mana(self, amount: int) -> bool:
+        """
+        Versucht Mana auszugeben.
+        
+        Args:
+            amount: Menge des zu verbrauchenden Manas
+            
+        Returns:
+            bool: True wenn genug Mana vorhanden war und abgezogen wurde, False sonst
+        """
+        if self.current_mana >= amount:
+            self.current_mana -= amount
+            return True
+        return False
+    
+    def regen_mana(self, dt: float) -> None:
+        """
+        Regeneriert Mana über Zeit.
+        
+        Args:
+            dt: Delta-Zeit in Sekunden
+        """
+        if self.current_mana < self.max_mana:
+            mana_increase = self.mana_regen_rate * dt
+            self.current_mana = min(self.max_mana, self.current_mana + mana_increase)
+    
+    def get_mana_percentage(self) -> float:
+        """
+        Gibt den Mana-Prozentsatz zurück.
+        
+        Returns:
+            float: Mana als Prozentsatz (0.0 bis 1.0)
+        """
+        return self.current_mana / self.max_mana if self.max_mana > 0 else 0.0

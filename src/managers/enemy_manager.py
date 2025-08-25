@@ -5,14 +5,19 @@ import pygame
 from demon import Demon
 from fireworm import FireWorm
 import os
+from settings import ASSETS_DIR
 
 class EnemyManager:
     """Manages all enemies on the map"""
     
     def __init__(self):
         self.enemies = pygame.sprite.Group()
-        self.demon_asset_path = os.path.join("assets", "Demon Pack")
-        self.fireworm_asset_path = os.path.join("assets", "fireWorm")
+        self.demon_asset_path = os.path.join(ASSETS_DIR, "Demon Pack")
+        self.fireworm_asset_path = os.path.join(ASSETS_DIR, "fireWorm")
+        
+        print(f"🔧 ENEMY MANAGER DEBUG:")
+        print(f"   Demon path: {self.demon_asset_path} (exists: {os.path.exists(self.demon_asset_path)})")
+        print(f"   FireWorm path: {self.fireworm_asset_path} (exists: {os.path.exists(self.fireworm_asset_path)})")
         
     def add_demon(self, x, y, scale=1.0, facing_right=True):
         """Add a demon at specified position"""
@@ -176,14 +181,4 @@ class EnemyManager:
         """Setzt alle Feinde zurück (für Game Over / Neustart)"""
         # Alle aktuellen Feinde entfernen
         self.enemies.empty()
-        
-        # Hier könnten wir Feinde neu spawnen oder zu ursprünglichen Positionen zurücksetzen
-        # Für jetzt lassen wir es leer - Feinde werden beim Level-Neustart neu erstellt
         print("🔄 Alle Feinde zurückgesetzt")
-    
-    def respawn_default_enemies(self):
-        """Spawnt Standard-Feinde für Tests"""
-        self.add_demon(800, 400, scale=0.8, facing_right=False)
-        self.add_demon(1200, 300, scale=0.9, facing_right=True)
-        self.add_fireworm(960, 400, scale=1.0, facing_right=False)
-        print("🐉 3 Test-Feinde gespawnt")

@@ -11,9 +11,9 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Check if virtual environment exists
-if [ ! -d "venv" ]; then
+if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv venv
+    python3 -m venv .venv
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to create virtual environment"
         exit 1
@@ -22,11 +22,11 @@ fi
 
 # Activate virtual environment
 echo "Activating virtual environment..."
-source venv/bin/activate
+source .venv/bin/activate
 
 # Install or update dependencies
 echo "Installing/updating dependencies..."
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 if [ $? -ne 0 ]; then
     echo "ERROR: Failed to install dependencies"
     exit 1
@@ -36,7 +36,7 @@ fi
 echo
 echo "Starting game..."
 cd src
-python main.py
+python3 -m core.main
 
 # Check if game exited with error
 if [ $? -ne 0 ]; then

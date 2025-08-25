@@ -22,8 +22,10 @@ class Demon(Enemy):
         super().__init__(asset_path, pos_x, pos_y, scale_factor)
         
         # Demon specific properties (override parent values)
+        self.max_health = 200  # Erhöhte Health
+        self.current_health = self.max_health  # Vollständige Health beim Start
         self.speed = 100  # Pixel per second
-        self.detection_range = 15 * 64  # 15 tiles * 64 pixels per tile = 960 pixels
+        self.detection_range = 8 * 64  # 8 tiles * 64 pixels per tile = 512 pixels (verkürzt von 15)
         
         # Animation specific to demon
         self.animation_speed_ms = 300  # Slower animation for demons
@@ -79,7 +81,19 @@ class Demon(Enemy):
         if not player:
             return
             
-        # AI Logic: Check for player in detection range
+        # Prüfe ob Spieler unsichtbar ist
+        player_invisible = False
+        if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
+            player_invisible = True
+            # Unsichtbarer Spieler wird nicht verfolgt - stoppe Verfolgung
+            if self.target_player is not None:
+                self.state = "idle"
+                self.target_player = None
+                self.direction = pygame.math.Vector2(0, 0)
+                print(f"👹 Demon verliert unsichtbaren Spieler aus den Augen!")
+            return  # Früher Exit - keine weitere KI wenn Spieler unsichtbar
+            
+        # AI Logic: Check for player in detection range (nur wenn nicht unsichtbar)
         if self.target_player is None:
             distance_to_player = pygame.math.Vector2(
                 player.rect.centerx - self.rect.centerx,
@@ -89,6 +103,15 @@ class Demon(Enemy):
             if distance_to_player <= self.detection_range:
                 self.target_player = player
                 self.state = "chasing"
+                # Debug nur gelegentlich anzeigen um Spam zu vermeiden
+                if hasattr(self, '_last_debug_time'):
+                    current_time = pygame.time.get_ticks()
+                    if current_time - self._last_debug_time > 3000:  # Alle 3 Sekunden
+                        print(f"👹 Demon verfolgt Spieler - Distanz: {distance_to_player:.0f}")
+                        self._last_debug_time = current_time
+                else:
+                    self._last_debug_time = pygame.time.get_ticks()
+                    print(f"👹 Demon startet Verfolgung - Distanz: {distance_to_player:.0f}")
         
         # Movement AI
         if self.state == "chasing" and self.target_player:
@@ -99,10 +122,12 @@ class Demon(Enemy):
             )
             
             # Check if still in range
-            if direction_to_player.length() > self.detection_range * 1.5:  # Stop chasing if too far
+            if direction_to_player.length() > self.detection_range * 1.2:  # Stop chasing if too far
                 self.state = "idle"
                 self.target_player = None
                 self.direction = pygame.math.Vector2(0, 0)
+                # Debug nur gelegentlich anzeigen
+                print(f"👹 Demon stoppt Verfolgung - zu weit: {direction_to_player.length():.0f}")
             else:
                 # Normalize and move towards player
                 if direction_to_player.length() > 0:

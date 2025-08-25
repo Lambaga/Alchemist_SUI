@@ -2,26 +2,54 @@
 """
 Hotkey Display System for Der Alchemist
 Shows all available hotkeys in the top-left corner of the game
+Adaptive for different screen sizes including 7-inch displays
 """
 
 import pygame
 from typing import List, Tuple
 
+# Import configuration
+try:
+    from core.config import config
+except ImportError:
+    try:
+        from ..core.config import config
+    except ImportError:
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+        from core.config import config
+
 class HotkeyDisplay:
-    """Display system for showing game hotkeys"""
+    """Display system for showing game hotkeys with 7-inch display optimization"""
     
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
         self.visible = True
-        self.font_title = pygame.font.Font(None, 28)
-        self.font_hotkey = pygame.font.Font(None, 24)
-        self.font_small = pygame.font.Font(None, 20)
+        
+        # Get UI settings for adaptive sizing
+        ui_settings = config.ui.get_ui_settings()
+        display_settings = config.display.get_optimized_settings()
+        
+        # Adaptive font sizes based on screen size
+        if display_settings.get('HOTKEY_DISPLAY_COMPACT', False):
+            # 7-Zoll kompakte Anzeige
+            self.font_title = pygame.font.Font(None, int(24 * ui_settings['UI_SCALE']))
+            self.font_hotkey = pygame.font.Font(None, int(20 * ui_settings['UI_SCALE']))
+            self.font_small = pygame.font.Font(None, int(16 * ui_settings['UI_SCALE']))
+            self.line_height = ui_settings['HOTKEY_LINE_HEIGHT']
+            self.padding = ui_settings['HOTKEY_PADDING']
+        else:
+            # Standard Anzeige
+            self.font_title = pygame.font.Font(None, 28)
+            self.font_hotkey = pygame.font.Font(None, 24)
+            self.font_small = pygame.font.Font(None, 20)
+            self.line_height = 20
+            self.padding = 8
         
         # Position and styling - Rechte Seite des Bildschirms
         self.x = 0  # Wird in calculate_dimensions gesetzt
         self.y = 10
-        self.line_height = 20
-        self.padding = 8
         self.bg_alpha = 180
         
         # Colors
@@ -39,32 +67,72 @@ class HotkeyDisplay:
         self.calculate_dimensions()
     
     def get_hotkey_data(self) -> List[Tuple[str, str, str]]:
-        """Get all hotkey data organized by category"""
-        return [
-            # Category, Key, Description
-            ("STEUERUNG", "", ""),
-            ("", "W A S D", "Bewegung"),
-            ("", "Maus", "Blickrichtung"),
-            ("", "Linksklick", "Feuerball"),
-            ("", "Leertaste", "Angriff"),
-            ("", "", ""),
-            
-            ("INTERFACE", "", ""),
-            ("", "ESC", "Pause-Menü"),
-            ("", "Tab", "Inventar"),
-            ("", "H", "Hotkeys ein/aus"),
-            ("", "", ""),
-            
-            ("SPEICHERN", "", ""),
-            ("", "F9-F12", "Slots 1-4"),
-            ("", "", ""),
-            
-            ("DEBUG", "", ""),
-            ("", "F3", "FPS ein/aus"),
-            ("", "F4", "FPS-Details"),
-            ("", "F5", "Reset Stats"),
-            ("", "F6", "Performance"),
-        ]
+        """Get all hotkey data organized by category with 7-inch optimization"""
+        ui_settings = config.ui.get_ui_settings()
+        
+        # Kompakte Version für 7-Zoll Displays
+        if ui_settings.get('HOTKEY_DISPLAY_COMPACT', False):
+            return [
+                # Category, Key, Description
+                ("STEUERUNG", "", ""),
+                ("", "WASD", "Bewegen"),
+                ("", "Maus", "Zielen"),
+                ("", "Space", "Angriff"),
+                ("", "", ""),
+                
+                ("MAGIC", "", ""),
+                ("", "1-3", "Elemente"),
+                ("", "1-6", "Zauber"),
+                ("", "", ""),
+                
+                ("SYSTEM", "", ""),
+                ("", "ESC", "Menü"),
+                ("", "H", "Hotkeys"),
+                ("", "F3", "FPS"),
+                ("", "F9-12", "Speichern"),
+            ]
+        else:
+            # Standard vollständige Anzeige
+            return [
+                # Category, Key, Description
+                ("STEUERUNG", "", ""),
+                ("", "W A S D", "Bewegung"),
+                ("", "Maus", "Blickrichtung"),
+                ("", "Linksklick", "Feuerball"),
+                ("", "Leertaste", "Angriff"),
+                ("", "", ""),
+                
+                ("MAGIE", "", ""),
+                ("", "1", "Wasser wählen"),
+                ("", "2", "Feuer wählen"),
+                ("", "3", "Stein wählen"),
+                ("", "1-6", "Zauber wirken"),
+                ("", "Backspace", "Elemente löschen"),
+                ("", "", ""),
+                
+                ("INTERFACE", "", ""),
+                ("", "ESC", "Pause-Menü"),
+                ("", "Tab", "Inventar"),
+                ("", "H", "Hotkeys ein/aus"),
+                ("", "M", "Musik ein/aus"),
+                ("", "+/-", "Zoom"),
+                ("", "", ""),
+                
+                ("SPEICHERN", "", ""),
+                ("", "F9-F12", "Speicher-Slots 1-4"),
+                ("", "Shift+F9-F12", "Slots löschen"),
+                ("", "", ""),
+                
+                ("DEBUG", "", ""),
+                ("", "F1", "Kollision"),
+                ("", "F2", "Health Bars"),
+                ("", "F3", "FPS ein/aus"),
+                ("", "F4", "FPS-Details"),
+                ("", "F5", "Reset Stats"),
+                ("", "F6", "Performance"),
+                ("", "F7", "Magic Test"),
+                ("", "F8", "Heal Test"),
+            ]
     
     def calculate_dimensions(self):
         """Calculate the display dimensions based on content"""

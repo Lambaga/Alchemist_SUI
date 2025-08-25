@@ -9,9 +9,10 @@ from camera import Camera
 from map_loader import MapLoader
 from enemy_manager import EnemyManager
 from health_bar_py27 import HealthBarManager, create_player_health_bar, create_enemy_health_bar
+from input_system import get_input_system
 
 class GameRenderer:
-    """Rendering-System für das Level"""
+    """🚀 Task 6: Rendering-System mit Alpha/Transparenz-Optimierung"""
     
     def __init__(self, screen):
         self.screen = screen
@@ -23,15 +24,22 @@ class GameRenderer:
         from asset_manager import AssetManager
         self.asset_manager = AssetManager()
         
+        # 🚀 Task 6: Alpha-Caching für transparente Effekte (Performance-Optimierung)
+        self._alpha_cache = {}  # Cache für transparente Surfaces
+        self._max_alpha_cache_size = 50  # Begrenzt Memory-Verbrauch
+        
     def generate_ground_stones(self):
-        """Generiert zufällige Steine für den Boden"""
+        """🚀 Task 5: Generiert zufällige Steine - Multi-Resolution-kompatibel"""
         import random
         self.stones = []
-        world_width = SCREEN_WIDTH * 3
+        # 🚀 Task 5: Dynamische Screen-Größen
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+        world_width = screen_width * 3
         
         for _ in range(200):
             x = random.randint(-world_width // 2, world_width // 2)
-            y = random.randint(SCREEN_HEIGHT - 200 + 10, SCREEN_HEIGHT - 20)
+            y = random.randint(screen_height - 200 + 10, screen_height - 20)
             size = random.randint(3, 12)
             gray = random.randint(80, 140)
             color = (gray, gray, gray)
@@ -40,26 +48,63 @@ class GameRenderer:
                 'x': x, 'y': y, 'size': size, 'color': color
             })
     
+    def _get_cached_transparent_sprite(self, original_surface, alpha_value, size):
+        """🚀 Task 6: Erstellt gecachte transparente Sprite-Versionen für bessere Performance"""
+        cache_key = (id(original_surface), alpha_value, size)
+        
+        # Cache-Hit: Bereits erstellte transparente Version zurückgeben
+        if cache_key in self._alpha_cache:
+            return self._alpha_cache[cache_key]
+        
+        # Cache-Miss: Neue transparente Version erstellen
+        if len(self._alpha_cache) >= self._max_alpha_cache_size:
+            # Ältesten Cache-Eintrag entfernen (einfaches FIFO)
+            oldest_key = next(iter(self._alpha_cache))
+            del self._alpha_cache[oldest_key]
+        
+        # Skaliere erst das Original (mit vorhandenem Cache)
+        scaled_image = self.asset_manager.get_scaled_sprite(original_surface, size)
+        
+        # Erstelle transparente Version
+        transparent_surface = pygame.Surface(size, pygame.SRCALPHA)
+        transparent_surface.blit(scaled_image, (0, 0))
+        transparent_surface.set_alpha(alpha_value)
+        
+        # Cache die transparente Version
+        self._alpha_cache[cache_key] = transparent_surface
+        return transparent_surface
+    
+    def get_alpha_cache_info(self):
+        """🚀 Task 6: Debug-Info für Alpha-Cache"""
+        return {
+            'size': len(self._alpha_cache),
+            'max_size': self._max_alpha_cache_size,
+            'memory_usage': len(self._alpha_cache) * 50  # Geschätzt KB pro Entry
+        }
+    
     def draw_background(self, map_loader=None, camera=None):
-        """Zeichnet den Hintergrund"""
+        """🚀 Task 5: Zeichnet den Hintergrund - Multi-Resolution-kompatibel"""
         if map_loader and camera and map_loader.tmx_data:
             self.screen.fill((0, 0, 0))  # Schwarzer Hintergrund für besseren Kontrast
             map_loader.render(self.screen, camera)
         else:
             self.screen.fill(BACKGROUND_COLOR)
-            # Standard-Hintergrund mit Boden und Bäumen
-            tree_rect = pygame.Rect(0, SCREEN_HEIGHT - 400, SCREEN_WIDTH, 200)
+            # 🚀 Task 5: Standard-Hintergrund mit dynamischen Größen
+            screen_width = self.screen.get_width()
+            screen_height = self.screen.get_height()
+            tree_rect = pygame.Rect(0, screen_height - 400, screen_width, 200)
             pygame.draw.rect(self.screen, (34, 139, 34), tree_rect)
-            ground_rect = pygame.Rect(0, SCREEN_HEIGHT - 200, SCREEN_WIDTH, 200)
+            ground_rect = pygame.Rect(0, screen_height - 200, screen_width, 200)
             pygame.draw.rect(self.screen, (139, 69, 19), ground_rect)
     
     def draw_ground_stones(self, camera):
-        """Zeichnet Steine mit Kamera-Transformation"""
+        """🚀 Task 5: Zeichnet Steine mit Kamera-Transformation - Multi-Resolution"""
+        screen_width = self.screen.get_width()  # 🚀 Task 5: Dynamische Screen-Breite
         for stone in self.stones:
             stone_rect = pygame.Rect(stone['x'], stone['y'], stone['size'], stone['size'])
             stone_pos = camera.apply_rect(stone_rect)
             
-            if -50 < stone_pos.x < SCREEN_WIDTH + 50:
+            if -50 < stone_pos.x < screen_width + 50:
                 scaled_size = int(stone['size'] * camera.zoom_factor)
                 pygame.draw.circle(self.screen, stone['color'], 
                                  (int(stone_pos.x + scaled_size//2), 
@@ -67,21 +112,62 @@ class GameRenderer:
                                  max(1, scaled_size//2))
     
     def draw_player(self, player, camera):
-        """Zeichnet den Spieler mit Kamera und Zoom - Performance-optimiert"""
-        if hasattr(player, 'image') and player.image:
-            player_pos = camera.apply(player)  # Gibt bereits skaliertes Rect zurück
-            # Performance-Optimierung: Nutze gecachte Skalierung statt jedes Mal neu zu skalieren
-            scaled_image = self.asset_manager.get_scaled_sprite(
-                player.image, 
-                (player_pos.width, player_pos.height)
-            )
-            self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
+        """🚀 Task 6: Zeichnet den Spieler - Alpha-optimiert für bessere Performance"""
+        # Prüfe Unsichtbarkeit
+        if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
+            # 🚀 Task 6: Nutze Alpha-Cache für unsichtbare Spieler
+            if hasattr(player, 'image') and player.image:
+                player_pos = camera.apply(player)
+                # Nutze optimierte Alpha-Caching statt per-Frame Surface-Erstellung
+                transparent_sprite = self._get_cached_transparent_sprite(
+                    player.image, 80, (player_pos.width, player_pos.height)
+                )
+                self.screen.blit(transparent_sprite, (player_pos.x, player_pos.y))
+            else:
+                # 🚀 Task 6: Transparenter Fallback mit Alpha-Cache-Pattern
+                player_pos = camera.apply(player)
+                # Erstelle einfachen transparenten Rechteck-Cache (für Fallback)
+                fallback_key = ('fallback_transparent_rect', player_pos.width, player_pos.height, 80)
+                if fallback_key not in self._alpha_cache:
+                    transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
+                    pygame.draw.rect(transparent_surface, (255, 255, 0, 80), (0, 0, player_pos.width, player_pos.height))
+                    self._alpha_cache[fallback_key] = transparent_surface
+                self.screen.blit(self._alpha_cache[fallback_key], (player_pos.x, player_pos.y))
         else:
-            # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
-            player_pos = camera.apply(player)
-            pygame.draw.rect(self.screen, (255, 255, 0), player_pos)  # Gelb statt grün
-            # Zusätzlicher Rahmen für noch bessere Sichtbarkeit
-            pygame.draw.rect(self.screen, (255, 255, 255), player_pos, 3)
+            # Normale Darstellung
+            if hasattr(player, 'image') and player.image:
+                player_pos = camera.apply(player)  # Gibt bereits skaliertes Rect zurück
+                # Performance-Optimierung: Nutze gecachte Skalierung statt jedes Mal neu zu skalieren
+                scaled_image = self.asset_manager.get_scaled_sprite(
+                    player.image, 
+                    (player_pos.width, player_pos.height)
+                )
+                self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
+                
+                # 🚀 Task 6: Schild-Effekt mit Low-Effects-Mode (RPi4-Optimierung)
+                if hasattr(player, 'magic_system') and player.magic_system.is_shielded(player):
+                    from config import DisplayConfig
+                    settings = DisplayConfig.get_optimized_settings()
+                    
+                    if settings.get('LOW_EFFECTS', False):
+                        # 🚀 RPi4: Einfacher Schild-Kreis ohne Animation
+                        shield_center = (player_pos.centerx, player_pos.centery)
+                        pygame.draw.circle(self.screen, (100, 150, 255), shield_center, 
+                                         int(player_pos.width // 2 + 10), 3)
+                    else:
+                        # PC: Animierter Schild mit Pulsierender Effekt
+                        import math
+                        shield_center = (player_pos.centerx, player_pos.centery)
+                        current_time = pygame.time.get_ticks()
+                        pulse = abs(math.sin(current_time * 0.01)) * 10 + 5
+                        pygame.draw.circle(self.screen, (100, 150, 255), shield_center, 
+                                         int(player_pos.width // 2 + pulse), 3)
+            else:
+                # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
+                player_pos = camera.apply(player)
+                pygame.draw.rect(self.screen, (255, 255, 0), player_pos)  # Gelb statt grün
+                # Zusätzlicher Rahmen für noch bessere Sichtbarkeit
+                pygame.draw.rect(self.screen, (255, 255, 255), player_pos, 3)
     
     def draw_collision_debug(self, player, camera, collision_objects):
         """Zeichnet Kollisionsboxen für Debugging"""
@@ -97,7 +183,7 @@ class GameRenderer:
     def draw_ui(self, game_logic):
         """Zeichnet die Benutzeroberfläche"""
         # UI-Hintergrund
-        ui_rect = pygame.Rect(20, 20, 600, 250)
+        ui_rect = pygame.Rect(20, 20, 600, 320)  # Größer für Magie-Anzeige
         pygame.draw.rect(self.screen, UI_BACKGROUND, ui_rect)
         pygame.draw.rect(self.screen, TEXT_COLOR, ui_rect, 3)
         
@@ -135,6 +221,11 @@ class GameRenderer:
         
         y_offset += 70
         
+        # Magie-System UI (falls Player verfügbar)
+        if hasattr(game_logic, 'player') and game_logic.player:
+            self.draw_magic_ui(game_logic.player, 40, y_offset)
+            y_offset += 80
+        
         # Letztes Brau-Ergebnis
         result_lines = game_logic.last_brew_result.split('\n')
         for line in result_lines:
@@ -157,32 +248,105 @@ class GameRenderer:
         self.screen.blit(map_surface, (40, y_offset))
     
     def draw_controls(self):
-        """Zeichnet die Steuerungshinweise"""
+        """🚀 Task 5: Zeichnet die Steuerungshinweise - Multi-Resolution-optimiert"""
         controls = [
             "🎮 STEUERUNG:",
             "← → ↑ ↓ / WASD Bewegung",
-            "1,2,3 Zutaten sammeln", 
+            "1,2,3 Magic-Elemente", 
             "Leertaste: Brauen",
             "Backspace: Zutat entfernen",
-            "R: Reset",
-            "M: Musik ein/aus",
+            "🔮 MAGIE:",
+            "1: Wasser, 2: Feuer, 3: Stein",
+            "C: Zaubern, X: Elemente löschen",
+            "R: Reset, M: Musik ein/aus",
             "F1: Kollisions-Debug",
             "F2: Health-Bars ein/aus",
+            "💾 SPEICHERN:",
             "F9-F12: Speichern (Slot 1-4)",
+            "Shift+F9-F12: Löschen (Slot 1-4)",
             "ESC: Zurück zum Menü"
         ]
         
-        start_y = SCREEN_HEIGHT - 325  # Etwas nach oben wegen zusätzlicher Zeile
+        # 🚀 Task 5: Dynamische Screen-Größen statt Konstanten
+        screen_height = self.screen.get_height()
+        screen_width = self.screen.get_width()
+        start_y = screen_height - 380  # Mehr Platz für zusätzliche Zeilen
         for i, control in enumerate(controls):
             color = TEXT_COLOR if i > 0 else (255, 255, 0)
+            # Magie-Titel hervorheben
+            if control.startswith("🔮"):
+                color = (150, 255, 255)
+            # Speicher-Titel hervorheben
+            elif control.startswith("💾"):
+                color = (255, 200, 100)
             control_surface = self.small_font.render(control, True, color)
-            self.screen.blit(control_surface, (SCREEN_WIDTH - 350, start_y + i * 25))
+            self.screen.blit(control_surface, (screen_width - 350, start_y + i * 23))
+    
+    def draw_magic_ui(self, player, x, y):
+        """Zeichnet die Magie-System UI mit Mana-Anzeige"""
+        magic_system = player.magic_system
+        
+        # Titel
+        magic_title = self.small_font.render("🔮 Magie:", True, (150, 255, 255))
+        self.screen.blit(magic_title, (x, y))
+        
+        # Ausgewählte Elemente
+        if magic_system.selected_elements:
+            elements_text = f"Elemente: {magic_system.get_selected_elements_str()}"
+        else:
+            elements_text = "Elemente: Keine ausgewählt"
+            
+        elements_surface = self.small_font.render(elements_text, True, TEXT_COLOR)
+        self.screen.blit(elements_surface, (x, y + 25))
+        
+        # Element-Symbole zeichnen
+        element_colors = {
+            "feuer": (255, 100, 0),
+            "wasser": (0, 150, 255), 
+            "stein": (139, 69, 19)
+        }
+        
+        start_x = x + 200
+        for i, element in enumerate(magic_system.selected_elements):
+            color = element_colors.get(element.value, (200, 200, 200))
+            rect_x = start_x + i * 35
+            pygame.draw.circle(self.screen, color, (rect_x + 12, y + 35), 12)
+            # Element-Symbol
+            symbol = {"feuer": "🔥", "wasser": "💧", "stein": "🗿"}.get(element.value, "?")
+            # Kleiner Text für Symbole (falls Font verfügbar)
+            try:
+                symbol_surface = self.small_font.render(symbol, True, (255, 255, 255))
+                symbol_rect = symbol_surface.get_rect(center=(rect_x + 12, y + 35))
+                self.screen.blit(symbol_surface, symbol_rect)
+            except:
+                # Fallback: Einfache Farbe
+                pass
+        
+        # Mana-Anzeige
+        mana_text = f"Mana: {int(player.current_mana)}/{player.max_mana}"
+        mana_surface = self.small_font.render(mana_text, True, (100, 100, 255))
+        self.screen.blit(mana_surface, (x, y + 60))
+        
+        # Mana-Balken
+        bar_width = 120
+        bar_height = 8
+        bar_x = x + 120
+        bar_y = y + 65
+        
+        # Hintergrund (schwarz)
+        pygame.draw.rect(self.screen, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        
+        # Mana-Füllstand (blau)
+        fill_width = int(bar_width * player.get_mana_percentage())
+        if fill_width > 0:
+            pygame.draw.rect(self.screen, (50, 150, 255), (bar_x, bar_y, fill_width, bar_height))
 
 class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
     
-    def __init__(self, screen):
+    def __init__(self, screen, main_game=None):
         self.screen = screen  # Verwende die übergebene Surface
+        self.main_game = main_game  # Reference to main game for spell bar access
         self.game_logic = GameLogic()
         # Referenz für UI-Status-Anzeige
         self.game_logic._level_ref = self
@@ -207,7 +371,10 @@ class Level:
         # Health-Bars für alle Entitäten hinzufügen
         self.setup_health_bars()
         
-        # Input-Status
+        # Input-System initialisieren
+        self.input_system = get_input_system()
+        
+        # Input-Status (wird jetzt vom Universal Input System verwaltet)
         self.keys_pressed = {'left': False, 'right': False, 'up': False, 'down': False}
         
         # Debug-Optionen
@@ -299,6 +466,19 @@ class Level:
                 self.game_logic.player.rect.centery = self.screen.get_height() // 4  # Oberes Viertel
                 self.game_logic.player.update_hitbox()
     
+    def respawn_enemies_only(self):
+        """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
+        if not self.map_loader or not self.map_loader.tmx_data:
+            return
+        
+        # Demons aus der Map spawnen
+        self.enemy_manager.add_enemies_from_map(self.map_loader)
+        
+        # FALLBACK: Falls keine Gegner aus Map geladen wurden
+        if len(self.enemy_manager.enemies) == 0:
+            print("⚠️ Keine Gegner aus Map geladen - verwende Test-Gegner")
+            self.enemy_manager.respawn_default_enemies()
+    
     def setup_collision_objects(self):
         """Setzt die Kollisionsobjekte für den Player (einmalig)"""
         if self.use_map and self.map_loader and self.map_loader.collision_objects:
@@ -342,13 +522,25 @@ class Level:
     def add_enemy_health_bar(self, enemy):
         """Fügt eine Health-Bar für einen neuen Feind hinzu"""
         try:
+            # Größere Health-Bars für Gegner mit mehr HP
+            if hasattr(enemy, 'max_health') and enemy.max_health >= 200:
+                # Größere Health-Bar für stärkere Gegner
+                width = 80
+                height = 10
+                offset_y = -30
+            else:
+                # Normale Größe für schwächere Gegner
+                width = 60
+                height = 8
+                offset_y = -25
+                
             enemy_health_bar = create_enemy_health_bar(
                 enemy,
-                width=60,
-                height=8,
-                offset_y=-25,
-                show_when_full=False,  # Nur bei Schaden sichtbar
-                fade_delay=2.5
+                width=width,
+                height=height,
+                offset_y=offset_y,
+                show_when_full=True,  # Immer sichtbar für bessere Übersicht
+                fade_delay=3.0  # Länger sichtbar
             )
             self.health_bar_manager.add_entity(
                 enemy, 
@@ -359,45 +551,70 @@ class Level:
                 show_when_full=enemy_health_bar.show_when_full,
                 fade_delay=enemy_health_bar.fade_delay
             )
-            print(f"✅ Health-Bar für {type(enemy).__name__} hinzugefügt")
+            print(f"✅ Health-Bar für {type(enemy).__name__} hinzugefügt (HP: {enemy.max_health})")
         except Exception as e:
             print(f"⚠️ Fehler beim Hinzufügen der Enemy Health-Bar: {e}")
     
     def handle_event(self, event):
-        """Behandelt Input-Events"""
-        if event.type == pygame.KEYDOWN:
-            # Bewegung starten
-            for direction, keys in MOVEMENT_KEYS.items():
-                if event.key in keys:
-                    self.keys_pressed[direction] = True
-            
-            # Aktionen
-            if event.key == ACTION_KEYS['brew']:
+        """Behandelt Input-Events - Erweitert für Joystick-Support"""
+        # Universal Input System für Actions verwenden
+        action = self.input_system.handle_event(event)
+        
+        if action:
+            # Action-Mapping
+            if action == 'brew':
                 self.game_logic.brew()
-            elif event.key == ACTION_KEYS['remove_ingredient']:
+            elif action == 'remove_ingredient':
                 self.game_logic.remove_last_zutat()
-            elif event.key == ACTION_KEYS['reset']:
+            elif action == 'reset':
                 self.game_logic.reset_game()
-            elif event.key == ACTION_KEYS['music_toggle']:
+            elif action == 'music_toggle':
                 self.toggle_music()
+            elif action == 'pause':
+                # Pause wird vom Main Game gehandhabt
+                pass
+            elif action == 'ingredient_1':
+                # 1 = Wasser-Element für Magie
+                self.handle_magic_element('water')
+            elif action == 'ingredient_2':
+                # 2 = Feuer-Element für Magie
+                self.handle_magic_element('fire')
+            elif action == 'ingredient_3':
+                # 3 = Stein-Element für Magie
+                self.handle_magic_element('stone')
+            # Magie-System Actions
+            elif action == 'cast_magic':
+                self.handle_cast_magic()
+            elif action == 'clear_magic':
+                self.handle_clear_magic()
+        
+        # Traditionelle Tastatur-Events für Kompatibilität
+        if event.type == pygame.KEYDOWN:
+            # Check for Shift modifier
+            keys_pressed = pygame.key.get_pressed()
+            shift_pressed = keys_pressed[pygame.K_LSHIFT] or keys_pressed[pygame.K_RSHIFT]
             
             # Save game shortcuts (F9 - F12 for save slots)
-            elif event.key == pygame.K_F9:
-                self.trigger_save_game(1)
+            if event.key == pygame.K_F9:
+                if shift_pressed:
+                    self.trigger_delete_save(1)
+                else:
+                    self.trigger_save_game(1)
             elif event.key == pygame.K_F10:
-                self.trigger_save_game(2)
+                if shift_pressed:
+                    self.trigger_delete_save(2)
+                else:
+                    self.trigger_save_game(2)
             elif event.key == pygame.K_F11:
-                self.trigger_save_game(3)
+                if shift_pressed:
+                    self.trigger_delete_save(3)
+                else:
+                    self.trigger_save_game(3)
             elif event.key == pygame.K_F12:
-                self.trigger_save_game(4)
-            
-            # Test-Zutaten
-            elif event.key == pygame.K_1:
-                self.game_logic.add_zutat("wasserkristall")
-            elif event.key == pygame.K_2:
-                self.game_logic.add_zutat("feueressenz")
-            elif event.key == pygame.K_3:
-                self.game_logic.add_zutat("erdkristall")
+                if shift_pressed:
+                    self.trigger_delete_save(4)
+                else:
+                    self.trigger_save_game(4)
             
             # Debug-Toggle
             elif event.key == pygame.K_F1:
@@ -405,12 +622,22 @@ class Level:
             elif event.key == pygame.K_F2:
                 # Toggle Health-Bars ein/aus
                 self.toggle_health_bars()
-        
-        elif event.type == pygame.KEYUP:
-            # Bewegung stoppen
-            for direction, keys in MOVEMENT_KEYS.items():
-                if event.key in keys:
-                    self.keys_pressed[direction] = False
+            # DIREKTER MAGIC-TEST
+            elif event.key == pygame.K_h:  # H für direkten Heilungstest
+                if self.game_logic and self.game_logic.player:
+                    player = self.game_logic.player
+                    # Schaden zum Test
+                    player.current_health = max(1, player.current_health - 20)
+                    # Direkte Heilung
+                    player.current_health = min(player.max_health, player.current_health + 50)
+            elif event.key == pygame.K_t:  # T für Test Magie
+                if self.game_logic and self.game_logic.player:
+                    from systems.magic_system import ElementType
+                    magic_system = self.game_logic.player.magic_system
+                    magic_system.clear_elements()
+                    magic_system.add_element(ElementType.FEUER)
+                    magic_system.add_element(ElementType.WASSER)
+                    magic_system.cast_magic(self.game_logic.player)
     
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
@@ -426,6 +653,30 @@ class Level:
             self._save_callback(slot_number)
         else:
             print(f"💾 Speichere Spiel in Slot {slot_number}...")
+    
+    def trigger_delete_save(self, slot_number: int):
+        """Trigger delete save event"""
+        from managers.save_system import save_manager
+        
+        # Check if save exists
+        save_slots = save_manager.get_save_slots_info()
+        slot_exists = False
+        slot_name = f"Slot {slot_number}"
+        
+        for slot in save_slots:
+            if slot["slot"] == slot_number and slot["exists"]:
+                slot_exists = True
+                slot_name = slot["name"]
+                break
+        
+        if slot_exists:
+            # Delete the save
+            if save_manager.delete_save(slot_number):
+                print(f"🗑️ Spielstand '{slot_name}' (Slot {slot_number}) gelöscht!")
+            else:
+                print(f"❌ Fehler beim Löschen von Slot {slot_number}")
+        else:
+            print(f"📭 Kein Spielstand in Slot {slot_number} vorhanden")
     
     def set_save_callback(self, callback):
         """Set callback function for save game functionality"""
@@ -448,16 +699,24 @@ class Level:
             pygame.mixer.music.unpause()
     
     def update(self, dt):
-        """Update-Schleife mit Delta Time"""
-        # Bewegung verarbeiten
+        """Update-Schleife mit Delta Time - Erweitert für Universal Input"""
+        # Universal Input System updaten
+        self.input_system.update()
+        
+        # Bewegung verarbeiten (nutzt jetzt Universal Input System)
         self.handle_movement(dt)
         
         # Spiel-Logik updaten mit Delta Time
-        game_result = self.game_logic.update(dt)
+        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
         
         # Prüfe auf Game Over
         if game_result == "game_over":
             return "game_over"
+        
+        # Magic System explizit updaten mit Feindliste für Kollision
+        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
+            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
+            self.game_logic.player.magic_system.update(dt, enemies_list)
         
         # Demons updaten mit Player-Referenz für AI
         self.enemy_manager.update(dt, self.game_logic.player)
@@ -471,25 +730,11 @@ class Level:
         return None
     
     def handle_movement(self, dt):
-        """Behandelt Spieler-Bewegung mit dt-System"""
+        """Behandelt Spieler-Bewegung mit Universal Input System"""
         import pygame
         
-        # Sammle alle Eingaben als Richtungsvektor
-        direction = pygame.math.Vector2(0, 0)
-        is_moving = False
-        
-        if self.keys_pressed['left']:
-            direction.x -= 1
-            is_moving = True
-        if self.keys_pressed['right']:
-            direction.x += 1
-            is_moving = True
-        if self.keys_pressed['up']:
-            direction.y -= 1
-            is_moving = True
-        if self.keys_pressed['down']:
-            direction.y += 1
-            is_moving = True
+        # Bewegungsvektor vom Universal Input System holen
+        direction = self.input_system.get_movement_vector()
         
         # Setze die Bewegungsrichtung im Player
         self.game_logic.player.direction = direction
@@ -508,6 +753,10 @@ class Level:
         
         # Spieler
         self.renderer.draw_player(self.game_logic.player, self.camera)
+        
+        # Magie-Projektile zeichnen (nach Spieler, vor Feinden für korrekte Layering)
+        if self.game_logic and self.game_logic.player:
+            self.game_logic.player.magic_system.draw_projectiles(self.screen, self.camera)
         
         # Demons zeichnen
         self.enemy_manager.draw(self.screen, self.camera)
@@ -544,7 +793,7 @@ class Level:
             self.game_logic.player.revive()
             print("💖 Spieler wiederbelebt mit voller Gesundheit")
         
-        # Gegner zurücksetzen
+        # Gegner komplett zurücksetzen - KEIN respawn_default_enemies mehr
         if self.enemy_manager:
             self.enemy_manager.reset_enemies()
             # TEMPORÄR: Verwende Test-Gegner statt Map-Gegner
@@ -563,6 +812,139 @@ class Level:
         self.clear_input_state()
         
         print("✅ Level neu gestartet!")
+    
+    def handle_magic_element(self, element_name):
+        """Behandelt Magie-Element Eingabe"""
+        print("🔮 handle_magic_element called with: {}".format(element_name))
+        if self.game_logic and self.game_logic.player:
+            from systems.magic_system import ElementType
+            
+            # Element-Namen zu ElementType mappen
+            element_map = {
+                'fire': ElementType.FEUER,
+                'water': ElementType.WASSER, 
+                'stone': ElementType.STEIN
+            }
+            
+            element = element_map.get(element_name)
+            if element:
+                print("🔮 Adding element: {}".format(element.value))
+                success = self.game_logic.player.magic_system.add_element(element)
+                if success:
+                    print("✅ Element {} hinzugefügt!".format(element.value))
+                else:
+                    print("❌ Element-Maximum erreicht!")
+            else:
+                print("❌ Unbekanntes Element: {}".format(element_name))
+        else:
+            print("❌ Kein Player oder Game Logic verfügbar!")
+    
+    def handle_cast_magic(self):
+        """Behandelt Magie wirken"""
+        print("🔮 handle_cast_magic called!")
+        if self.game_logic and self.game_logic.player:
+            print("🔮 Player verfügbar, cast magic...")
+            # Feindesliste für Magie-Effekte bereitstellen
+            enemies = []
+            if self.enemy_manager:
+                enemies = list(self.enemy_manager.enemies)
+                print("🔮 Enemies found: {}".format(len(enemies)))
+            
+            # Check if an element combination is ready for casting
+            spell_id_to_cooldown = None
+            selected_spell_elements = None
+            can_cast_spell = False
+            
+            try:
+                # Access the element mixer from the main game instance
+                if hasattr(self, 'main_game') and hasattr(self.main_game, 'element_mixer'):
+                    element_mixer = self.main_game.element_mixer
+                    if element_mixer.current_combination:
+                        spell_id_to_cooldown = element_mixer.get_current_spell_id()
+                        selected_spell_elements = element_mixer.get_current_spell_elements()
+                        
+                        # ✅ CHECK COOLDOWN BEFORE CASTING
+                        cooldown_manager = self.main_game.spell_cooldown_manager
+                        if cooldown_manager.is_ready(spell_id_to_cooldown):
+                            can_cast_spell = True
+                            print("🔮 Spell ready to cast: {} (Elements: {})".format(spell_id_to_cooldown, selected_spell_elements))
+                            
+                            # Set magic elements based on combination
+                            if selected_spell_elements:
+                                self.game_logic.player.magic_system.elements = selected_spell_elements.copy()
+                        else:
+                            remaining_time = cooldown_manager.time_remaining(spell_id_to_cooldown)
+                            print("🚫 Spell {} on cooldown: {:.1f}s remaining".format(spell_id_to_cooldown, remaining_time))
+                            return  # Exit early - don't cast spell
+                    else:
+                        print("🚫 No spell combination ready")
+                        return  # Exit early - no combination ready
+            except Exception as e:
+                print("🔮 Could not access element mixer for cooldown tracking: {}".format(e))
+                return  # Exit early on error
+            
+            # Only cast magic if spell is ready and not on cooldown
+            if not can_cast_spell:
+                print("🚫 Cannot cast spell - not ready or on cooldown")
+                return
+                
+            # target_pos wird jetzt ignoriert, da Projektile in Blickrichtung fliegen
+            result = self.game_logic.player.magic_system.cast_magic(
+                caster=self.game_logic.player,
+                target_pos=None,  # Wird ignoriert für Projektile
+                enemies=enemies
+            )
+            print("🔮 Cast magic result: {}".format(result))
+            
+            # If magic was successfully cast and we have a combination spell, start its cooldown
+            if result and spell_id_to_cooldown:
+                try:
+                    if hasattr(self, 'main_game') and hasattr(self.main_game, 'element_mixer'):
+                        success = self.main_game.element_mixer.handle_cast_spell()
+                        if success:
+                            print("✨ Started cooldown for spell: {} ({})".format(spell_id_to_cooldown, selected_spell_elements))
+                except Exception as e:
+                    print("⚠️ Error starting spell cooldown: {}".format(e))
+        else:
+            print("❌ Kein Player oder Game Logic für Magic verfügbar!")
+    
+    def _set_magic_elements_for_spell(self, spell_id):
+        """Set the magic elements based on the selected spell"""
+        if not self.game_logic or not self.game_logic.player:
+            return
+            
+        from systems.magic_system import ElementType
+        magic_system = self.game_logic.player.magic_system
+        
+        # Clear current elements
+        magic_system.clear_elements()
+        
+        # Map spell IDs to element combinations
+        spell_element_map = {
+            "fireball": [ElementType.FEUER, ElementType.FEUER],
+            "healing": [ElementType.FEUER, ElementType.WASSER],
+            "shield": [ElementType.STEIN, ElementType.STEIN],
+            "whirlwind": [ElementType.FEUER, ElementType.STEIN],
+            "invisibility": [ElementType.WASSER, ElementType.STEIN],
+            "waterbolt": [ElementType.WASSER, ElementType.WASSER]
+        }
+        
+        elements = spell_element_map.get(spell_id, [])
+        if elements:
+            for element in elements:
+                magic_system.add_element(element)
+            print("🔮 Set magic elements for {}: {}".format(spell_id, [e.value for e in elements]))
+        else:
+            print("⚠️ Unknown spell ID for element mapping: {}".format(spell_id))
+    
+    def handle_clear_magic(self):
+        """Behandelt Magie-Auswahl löschen"""
+        print("🔮 handle_clear_magic called!")
+        if self.game_logic and self.game_logic.player:
+            self.game_logic.player.magic_system.clear_elements()
+            print("🔮 Magic elements cleared!")
+        else:
+            print("❌ Kein Player für Clear Magic verfügbar!")
     
     def _setup_health_bars(self):
         """Private Methode zum Neuerstellen der Health-Bars nach Reset"""

@@ -54,37 +54,69 @@ class MapLoader:
 
     def render(self, surface, camera):
         """
-        Zeichnet alle sichtbaren Kachelebenen der Karte mit Zoom-Unterstützung.
+        🚀 RPi4-Optimiert: Zeichnet nur sichtbare Tiles im Kamera-Viewport (Tile Culling).
         Falls Tileset-Grafiken fehlen, werden Platzhalter-Rechtecke gezeichnet.
         """
         if not self.tmx_data:
             return # Nichts zu zeichnen, wenn die Karte nicht geladen wurde
 
+        # 🚀 TILE CULLING: Berechne sichtbaren Tile-Bereich aus Kamera-Viewport
+        screen_width = surface.get_width()
+        screen_height = surface.get_height()
+        
+        # Kamera-Position in Weltkoordinaten
+        camera_x = camera.camera_rect.x
+        camera_y = camera.camera_rect.y
+        
+        # Erweitere den sichtbaren Bereich um 1 Tile als Puffer (verhindert Pop-in)
+        tile_buffer = 1
+        
+        # Berechne Tile-Indizes für sichtbaren Bereich
+        start_x = max(0, int(camera_x // self.tmx_data.tilewidth) - tile_buffer)
+        end_x = min(self.tmx_data.width, int((camera_x + screen_width) // self.tmx_data.tilewidth) + tile_buffer + 1)
+        start_y = max(0, int(camera_y // self.tmx_data.tileheight) - tile_buffer)
+        end_y = min(self.tmx_data.height, int((camera_y + screen_height) // self.tmx_data.tileheight) + tile_buffer + 1)
+        
+        # Debug-Info (nur bei ersten paar Frames)
+        debug_culling = hasattr(self, '_debug_frame_count')
+        if not debug_culling:
+            self._debug_frame_count = 0
+        
+        if self._debug_frame_count < 3:  # Nur erste 3 Frames
+            total_tiles = self.tmx_data.width * self.tmx_data.height
+            visible_tiles = (end_x - start_x) * (end_y - start_y)
+            print(f"🚀 Tile Culling: {visible_tiles}/{total_tiles} Tiles sichtbar ({visible_tiles/total_tiles*100:.1f}%)")
+            self._debug_frame_count += 1
+
         for layer in self.tmx_data.visible_layers:
             if isinstance(layer, pytmx.TiledTileLayer):
-                for x, y, gid in layer:
-                    if gid:  # Nur zeichnen wenn es eine Kachel gibt
-                        tile_image = self.tmx_data.get_tile_image_by_gid(gid)
-                        tile_rect = pygame.Rect(x * self.tmx_data.tilewidth, 
-                                                y * self.tmx_data.tileheight, 
-                                                self.tmx_data.tilewidth, 
-                                                self.tmx_data.tileheight)
-                        transformed_rect = camera.apply_rect(tile_rect)
+                # 🚀 Nur sichtbare Tiles iterieren (statt alle Tiles der Map)
+                for x in range(start_x, end_x):
+                    for y in range(start_y, end_y):
+                        gid = layer.data[y][x] if y < len(layer.data) and x < len(layer.data[y]) else 0
                         
-                        if tile_image:
-                            # Performance-Optimierung: Nutze gecachte Skalierung für Tiles
-                            target_size = (
-                                int(self.tmx_data.tilewidth * camera.zoom_factor),
-                                int(self.tmx_data.tileheight * camera.zoom_factor)
-                            )
-                            scaled_image = self.asset_manager.get_scaled_sprite(tile_image, target_size)
-                            surface.blit(scaled_image, (transformed_rect.x, transformed_rect.y))
-                        else:
-                            # Fallback: Platzhalter-Rechteck zeichnen (bereits durch apply_rect skaliert)
-                            color = self.get_placeholder_color(gid)
-                            pygame.draw.rect(surface, color, transformed_rect)
-                            # Optional: Rahmen für bessere Sichtbarkeit
-                            pygame.draw.rect(surface, (255, 255, 255), transformed_rect, max(1, int(camera.zoom_factor)))
+                        if gid:  # Nur zeichnen wenn es eine Kachel gibt
+                            tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+                            tile_rect = pygame.Rect(x * self.tmx_data.tilewidth, 
+                                                    y * self.tmx_data.tileheight, 
+                                                    self.tmx_data.tilewidth, 
+                                                    self.tmx_data.tileheight)
+                            transformed_rect = camera.apply_rect(tile_rect)
+                            
+                            if tile_image:
+                                # Performance-Optimierung: Nutze gecachte Skalierung für Tiles
+                                target_size = (
+                                    int(self.tmx_data.tilewidth * camera.zoom_factor),
+                                    int(self.tmx_data.tileheight * camera.zoom_factor)
+                                )
+                                scaled_image = self.asset_manager.get_scaled_sprite(tile_image, target_size)
+                                surface.blit(scaled_image, (transformed_rect.x, transformed_rect.y))
+                            else:
+                                # Fallback: Platzhalter-Rechteck zeichnen (bereits durch apply_rect skaliert)
+                                color = self.get_placeholder_color(gid)
+                                pygame.draw.rect(surface, color, transformed_rect)
+                                # Optional: Rahmen für bessere Sichtbarkeit
+                                pygame.draw.rect(surface, (255, 255, 255), transformed_rect, max(1, int(camera.zoom_factor)))
     
     def get_placeholder_color(self, gid):
         """

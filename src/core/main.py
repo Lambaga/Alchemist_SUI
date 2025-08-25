@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Main Game File - Enhanced with FPS Monitoring and Menu System
+M# Action System Integration
+try:
+    from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
+    from systems.hardware_input_adapter import create_hardware_input_adapter
+    ACTION_SYSTEM_AVAILABLE = True
+    print("✅ Action System verfügbar")
+except ImportError as e:
+    ACTION_SYSTEM_AVAILABLE = False
+    print("⚠️ Action System nicht verfügbar: {}".format(e)) File - Enhanced with FPS Monitoring and Menu System
 
 Hauptspiel-Datei mit erweitertem FPS-Tracking und vollständigem Menu-System.
 """
@@ -10,13 +18,14 @@ import sys
 import os
 
 # Add src subdirectories to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'managers'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'ui'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'entities'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'world'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'systems'))
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, src_dir)
+sys.path.insert(0, os.path.join(src_dir, 'core'))
+sys.path.insert(0, os.path.join(src_dir, 'managers'))
+sys.path.insert(0, os.path.join(src_dir, 'ui'))
+sys.path.insert(0, os.path.join(src_dir, 'entities'))
+sys.path.insert(0, os.path.join(src_dir, 'world'))
+sys.path.insert(0, os.path.join(src_dir, 'systems'))
 
 from typing import Optional
 from settings import *
@@ -26,6 +35,21 @@ from fps_monitor import FPSMonitor, create_detailed_fps_display
 from menu_system import MenuSystem, GameState
 from save_system import save_manager
 from hotkey_display import HotkeyDisplay
+from input_system import init_universal_input
+
+# Action System Integration (Auskommentiert wegen Unicode-Problemen)
+# try:
+#     from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
+#     from systems.hardware_input_adapter import create_hardware_input_adapter
+#     ACTION_SYSTEM_AVAILABLE = True
+# except ImportError as e:
+#     ACTION_SYSTEM_AVAILABLE = False
+#     print("Action System nicht verfuegbar: {}".format(e))
+
+# Temporär deaktiviert
+ACTION_SYSTEM_AVAILABLE = False
+
+import os
 
 class Game:
     """
@@ -42,12 +66,58 @@ class Game:
     
     def __init__(self):
         pygame.init()
-        pygame.mixer.init()
+        pygame.font.init()  # Explizit font system initialisieren
+        
+        # 🚀 Task 4: Hardware-spezifische Audio-Initialisierung
+        from config import DisplayConfig
+        DisplayConfig.init_audio_for_hardware()
+        
+        # 🚀 Task 4: Hardware-optimierte Display-Einstellungen
+        self.optimized_settings = DisplayConfig.get_optimized_settings()
+        
+        # Universal Input System initialisieren
+        self.input_system = init_universal_input(use_action_system=ACTION_SYSTEM_AVAILABLE)
+        self.input_system.print_control_scheme()
+        
+        # Action System initialisieren (falls verfügbar)
+        self.action_system = None
+        self.hardware_adapter = None
+        if ACTION_SYSTEM_AVAILABLE:
+            self.action_system = init_action_system()
+            
+            # Versuche Hardware Input Adapter zu erstellen
+            try:
+                from core.config import config
+                hardware_config = config.input.HARDWARE_CONFIG
+                self.hardware_adapter = create_hardware_input_adapter(
+                    port=hardware_config['port'],
+                    mock_mode=hardware_config['mock_mode']
+                )
+                if self.hardware_adapter:
+                    print("✅ Hardware Input Adapter aktiviert")
+                else:
+                    print("⚠️ Hardware Input Adapter nicht verfügbar - Fallback auf Tastatur/Gamepad")
+            except Exception as e:
+                print("Hardware Input Adapter Fehler: {}".format(e))
+                self.hardware_adapter = None
         
         # Initialize AssetManager
         self.asset_manager = AssetManager()
         
-        self.game_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        # 🚀 Nutze optimierte Auflösung basierend auf Hardware
+        window_width = self.optimized_settings['WINDOW_WIDTH']
+        window_height = self.optimized_settings['WINDOW_HEIGHT']
+        use_fullscreen = self.optimized_settings.get('FULLSCREEN', False)
+        
+        print("🚀 Display: {}x{} @ {} FPS{}".format(
+            window_width, window_height, 
+            self.optimized_settings['FPS'],
+            " (Vollbild)" if use_fullscreen else ""
+        ))
+        
+        # Display-Modus basierend auf Hardware-Einstellungen
+        display_flags = pygame.FULLSCREEN if use_fullscreen else 0
+        self.game_surface = pygame.display.set_mode((window_width, window_height), display_flags)
         pygame.display.set_caption(GAME_TITLE)
         
         self.clock = pygame.time.Clock()
@@ -76,6 +146,47 @@ class Game:
         # Performance-Tracking
         self.frame_count = 0
         self.total_time = 0.0
+        
+        # 🚀 Element Mixing System Integration
+        from systems.spell_cooldown_manager import SpellCooldownManager
+        from ui.element_mixer import ElementMixer
+        self.spell_cooldown_manager = SpellCooldownManager()
+        self.element_mixer = ElementMixer(self.spell_cooldown_manager)
+        print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
+        
+        # 🔌 Action System & Hardware Integration (Temporär deaktiviert)
+        # if ACTION_SYSTEM_AVAILABLE:
+        #     self.action_system = init_action_system()
+        #     self.hardware_adapter = None
+        #     
+        #     # Try to initialize hardware adapter
+        #     import os
+        #     enable_hardware = os.environ.get('ALCHEMIST_HW', '0') == '1'
+        #     
+        #     if enable_hardware:
+        #         print("🔌 Hardware-Modus aktiviert - versuche Hardware-Verbindung...")
+        #         self.hardware_adapter = create_hardware_input_adapter(
+        #             port='/dev/ttyUSB0', 
+        #             mock_mode=True  # Erstmal Mock-Mode für Tests
+        #         )
+        #         
+        #         if self.hardware_adapter:
+        #             print("✅ Hardware Input Adapter erfolgreich initialisiert")
+        #         else:
+        #             print("⚠️ Hardware Input Adapter konnte nicht initialisiert werden - Fallback zu Standard-Input")
+        #     else:
+        #         print("💡 Hardware-Modus deaktiviert (ALCHEMIST_HW=1 zum Aktivieren)")
+        #         
+        #     self.action_system.debug_enabled = False  # Debug-Ausgaben standardmäßig aus
+        # else:
+        self.action_system = None
+        self.hardware_adapter = None
+        
+        # Magic System Adapter für Action System (falls verfügbar)
+        self.magic_adapter = None
+        if ACTION_SYSTEM_AVAILABLE and self.action_system:
+            # Magic Adapter wird erst nach Level-Erstellung gesetzt
+            pass
         
         self.load_background_music()
         
@@ -139,6 +250,25 @@ class Game:
                         self.hotkey_display.toggle_visibility()
                         status = "Ein" if self.hotkey_display.visible else "Aus"
                         print(f"🔧 Hotkey-Anzeige: {status}")
+                    
+                    # 🚀 GLOBAL MAGIC TEST HOTKEYS (F7-F8 statt F10-F12 - kein Konflikt mit Speicher-Slots!)
+                    elif event.key == pygame.K_F7:  # F7 für direkten Magie-Test (war F10)
+                        print("🧪 GLOBAL MAGIC TEST: F7 gedrückt!")
+                        self._test_magic_system_global()
+                    elif event.key == pygame.K_F8:  # F8 für Feuer + Heilung kombiniert (war F11+F12)
+                        print("🔥💚 GLOBAL MAGIC: Feuer + Heilung kombiniert!")  
+                        self._add_magic_element_global("fire")
+                        self._cast_heal_global()
+                    
+                    # ✨ ELEMENT MIXING: Handle element keys 1-3 (nur im Gameplay)
+                    elif self.game_state == GameState.GAMEPLAY:
+                        # Element selection: 1=Water, 2=Fire, 3=Stone
+                        if event.key == pygame.K_1:
+                            self.element_mixer.handle_element_press("water")
+                        elif event.key == pygame.K_2:
+                            self.element_mixer.handle_element_press("fire")
+                        elif event.key == pygame.K_3:
+                            self.element_mixer.handle_element_press("stone")
             
             # Handle events based on current game state
             if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
@@ -175,10 +305,16 @@ class Game:
         """Startet ein neues Spiel"""
         print("🎮 Neues Spiel wird gestartet...")
         self.game_state = GameState.GAMEPLAY
-        self.level = Level(self.game_surface)
+        self.level = Level(self.game_surface, main_game=self)
         
         # Set save callback for the level
         self.level.set_save_callback(self.save_current_game)
+        
+        # Magic System Adapter für Action System (falls verfügbar)
+        # if ACTION_SYSTEM_AVAILABLE and self.action_system and self.level:
+        #     self.magic_adapter = MagicSystemAdapter(self.level)
+        #     self.action_system.set_magic_handler(self.magic_adapter)
+        #     print("✅ Magic System Adapter für Action System konfiguriert")
         
         print("✅ Level geladen, Spiel bereit!")
     
@@ -189,7 +325,7 @@ class Game:
             self.level.restart_level()
         else:
             # Fallback: Erstelle ein neues Level
-            self.level = Level(self.game_surface)
+            self.level = Level(self.game_surface, main_game=self)
             self.level.set_save_callback(self.save_current_game)
         
         self.game_state = GameState.GAMEPLAY
@@ -204,10 +340,16 @@ class Game:
         if save_data:
             # Create new level first
             self.game_state = GameState.GAMEPLAY
-            self.level = Level(self.game_surface)
+            self.level = Level(self.game_surface, main_game=self)
             
             # Set save callback for the level
             self.level.set_save_callback(self.save_current_game)
+            
+            # Magic System Adapter für Action System (falls verfügbar)
+            # if ACTION_SYSTEM_AVAILABLE and self.action_system and self.level:
+            #     self.magic_adapter = MagicSystemAdapter(self.level)
+            #     self.action_system.set_magic_handler(self.magic_adapter)
+            #     print("✅ Magic System Adapter für Action System konfiguriert")
             
             # Apply save data to game logic
             if save_manager.apply_save_data(self.level.game_logic, save_data):
@@ -296,22 +438,13 @@ class Game:
             self.game_surface.blit(text_surface, text_pos)
     
     def pause_game(self):
-        """Pausiert das Spiel und speichert automatisch"""
+        """Pausiert das Spiel ohne automatisches Speichern"""
         if self.game_state == GameState.GAMEPLAY:
             print("⏸️ Spiel pausiert...")
             
             # Input-Status leeren um Bug zu vermeiden
             if self.level:
                 self.level.clear_input_state()
-            
-            # Automatisches Speichern beim Pausieren
-            if self.level and self.level.game_logic:
-                print("💾 Automatisches Speichern...")
-                success = self.save_current_game(0)  # Slot 0 für Auto-Save
-                if success:
-                    print("✅ Spiel automatisch gespeichert")
-                else:
-                    print("⚠️ Automatisches Speichern fehlgeschlagen")
             
             self.previous_state = self.game_state
             self.game_state = GameState.PAUSE
@@ -360,8 +493,9 @@ class Game:
     
     def update(self):
         """Aktualisiert das Spiel und die Performance-Metriken."""
-        # Delta-Time berechnen und FPS tracken
-        dt = self.clock.tick(FPS) / 1000.0
+        # 🚀 Task 4: Hardware-optimierte FPS verwenden
+        target_fps = self.optimized_settings['FPS']
+        dt = self.clock.tick(target_fps) / 1000.0
         current_fps = self.clock.get_fps()
         
         # Performance-Tracking
@@ -371,6 +505,18 @@ class Game:
         # FPS-Monitor aktualisieren
         self.fps_monitor.update(current_fps, dt)
         
+        # Hardware Input Adapter Update (non-blocking)
+        if self.hardware_adapter:
+            self.hardware_adapter.update()
+        
+        # Input System Update
+        self.input_system.update()
+        
+        # Element Mixer Update (für Animationen)
+        self.element_mixer.update(dt)
+        if self.input_system:
+            self.input_system.update()
+        
         # Update message system
         self.update_message_system()
         
@@ -379,6 +525,10 @@ class Game:
             # Update menu system
             self.menu_system.update(dt)
         elif self.game_state == GameState.GAMEPLAY:
+            # Update hardware input adapter (falls verfügbar)
+            if self.hardware_adapter:
+                self.hardware_adapter.update()
+            
             # Update gameplay level
             if self.level:
                 result = self.level.update(dt)
@@ -387,6 +537,10 @@ class Game:
                     print("💀 GAME OVER detected - switching to Game Over menu")
                     self.game_state = GameState.GAME_OVER
                     self.menu_system.show_game_over()
+            
+            # ✨ Update element mixing system
+            self.spell_cooldown_manager.update()
+            self.element_mixer.update(dt)
         elif self.game_state == GameState.GAME_OVER:
             # Update menu system for Game Over state
             self.menu_system.update(dt)
@@ -402,6 +556,10 @@ class Game:
             if self.level:
                 self.level.render()
             
+            # ✨ Draw element mixer
+            screen_height = self.game_surface.get_height()
+            self.element_mixer.render(self.game_surface, screen_height)
+            
             # FPS-Display zeichnen (falls aktiviert und im Gameplay)
             if self.show_fps:
                 self.fps_monitor.draw(self.game_surface)
@@ -412,6 +570,10 @@ class Game:
             # Draw gameplay in background, then pause menu on top
             if self.level:
                 self.level.render()
+            
+            # ✨ Draw element mixer (visible during pause for reference)
+            screen_height = self.game_surface.get_height()
+            self.element_mixer.render(self.game_surface, screen_height)
             
             # Draw hotkey display even when paused (useful for reference)
             self.hotkey_display.draw()
@@ -442,11 +604,15 @@ class Game:
         print("     W A S D: Spieler bewegen")
         print("     Maus: Blickrichtung")
         print("     Linksklick: Feuerball schießen")
+        print("     1-6: Zauberspruch auswählen (keine Cooldown)")
+        print("     C: Ausgewählten Zauber wirken (startet Cooldown)")
         print("     F3: FPS-Anzeige ein/aus")
         print("     F4: Detaillierte/Einfache Anzeige")
         print("     F5: Statistiken zurücksetzen")
         print("     F6: Performance-Zusammenfassung")
-        print("     F9-F12: Speichern in Slot 1-4")
+        print("     F7: Global Magic Test")  # 🚀 Verschoben von F10
+        print("     F8: Feuer + Heilung")   # 🚀 Kombiniert F11+F12
+        print("     F9-F12: Speichern in Slot 1-4")  # 🚀 Jetzt konfliktfrei!
         print("     H: Hotkey-Anzeige ein/aus")
         
         while self.running:
@@ -462,6 +628,69 @@ class Game:
         print("Game is shutting down...")
         pygame.quit()
         sys.exit()
+    
+    def _test_magic_system_global(self):
+        """Globaler Magie-System Test"""
+        print("🧪 === GLOBAL MAGIC SYSTEM TEST ===")
+        if self.level and self.level.game_logic and self.level.game_logic.player:
+            player = self.level.game_logic.player
+            print(f"🔍 Player gefunden: {player.__class__.__name__}")
+            print(f"🔍 Player HP: {player.current_health}/{player.max_health}")
+            
+            # Test Magie-System direkt
+            magic_system = player.magic_system
+            print(f"🔍 Magic System: {magic_system}")
+            print(f"🔍 Ausgewählte Elemente: {magic_system.selected_elements}")
+            
+        else:
+            print("❌ Kein Level/Player für Magie-Test gefunden!")
+            print(f"🔍 Game State: {self.game_state}")
+            print(f"🔍 Level: {self.level}")
+    
+    def _add_magic_element_global(self, element_name: str):
+        """Fügt global ein Magie-Element hinzu"""
+        if self.level and self.level.game_logic and self.level.game_logic.player:
+            from systems.magic_system import ElementType
+            
+            element_map = {
+                'fire': ElementType.FEUER,
+                'water': ElementType.WASSER, 
+                'stone': ElementType.STEIN
+            }
+            
+            element = element_map.get(element_name)
+            if element:
+                success = self.level.game_logic.player.magic_system.add_element(element)
+                print(f"🔥 Element {element_name} hinzugefügt: {success}")
+            else:
+                print(f"❌ Unbekanntes Element: {element_name}")
+        else:
+            print("❌ Kein Player für Element-Hinzufügung!")
+    
+    def _cast_heal_global(self):
+        """Wirkt global einen Heilungszauber"""
+        if self.level and self.level.game_logic and self.level.game_logic.player:
+            from systems.magic_system import ElementType
+            
+            player = self.level.game_logic.player
+            magic_system = player.magic_system
+            
+            # Elemente löschen und Feuer + Wasser hinzufügen
+            magic_system.clear_elements()
+            magic_system.add_element(ElementType.FEUER)
+            magic_system.add_element(ElementType.WASSER)
+            
+            # Schaden zufügen für Test
+            old_hp = player.current_health
+            player.current_health = max(1, player.current_health - 30)
+            print(f"🩸 Test-Schaden: {old_hp} -> {player.current_health} HP")
+            
+            # Heilung wirken
+            result = magic_system.cast_magic(caster=player)
+            print(f"💚 Heilung Ergebnis: {result}")
+            print(f"💚 HP nach Heilung: {player.current_health}/{player.max_health}")
+        else:
+            print("❌ Kein Player für Heilung!")
 
 
 def main() -> None:
