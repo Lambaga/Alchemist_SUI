@@ -1,0 +1,1006 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="128" height="128" tilewidth="32" tileheight="32" infinite="0" nextlayerid="14" nextobjectid="92">
+ <tileset firstgid="1" source="terrain-map-v8.tsx"/>
+ <tileset firstgid="15745" name="vten" tilewidth="32" tileheight="32" tilecount="3072" columns="32">
+  <image source="victorian-tenement.png" width="1024" height="3072"/>
+ </tileset>
+ <tileset firstgid="18817" name="windoors" tilewidth="32" tileheight="32" tilecount="1024" columns="32">
+  <image source="windows-doors.png" width="1024" height="1024"/>
+ </tileset>
+ <tileset firstgid="19841" name="vhouse" tilewidth="32" tileheight="32" tilecount="2048" columns="32">
+  <image source="victorian-mansion.png" width="1024" height="2048"/>
+ </tileset>
+ <tileset firstgid="21889" source="roofs.tsx"/>
+ <tileset firstgid="25985" name="vacc" tilewidth="32" tileheight="32" tilecount="2560" columns="32">
+  <image source="victorian-accessories.png" width="1024" height="2560"/>
+ </tileset>
+ <tileset firstgid="28545" source="bricks.tsx"/>
+ <tileset firstgid="30593" name="vwindoors" tilewidth="32" tileheight="32" tilecount="5120" columns="32">
+  <image source="victorian-windows-doors.png" trans="ff00ff" width="1024" height="5120"/>
+ </tileset>
+ <tileset firstgid="35713" name="container" tilewidth="32" tileheight="32" tilecount="1024" columns="16">
+  <image source="container.png" trans="ff00ff" width="512" height="2048"/>
+ </tileset>
+ <tileset firstgid="36737" name="vmkt" tilewidth="32" tileheight="32" tilecount="1280" columns="16">
+  <image source="victorian-market.png" trans="ff00ff" width="512" height="2560"/>
+ </tileset>
+ <tileset firstgid="38017" name="vgard" tilewidth="32" tileheight="32" tilecount="1024" columns="16">
+  <image source="victorian-garden.png" trans="ff00ff" width="512" height="2048"/>
+  <tile id="592">
+   <animation>
+    <frame tileid="592" duration="300"/>
+    <frame tileid="594" duration="300"/>
+    <frame tileid="596" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="593">
+   <animation>
+    <frame tileid="593" duration="300"/>
+    <frame tileid="595" duration="300"/>
+    <frame tileid="597" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="598">
+   <animation>
+    <frame tileid="598" duration="300"/>
+    <frame tileid="600" duration="300"/>
+    <frame tileid="602" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="599">
+   <animation>
+    <frame tileid="599" duration="300"/>
+    <frame tileid="601" duration="300"/>
+    <frame tileid="603" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="608">
+   <animation>
+    <frame tileid="608" duration="300"/>
+    <frame tileid="610" duration="300"/>
+    <frame tileid="612" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="609">
+   <animation>
+    <frame tileid="609" duration="300"/>
+    <frame tileid="611" duration="300"/>
+    <frame tileid="613" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="614">
+   <animation>
+    <frame tileid="614" duration="300"/>
+    <frame tileid="616" duration="300"/>
+    <frame tileid="618" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="615">
+   <animation>
+    <frame tileid="615" duration="300"/>
+    <frame tileid="617" duration="300"/>
+    <frame tileid="619" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="624">
+   <animation>
+    <frame tileid="624" duration="300"/>
+    <frame tileid="626" duration="300"/>
+    <frame tileid="628" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="625">
+   <animation>
+    <frame tileid="625" duration="300"/>
+    <frame tileid="627" duration="300"/>
+    <frame tileid="629" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="640">
+   <animation>
+    <frame tileid="640" duration="300"/>
+    <frame tileid="642" duration="300"/>
+    <frame tileid="644" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="641">
+   <animation>
+    <frame tileid="641" duration="300"/>
+    <frame tileid="643" duration="300"/>
+    <frame tileid="645" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="664">
+   <animation>
+    <frame tileid="664" duration="300"/>
+    <frame tileid="665" duration="300"/>
+    <frame tileid="666" duration="300"/>
+    <frame tileid="667" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="668">
+   <animation>
+    <frame tileid="668" duration="300"/>
+    <frame tileid="669" duration="300"/>
+    <frame tileid="670" duration="300"/>
+    <frame tileid="671" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="672">
+   <animation>
+    <frame tileid="672" duration="200"/>
+    <frame tileid="674" duration="200"/>
+    <frame tileid="676" duration="200"/>
+    <frame tileid="678" duration="200"/>
+    <frame tileid="680" duration="200"/>
+    <frame tileid="682" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="673">
+   <animation>
+    <frame tileid="673" duration="200"/>
+    <frame tileid="675" duration="200"/>
+    <frame tileid="677" duration="200"/>
+    <frame tileid="679" duration="200"/>
+    <frame tileid="681" duration="200"/>
+    <frame tileid="683" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="688">
+   <animation>
+    <frame tileid="688" duration="200"/>
+    <frame tileid="690" duration="200"/>
+    <frame tileid="692" duration="200"/>
+    <frame tileid="694" duration="200"/>
+    <frame tileid="696" duration="200"/>
+    <frame tileid="698" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="689">
+   <animation>
+    <frame tileid="689" duration="200"/>
+    <frame tileid="691" duration="200"/>
+    <frame tileid="693" duration="200"/>
+    <frame tileid="695" duration="200"/>
+    <frame tileid="697" duration="200"/>
+    <frame tileid="699" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="704">
+   <animation>
+    <frame tileid="704" duration="200"/>
+    <frame tileid="706" duration="200"/>
+    <frame tileid="708" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="705">
+   <animation>
+    <frame tileid="705" duration="200"/>
+    <frame tileid="707" duration="200"/>
+    <frame tileid="709" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="710">
+   <animation>
+    <frame tileid="710" duration="200"/>
+    <frame tileid="712" duration="200"/>
+    <frame tileid="714" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="711">
+   <animation>
+    <frame tileid="711" duration="200"/>
+    <frame tileid="713" duration="200"/>
+    <frame tileid="715" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="720">
+   <animation>
+    <frame tileid="720" duration="200"/>
+    <frame tileid="722" duration="200"/>
+    <frame tileid="724" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="721">
+   <animation>
+    <frame tileid="721" duration="200"/>
+    <frame tileid="723" duration="200"/>
+    <frame tileid="725" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="726">
+   <animation>
+    <frame tileid="726" duration="200"/>
+    <frame tileid="728" duration="200"/>
+    <frame tileid="730" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="727">
+   <animation>
+    <frame tileid="727" duration="200"/>
+    <frame tileid="729" duration="200"/>
+    <frame tileid="731" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="753">
+   <animation>
+    <frame tileid="753" duration="200"/>
+    <frame tileid="756" duration="200"/>
+    <frame tileid="759" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="761">
+   <animation>
+    <frame tileid="761" duration="200"/>
+    <frame tileid="763" duration="200"/>
+    <frame tileid="765" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="762">
+   <animation>
+    <frame tileid="762" duration="200"/>
+    <frame tileid="764" duration="200"/>
+    <frame tileid="766" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="777">
+   <animation>
+    <frame tileid="777" duration="200"/>
+    <frame tileid="779" duration="200"/>
+    <frame tileid="781" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="778">
+   <animation>
+    <frame tileid="778" duration="200"/>
+    <frame tileid="780" duration="200"/>
+    <frame tileid="782" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="784">
+   <animation>
+    <frame tileid="784" duration="300"/>
+    <frame tileid="787" duration="300"/>
+    <frame tileid="790" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="785">
+   <animation>
+    <frame tileid="785" duration="300"/>
+    <frame tileid="788" duration="300"/>
+    <frame tileid="791" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="786">
+   <animation>
+    <frame tileid="786" duration="300"/>
+    <frame tileid="789" duration="300"/>
+    <frame tileid="792" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="794">
+   <animation>
+    <frame tileid="794" duration="200"/>
+    <frame tileid="796" duration="200"/>
+    <frame tileid="798" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="795">
+   <animation>
+    <frame tileid="795" duration="200"/>
+    <frame tileid="797" duration="200"/>
+    <frame tileid="799" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="800">
+   <animation>
+    <frame tileid="800" duration="300"/>
+    <frame tileid="803" duration="300"/>
+    <frame tileid="806" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="801">
+   <animation>
+    <frame tileid="801" duration="300"/>
+    <frame tileid="804" duration="300"/>
+    <frame tileid="807" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="802">
+   <animation>
+    <frame tileid="802" duration="300"/>
+    <frame tileid="805" duration="300"/>
+    <frame tileid="808" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="810">
+   <animation>
+    <frame tileid="810" duration="200"/>
+    <frame tileid="812" duration="200"/>
+    <frame tileid="814" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="811">
+   <animation>
+    <frame tileid="811" duration="200"/>
+    <frame tileid="813" duration="200"/>
+    <frame tileid="815" duration="200"/>
+   </animation>
+  </tile>
+  <tile id="816">
+   <animation>
+    <frame tileid="816" duration="300"/>
+    <frame tileid="819" duration="300"/>
+    <frame tileid="822" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="818">
+   <animation>
+    <frame tileid="818" duration="300"/>
+    <frame tileid="821" duration="300"/>
+    <frame tileid="824" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="832">
+   <animation>
+    <frame tileid="832" duration="300"/>
+    <frame tileid="835" duration="300"/>
+    <frame tileid="838" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="833">
+   <animation>
+    <frame tileid="833" duration="300"/>
+    <frame tileid="836" duration="300"/>
+    <frame tileid="839" duration="300"/>
+   </animation>
+  </tile>
+  <tile id="834">
+   <animation>
+    <frame tileid="834" duration="300"/>
+    <frame tileid="837" duration="300"/>
+    <frame tileid="840" duration="300"/>
+   </animation>
+  </tile>
+  <wangsets>
+   <wangset name="Hedges" type="mixed" tile="337">
+    <wangcolor name="Short" color="#ff0000" tile="337" probability="1"/>
+    <wangcolor name="Tall" color="#00ff00" tile="340" probability="1"/>
+    <wangtile tileid="336" wangid="0,0,1,0,0,0,0,0"/>
+    <wangtile tileid="337" wangid="0,0,1,0,0,0,1,0"/>
+    <wangtile tileid="338" wangid="0,0,0,0,0,0,1,0"/>
+    <wangtile tileid="339" wangid="0,0,2,0,0,0,0,0"/>
+    <wangtile tileid="340" wangid="0,0,2,0,0,0,2,0"/>
+    <wangtile tileid="341" wangid="0,0,0,0,0,0,2,0"/>
+    <wangtile tileid="352" wangid="0,0,0,0,1,0,0,0"/>
+    <wangtile tileid="353" wangid="1,0,0,0,1,0,0,0"/>
+    <wangtile tileid="354" wangid="1,0,0,0,0,0,0,0"/>
+    <wangtile tileid="368" wangid="0,0,1,0,1,0,0,0"/>
+    <wangtile tileid="369" wangid="0,0,1,0,1,0,1,0"/>
+    <wangtile tileid="370" wangid="0,0,0,0,1,0,1,0"/>
+    <wangtile tileid="371" wangid="0,0,2,0,2,0,0,0"/>
+    <wangtile tileid="372" wangid="0,0,2,0,2,0,2,0"/>
+    <wangtile tileid="373" wangid="0,0,0,0,2,0,2,0"/>
+    <wangtile tileid="384" wangid="1,0,1,0,1,0,0,0"/>
+    <wangtile tileid="385" wangid="1,0,1,0,1,0,1,0"/>
+    <wangtile tileid="386" wangid="1,0,0,0,1,0,1,0"/>
+    <wangtile tileid="400" wangid="1,0,1,0,0,0,0,0"/>
+    <wangtile tileid="401" wangid="1,0,1,0,0,0,1,0"/>
+    <wangtile tileid="402" wangid="1,0,0,0,0,0,1,0"/>
+    <wangtile tileid="403" wangid="2,0,2,0,2,0,0,0"/>
+    <wangtile tileid="404" wangid="2,0,2,0,2,0,2,0"/>
+    <wangtile tileid="405" wangid="2,0,0,0,2,0,2,0"/>
+    <wangtile tileid="435" wangid="2,0,2,0,0,0,0,0"/>
+    <wangtile tileid="436" wangid="2,0,2,0,0,0,2,0"/>
+    <wangtile tileid="437" wangid="2,0,0,0,0,0,2,0"/>
+    <wangtile tileid="467" wangid="2,0,0,0,0,0,0,0"/>
+    <wangtile tileid="468" wangid="2,0,0,0,2,0,0,0"/>
+    <wangtile tileid="469" wangid="0,0,0,0,2,0,0,0"/>
+    <wangtile tileid="484" wangid="2,0,0,0,2,0,0,0"/>
+    <wangtile tileid="485" wangid="2,0,0,0,2,0,0,0"/>
+   </wangset>
+   <wangset name="Planters" type="corner" tile="105">
+    <wangcolor name="Planters" color="#ff0000" tile="105" probability="1"/>
+    <wangcolor name="Fountains" color="#00ff00" tile="-1" probability="1"/>
+    <wangtile tileid="70" wangid="0,0,0,1,0,0,0,0"/>
+    <wangtile tileid="71" wangid="0,0,0,0,0,1,0,0"/>
+    <wangtile tileid="72" wangid="0,1,0,1,0,1,0,0"/>
+    <wangtile tileid="73" wangid="0,0,0,1,0,1,0,1"/>
+    <wangtile tileid="86" wangid="0,1,0,0,0,0,0,0"/>
+    <wangtile tileid="87" wangid="0,0,0,0,0,0,0,1"/>
+    <wangtile tileid="88" wangid="0,1,0,1,0,0,0,1"/>
+    <wangtile tileid="89" wangid="0,1,0,0,0,1,0,1"/>
+    <wangtile tileid="105" wangid="0,0,0,1,0,1,0,0"/>
+    <wangtile tileid="119" wangid="0,1,0,1,0,0,0,0"/>
+    <wangtile tileid="120" wangid="0,0,0,0,0,1,0,1"/>
+    <wangtile tileid="121" wangid="0,1,0,0,0,0,0,1"/>
+    <wangtile tileid="684" wangid="0,0,0,2,0,0,0,0"/>
+    <wangtile tileid="685" wangid="0,0,0,0,0,2,0,0"/>
+    <wangtile tileid="686" wangid="0,2,0,2,0,2,0,0"/>
+    <wangtile tileid="687" wangid="0,0,0,2,0,2,0,2"/>
+    <wangtile tileid="700" wangid="0,2,0,0,0,0,0,0"/>
+    <wangtile tileid="701" wangid="0,0,0,0,0,0,0,2"/>
+    <wangtile tileid="702" wangid="0,2,0,2,0,0,0,2"/>
+    <wangtile tileid="703" wangid="0,2,0,0,0,2,0,2"/>
+    <wangtile tileid="719" wangid="0,0,0,2,0,2,0,0"/>
+    <wangtile tileid="733" wangid="0,2,0,2,0,0,0,0"/>
+    <wangtile tileid="734" wangid="0,0,0,0,0,2,0,2"/>
+    <wangtile tileid="735" wangid="0,2,0,0,0,0,0,2"/>
+   </wangset>
+  </wangsets>
+ </tileset>
+ <tileset firstgid="39041" name="vstreets" tilewidth="32" tileheight="32" tilecount="1536" columns="16">
+  <image source="victorian-streets.png" trans="ff00ff" width="512" height="3072"/>
+  <tile id="226">
+   <animation>
+    <frame tileid="226" duration="150"/>
+    <frame tileid="228" duration="150"/>
+    <frame tileid="230" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="227">
+   <animation>
+    <frame tileid="227" duration="150"/>
+    <frame tileid="229" duration="150"/>
+    <frame tileid="231" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="241">
+   <animation>
+    <frame tileid="241" duration="150"/>
+    <frame tileid="242" duration="150"/>
+    <frame tileid="243" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="245">
+   <animation>
+    <frame tileid="245" duration="150"/>
+    <frame tileid="246" duration="150"/>
+    <frame tileid="247" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="257">
+   <animation>
+    <frame tileid="257" duration="150"/>
+    <frame tileid="258" duration="150"/>
+    <frame tileid="259" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="261">
+   <animation>
+    <frame tileid="261" duration="150"/>
+    <frame tileid="262" duration="150"/>
+    <frame tileid="263" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="269">
+   <animation>
+    <frame tileid="269" duration="150"/>
+    <frame tileid="270" duration="150"/>
+    <frame tileid="271" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="273">
+   <animation>
+    <frame tileid="273" duration="150"/>
+    <frame tileid="274" duration="150"/>
+    <frame tileid="275" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="277">
+   <animation>
+    <frame tileid="277" duration="150"/>
+    <frame tileid="278" duration="150"/>
+    <frame tileid="279" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="285">
+   <animation>
+    <frame tileid="285" duration="150"/>
+    <frame tileid="286" duration="150"/>
+    <frame tileid="287" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="289">
+   <animation>
+    <frame tileid="289" duration="150"/>
+    <frame tileid="290" duration="150"/>
+    <frame tileid="291" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="293">
+   <animation>
+    <frame tileid="293" duration="150"/>
+    <frame tileid="294" duration="150"/>
+    <frame tileid="295" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="301">
+   <animation>
+    <frame tileid="301" duration="150"/>
+    <frame tileid="302" duration="150"/>
+    <frame tileid="303" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="305">
+   <animation>
+    <frame tileid="305" duration="150"/>
+    <frame tileid="306" duration="150"/>
+    <frame tileid="307" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="309">
+   <animation>
+    <frame tileid="309" duration="150"/>
+    <frame tileid="310" duration="150"/>
+    <frame tileid="311" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="313">
+   <animation>
+    <frame tileid="313" duration="150"/>
+    <frame tileid="314" duration="150"/>
+    <frame tileid="315" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="317">
+   <animation>
+    <frame tileid="317" duration="150"/>
+    <frame tileid="318" duration="150"/>
+    <frame tileid="319" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="321">
+   <animation>
+    <frame tileid="321" duration="150"/>
+    <frame tileid="322" duration="150"/>
+    <frame tileid="323" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="325">
+   <animation>
+    <frame tileid="325" duration="150"/>
+    <frame tileid="326" duration="150"/>
+    <frame tileid="327" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="329">
+   <animation>
+    <frame tileid="329" duration="150"/>
+    <frame tileid="330" duration="150"/>
+    <frame tileid="331" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="333">
+   <animation>
+    <frame tileid="333" duration="150"/>
+    <frame tileid="334" duration="150"/>
+    <frame tileid="335" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="337">
+   <animation>
+    <frame tileid="337" duration="150"/>
+    <frame tileid="338" duration="150"/>
+    <frame tileid="339" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="341">
+   <animation>
+    <frame tileid="341" duration="150"/>
+    <frame tileid="342" duration="150"/>
+    <frame tileid="343" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="345">
+   <animation>
+    <frame tileid="345" duration="150"/>
+    <frame tileid="346" duration="150"/>
+    <frame tileid="347" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="349">
+   <animation>
+    <frame tileid="349" duration="150"/>
+    <frame tileid="350" duration="150"/>
+    <frame tileid="351" duration="150"/>
+   </animation>
+  </tile>
+  <tile id="839" probability="0"/>
+  <tile id="842" probability="0"/>
+  <tile id="845" probability="0"/>
+  <tile id="1014" probability="0"/>
+  <tile id="1015" probability="0"/>
+  <tile id="1089" probability="0"/>
+  <tile id="1169" probability="0"/>
+  <tile id="1172" probability="0"/>
+  <wangsets>
+   <wangset name="Fences" type="mixed" tile="756">
+    <wangcolor name="Stone-Short" color="#8a9090" tile="753" probability="1"/>
+    <wangcolor name="Fence-Brick-White-Tall" color="#e5e7c6" tile="1089" probability="1"/>
+    <wangcolor name="Picket-White" color="#f1f1f1" tile="756" probability="1"/>
+    <wangcolor name="Iron-Wrought" color="#3d4147" tile="759" probability="1"/>
+    <wangcolor name="Brick-Light-Short" color="#bc6c48" tile="762" probability="1"/>
+    <wangcolor name="Brick-Light-Dark" color="#914234" tile="765" probability="1"/>
+    <wangcolor name="Bollard-Chain" color="#b3afa0" tile="849" probability="1"/>
+    <wangcolor name="Bollard-Chain-White" color="#e5e7c6" tile="852" probability="1"/>
+    <wangcolor name="Bollard-Chain-Wood" color="#996b14" tile="855" probability="1"/>
+    <wangcolor name="Bollard-Chain-Metal" color="#726b7f" tile="858" probability="1"/>
+    <wangcolor name="Fancy" color="#b4a8ff" tile="929" probability="1"/>
+    <wangcolor name="Spin-Balluster-White" color="#96ffa7" tile="932" probability="1"/>
+    <wangcolor name="Garden-White" color="#8e7848" tile="935" probability="1"/>
+    <wangcolor name="Brick-Grey-Tall" color="#c4b59e" tile="1092" probability="1"/>
+    <wangcolor name="Brick-Wrought" color="#0e7a46" tile="-1" probability="1"/>
+    <wangcolor name="Stone-Wrought" color="#daa6ff" tile="-1" probability="1"/>
+    <wangcolor name="Wrought" color="#040a94" tile="-1" probability="1"/>
+    <wangtile tileid="752" wangid="0,0,1,0,0,0,0,0"/>
+    <wangtile tileid="753" wangid="0,0,1,0,0,0,1,0"/>
+    <wangtile tileid="754" wangid="0,0,0,0,0,0,1,0"/>
+    <wangtile tileid="755" wangid="0,0,3,0,0,0,0,0"/>
+    <wangtile tileid="756" wangid="0,0,3,0,0,0,3,0"/>
+    <wangtile tileid="757" wangid="0,0,0,0,0,0,3,0"/>
+    <wangtile tileid="758" wangid="0,0,4,0,0,0,0,0"/>
+    <wangtile tileid="759" wangid="0,0,4,0,0,0,4,0"/>
+    <wangtile tileid="760" wangid="0,0,0,0,0,0,4,0"/>
+    <wangtile tileid="761" wangid="0,0,5,0,0,0,0,0"/>
+    <wangtile tileid="762" wangid="0,0,5,0,0,0,5,0"/>
+    <wangtile tileid="763" wangid="0,0,0,0,0,0,5,0"/>
+    <wangtile tileid="764" wangid="0,0,6,0,0,0,0,0"/>
+    <wangtile tileid="765" wangid="0,0,6,0,0,0,6,0"/>
+    <wangtile tileid="766" wangid="0,0,0,0,0,0,6,0"/>
+    <wangtile tileid="768" wangid="1,0,0,0,0,0,0,0"/>
+    <wangtile tileid="769" wangid="1,0,0,0,1,0,0,0"/>
+    <wangtile tileid="770" wangid="0,0,0,0,1,0,0,0"/>
+    <wangtile tileid="771" wangid="3,0,0,0,0,0,0,0"/>
+    <wangtile tileid="772" wangid="3,0,0,0,3,0,0,0"/>
+    <wangtile tileid="773" wangid="0,0,0,0,3,0,0,0"/>
+    <wangtile tileid="774" wangid="4,0,0,0,0,0,0,0"/>
+    <wangtile tileid="775" wangid="4,0,0,0,4,0,0,0"/>
+    <wangtile tileid="776" wangid="0,0,0,0,4,0,0,0"/>
+    <wangtile tileid="777" wangid="5,0,0,0,0,0,0,0"/>
+    <wangtile tileid="778" wangid="5,0,0,0,5,0,0,0"/>
+    <wangtile tileid="779" wangid="0,0,0,0,5,0,0,0"/>
+    <wangtile tileid="780" wangid="6,0,0,0,0,0,0,0"/>
+    <wangtile tileid="781" wangid="6,0,0,0,6,0,0,0"/>
+    <wangtile tileid="782" wangid="0,0,0,0,6,0,0,0"/>
+    <wangtile tileid="784" wangid="0,0,1,0,1,0,0,0"/>
+    <wangtile tileid="785" wangid="0,0,1,0,1,0,1,0"/>
+    <wangtile tileid="786" wangid="0,0,0,0,1,0,1,0"/>
+    <wangtile tileid="787" wangid="0,0,3,0,3,0,0,0"/>
+    <wangtile tileid="788" wangid="0,0,3,0,3,0,3,0"/>
+    <wangtile tileid="789" wangid="0,0,0,0,3,0,3,0"/>
+    <wangtile tileid="790" wangid="0,0,4,0,4,0,0,0"/>
+    <wangtile tileid="791" wangid="0,0,4,0,4,0,4,0"/>
+    <wangtile tileid="792" wangid="0,0,0,0,4,0,4,0"/>
+    <wangtile tileid="793" wangid="0,0,5,0,5,0,0,0"/>
+    <wangtile tileid="794" wangid="0,0,5,0,5,0,5,0"/>
+    <wangtile tileid="795" wangid="0,0,0,0,5,0,5,0"/>
+    <wangtile tileid="796" wangid="0,0,6,0,6,0,0,0"/>
+    <wangtile tileid="797" wangid="0,0,6,0,6,0,6,0"/>
+    <wangtile tileid="798" wangid="0,0,0,0,6,0,6,0"/>
+    <wangtile tileid="800" wangid="1,0,1,0,1,0,0,0"/>
+    <wangtile tileid="801" wangid="1,0,1,0,1,0,1,0"/>
+    <wangtile tileid="802" wangid="1,0,0,0,1,0,1,0"/>
+    <wangtile tileid="803" wangid="3,0,3,0,3,0,0,0"/>
+    <wangtile tileid="804" wangid="3,0,3,0,3,0,3,0"/>
+    <wangtile tileid="805" wangid="3,0,0,0,3,0,3,0"/>
+    <wangtile tileid="806" wangid="4,0,4,0,4,0,0,0"/>
+    <wangtile tileid="807" wangid="4,0,4,0,4,0,4,0"/>
+    <wangtile tileid="808" wangid="4,0,0,0,4,0,4,0"/>
+    <wangtile tileid="809" wangid="5,0,5,0,5,0,0,0"/>
+    <wangtile tileid="810" wangid="5,0,5,0,5,0,5,0"/>
+    <wangtile tileid="811" wangid="5,0,0,0,5,0,5,0"/>
+    <wangtile tileid="812" wangid="6,0,6,0,6,0,0,0"/>
+    <wangtile tileid="813" wangid="6,0,6,0,6,0,6,0"/>
+    <wangtile tileid="814" wangid="6,0,0,0,6,0,6,0"/>
+    <wangtile tileid="816" wangid="1,0,1,0,0,0,0,0"/>
+    <wangtile tileid="817" wangid="1,0,1,0,0,0,1,0"/>
+    <wangtile tileid="818" wangid="1,0,0,0,0,0,1,0"/>
+    <wangtile tileid="819" wangid="3,0,3,0,0,0,0,0"/>
+    <wangtile tileid="820" wangid="3,0,3,0,0,0,3,0"/>
+    <wangtile tileid="821" wangid="3,0,0,0,0,0,3,0"/>
+    <wangtile tileid="822" wangid="4,0,4,0,0,0,0,0"/>
+    <wangtile tileid="823" wangid="4,0,4,0,0,0,4,0"/>
+    <wangtile tileid="824" wangid="4,0,0,0,0,0,4,0"/>
+    <wangtile tileid="825" wangid="5,0,5,0,0,0,0,0"/>
+    <wangtile tileid="826" wangid="5,0,5,0,0,0,5,0"/>
+    <wangtile tileid="827" wangid="5,0,0,0,0,0,5,0"/>
+    <wangtile tileid="828" wangid="6,0,6,0,0,0,0,0"/>
+    <wangtile tileid="829" wangid="6,0,6,0,0,0,6,0"/>
+    <wangtile tileid="830" wangid="6,0,0,0,0,0,6,0"/>
+    <wangtile tileid="832" wangid="0,0,1,0,0,0,0,0"/>
+    <wangtile tileid="834" wangid="0,0,0,0,0,0,1,0"/>
+    <wangtile tileid="838" wangid="0,0,4,0,0,0,0,0"/>
+    <wangtile tileid="839" wangid="0,0,4,0,0,0,4,0"/>
+    <wangtile tileid="840" wangid="0,0,0,0,0,0,4,0"/>
+    <wangtile tileid="841" wangid="0,0,5,0,0,0,0,0"/>
+    <wangtile tileid="842" wangid="0,0,5,0,0,0,5,0"/>
+    <wangtile tileid="843" wangid="0,0,0,0,0,0,5,0"/>
+    <wangtile tileid="844" wangid="0,0,6,0,0,0,0,0"/>
+    <wangtile tileid="845" wangid="0,0,6,0,0,0,6,0"/>
+    <wangtile tileid="846" wangid="0,0,0,0,0,0,6,0"/>
+    <wangtile tileid="848" wangid="0,0,7,0,0,0,0,0"/>
+    <wangtile tileid="849" wangid="0,0,7,0,0,0,7,0"/>
+    <wangtile tileid="850" wangid="0,0,0,0,0,0,7,0"/>
+    <wangtile tileid="851" wangid="0,0,8,0,0,0,0,0"/>
+    <wangtile tileid="852" wangid="0,0,8,0,0,0,8,0"/>
+    <wangtile tileid="853" wangid="0,0,0,0,0,0,8,0"/>
+    <wangtile tileid="854" wangid="0,0,9,0,0,0,0,0"/>
+    <wangtile tileid="855" wangid="0,0,9,0,0,0,9,0"/>
+    <wangtile tileid="856" wangid="0,0,0,0,0,0,9,0"/>
+    <wangtile tileid="857" wangid="0,0,10,0,0,0,0,0"/>
+    <wangtile tileid="858" wangid="0,0,10,0,0,0,10,0"/>
+    <wangtile tileid="859" wangid="0,0,0,0,0,0,10,0"/>
+    <wangtile tileid="864" wangid="7,0,0,0,0,0,0,0"/>
+    <wangtile tileid="865" wangid="7,0,0,0,7,0,0,0"/>
+    <wangtile tileid="866" wangid="0,0,0,0,7,0,0,0"/>
+    <wangtile tileid="867" wangid="8,0,0,0,0,0,0,0"/>
+    <wangtile tileid="868" wangid="8,0,0,0,8,0,0,0"/>
+    <wangtile tileid="869" wangid="0,0,0,0,8,0,0,0"/>
+    <wangtile tileid="870" wangid="9,0,0,0,0,0,0,0"/>
+    <wangtile tileid="871" wangid="9,0,0,0,9,0,0,0"/>
+    <wangtile tileid="872" wangid="0,0,0,0,9,0,0,0"/>
+    <wangtile tileid="873" wangid="10,0,0,0,0,0,0,0"/>
+    <wangtile tileid="874" wangid="10,0,0,0,10,0,0,0"/>
+    <wangtile tileid="875" wangid="0,0,0,0,10,0,0,0"/>
+    <wangtile tileid="880" wangid="0,0,7,0,7,0,0,0"/>
+    <wangtile tileid="881" wangid="0,0,7,0,7,0,7,0"/>
+    <wangtile tileid="882" wangid="0,0,0,0,7,0,7,0"/>
+    <wangtile tileid="883" wangid="0,0,8,0,8,0,0,0"/>
+    <wangtile tileid="884" wangid="0,0,8,0,8,0,8,0"/>
+    <wangtile tileid="885" wangid="0,0,0,0,8,0,8,0"/>
+    <wangtile tileid="886" wangid="0,0,9,0,9,0,0,0"/>
+    <wangtile tileid="887" wangid="0,0,9,0,9,0,9,0"/>
+    <wangtile tileid="888" wangid="0,0,0,0,9,0,9,0"/>
+    <wangtile tileid="889" wangid="0,0,10,0,10,0,0,0"/>
+    <wangtile tileid="890" wangid="0,0,10,0,10,0,10,0"/>
+    <wangtile tileid="891" wangid="0,0,0,0,10,0,10,0"/>
+    <wangtile tileid="896" wangid="7,0,7,0,7,0,0,0"/>
+    <wangtile tileid="897" wangid="7,0,7,0,7,0,7,0"/>
+    <wangtile tileid="898" wangid="7,0,0,0,7,0,7,0"/>
+    <wangtile tileid="899" wangid="8,0,8,0,8,0,0,0"/>
+    <wangtile tileid="900" wangid="8,0,8,0,8,0,8,0"/>
+    <wangtile tileid="901" wangid="8,0,0,0,8,0,8,0"/>
+    <wangtile tileid="902" wangid="9,0,9,0,9,0,0,0"/>
+    <wangtile tileid="903" wangid="9,0,9,0,9,0,9,0"/>
+    <wangtile tileid="904" wangid="9,0,0,0,9,0,9,0"/>
+    <wangtile tileid="905" wangid="10,0,10,0,10,0,0,0"/>
+    <wangtile tileid="906" wangid="10,0,10,0,10,0,10,0"/>
+    <wangtile tileid="907" wangid="10,0,0,0,10,0,10,0"/>
+    <wangtile tileid="912" wangid="7,0,7,0,0,0,0,0"/>
+    <wangtile tileid="913" wangid="7,0,7,0,0,0,7,0"/>
+    <wangtile tileid="914" wangid="7,0,0,0,0,0,7,0"/>
+    <wangtile tileid="915" wangid="8,0,8,0,0,0,0,0"/>
+    <wangtile tileid="916" wangid="8,0,8,0,0,0,8,0"/>
+    <wangtile tileid="917" wangid="8,0,0,0,0,0,8,0"/>
+    <wangtile tileid="918" wangid="9,0,9,0,0,0,0,0"/>
+    <wangtile tileid="919" wangid="9,0,9,0,0,0,9,0"/>
+    <wangtile tileid="920" wangid="9,0,0,0,0,0,9,0"/>
+    <wangtile tileid="921" wangid="10,0,10,0,0,0,0,0"/>
+    <wangtile tileid="922" wangid="10,0,10,0,0,0,10,0"/>
+    <wangtile tileid="923" wangid="10,0,0,0,0,0,10,0"/>
+    <wangtile tileid="928" wangid="0,0,11,0,0,0,0,0"/>
+    <wangtile tileid="929" wangid="0,0,11,0,0,0,11,0"/>
+    <wangtile tileid="930" wangid="0,0,0,0,0,0,11,0"/>
+    <wangtile tileid="931" wangid="0,0,12,0,0,0,0,0"/>
+    <wangtile tileid="932" wangid="0,0,12,0,0,0,12,0"/>
+    <wangtile tileid="933" wangid="0,0,0,0,0,0,12,0"/>
+    <wangtile tileid="934" wangid="0,0,13,0,0,0,0,0"/>
+    <wangtile tileid="935" wangid="0,0,13,0,0,0,13,0"/>
+    <wangtile tileid="936" wangid="0,0,0,0,0,0,13,0"/>
+    <wangtile tileid="944" wangid="11,0,0,0,0,0,0,0"/>
+    <wangtile tileid="945" wangid="11,0,0,0,11,0,0,0"/>
+    <wangtile tileid="946" wangid="0,0,0,0,11,0,0,0"/>
+    <wangtile tileid="947" wangid="12,0,0,0,0,0,0,0"/>
+    <wangtile tileid="948" wangid="12,0,0,0,12,0,0,0"/>
+    <wangtile tileid="949" wangid="0,0,0,0,12,0,0,0"/>
+    <wangtile tileid="950" wangid="13,0,0,0,0,0,0,0"/>
+    <wangtile tileid="951" wangid="13,0,0,0,13,0,0,0"/>
+    <wangtile tileid="952" wangid="0,0,0,0,13,0,0,0"/>
+    <wangtile tileid="960" wangid="0,0,11,0,11,0,0,0"/>
+    <wangtile tileid="961" wangid="0,0,11,0,11,0,11,0"/>
+    <wangtile tileid="962" wangid="0,0,0,0,11,0,11,0"/>
+    <wangtile tileid="963" wangid="0,0,12,0,12,0,0,0"/>
+    <wangtile tileid="964" wangid="0,0,12,0,12,0,12,0"/>
+    <wangtile tileid="965" wangid="0,0,0,0,12,0,12,0"/>
+    <wangtile tileid="966" wangid="0,0,13,0,13,0,0,0"/>
+    <wangtile tileid="967" wangid="0,0,13,0,13,0,13,0"/>
+    <wangtile tileid="968" wangid="0,0,0,0,13,0,13,0"/>
+    <wangtile tileid="976" wangid="11,0,11,0,11,0,0,0"/>
+    <wangtile tileid="977" wangid="11,0,11,0,11,0,11,0"/>
+    <wangtile tileid="978" wangid="11,0,0,0,11,0,11,0"/>
+    <wangtile tileid="979" wangid="12,0,12,0,12,0,0,0"/>
+    <wangtile tileid="980" wangid="12,0,12,0,12,0,12,0"/>
+    <wangtile tileid="981" wangid="12,0,0,0,12,0,12,0"/>
+    <wangtile tileid="982" wangid="13,0,13,0,13,0,0,0"/>
+    <wangtile tileid="983" wangid="13,0,13,0,13,0,13,0"/>
+    <wangtile tileid="984" wangid="13,0,0,0,13,0,13,0"/>
+    <wangtile tileid="992" wangid="11,0,11,0,0,0,0,0"/>
+    <wangtile tileid="993" wangid="11,0,11,0,0,0,11,0"/>
+    <wangtile tileid="994" wangid="11,0,0,0,0,0,11,0"/>
+    <wangtile tileid="995" wangid="12,0,12,0,0,0,0,0"/>
+    <wangtile tileid="996" wangid="12,0,12,0,0,0,12,0"/>
+    <wangtile tileid="997" wangid="12,0,0,0,0,0,12,0"/>
+    <wangtile tileid="998" wangid="13,0,13,0,0,0,0,0"/>
+    <wangtile tileid="999" wangid="13,0,13,0,0,0,13,0"/>
+    <wangtile tileid="1000" wangid="13,0,0,0,0,0,13,0"/>
+    <wangtile tileid="1014" wangid="0,0,13,0,0,0,13,0"/>
+    <wangtile tileid="1015" wangid="0,0,13,0,0,0,13,0"/>
+    <wangtile tileid="1024" wangid="0,0,2,0,0,0,0,0"/>
+    <wangtile tileid="1025" wangid="0,0,2,0,0,0,2,0"/>
+    <wangtile tileid="1026" wangid="0,0,0,0,0,0,2,0"/>
+    <wangtile tileid="1027" wangid="0,0,14,0,0,0,0,0"/>
+    <wangtile tileid="1028" wangid="0,0,14,0,0,0,14,0"/>
+    <wangtile tileid="1029" wangid="0,0,0,0,0,0,14,0"/>
+    <wangtile tileid="1036" wangid="0,0,17,0,0,0,0,0"/>
+    <wangtile tileid="1037" wangid="0,0,17,0,0,0,17,0"/>
+    <wangtile tileid="1038" wangid="0,0,0,0,0,0,17,0"/>
+    <wangtile tileid="1039" wangid="17,0,0,0,17,0,0,0"/>
+    <wangtile tileid="1040" wangid="0,0,2,0,2,0,0,0"/>
+    <wangtile tileid="1041" wangid="0,0,2,0,2,0,2,0"/>
+    <wangtile tileid="1042" wangid="0,0,0,0,2,0,2,0"/>
+    <wangtile tileid="1043" wangid="0,0,14,0,14,0,0,0"/>
+    <wangtile tileid="1044" wangid="0,0,14,0,14,0,14,0"/>
+    <wangtile tileid="1045" wangid="0,0,0,0,14,0,14,0"/>
+    <wangtile tileid="1055" wangid="17,0,0,0,17,0,0,0"/>
+    <wangtile tileid="1056" wangid="2,0,2,0,2,0,0,0"/>
+    <wangtile tileid="1057" wangid="2,0,2,0,2,0,2,0"/>
+    <wangtile tileid="1058" wangid="2,0,0,0,2,0,2,0"/>
+    <wangtile tileid="1059" wangid="14,0,14,0,14,0,0,0"/>
+    <wangtile tileid="1060" wangid="14,0,14,0,14,0,14,0"/>
+    <wangtile tileid="1061" wangid="14,0,0,0,14,0,14,0"/>
+    <wangtile tileid="1068" wangid="17,0,17,0,0,0,0,0"/>
+    <wangtile tileid="1069" wangid="0,0,17,0,0,0,17,0"/>
+    <wangtile tileid="1070" wangid="0,0,17,0,0,0,17,0"/>
+    <wangtile tileid="1071" wangid="17,0,0,0,0,0,17,0"/>
+    <wangtile tileid="1072" wangid="2,0,2,0,0,0,0,0"/>
+    <wangtile tileid="1073" wangid="2,0,2,0,0,0,2,0"/>
+    <wangtile tileid="1074" wangid="2,0,0,0,0,0,2,0"/>
+    <wangtile tileid="1075" wangid="14,0,14,0,0,0,0,0"/>
+    <wangtile tileid="1076" wangid="14,0,14,0,0,0,14,0"/>
+    <wangtile tileid="1077" wangid="14,0,0,0,0,0,14,0"/>
+    <wangtile tileid="1088" wangid="2,0,0,0,0,0,0,0"/>
+    <wangtile tileid="1089" wangid="2,0,0,0,2,0,0,0"/>
+    <wangtile tileid="1090" wangid="0,0,0,0,2,0,0,0"/>
+    <wangtile tileid="1091" wangid="14,0,0,0,0,0,0,0"/>
+    <wangtile tileid="1092" wangid="14,0,0,0,14,0,0,0"/>
+    <wangtile tileid="1093" wangid="0,0,0,0,14,0,0,0"/>
+    <wangtile tileid="1169" wangid="0,0,2,0,0,0,2,0"/>
+    <wangtile tileid="1170" wangid="2,0,0,0,2,0,0,0"/>
+    <wangtile tileid="1172" wangid="0,0,14,0,0,0,14,0"/>
+    <wangtile tileid="1173" wangid="14,0,0,0,14,0,0,0"/>
+   </wangset>
+  </wangsets>
+ </tileset>
+ <tileset firstgid="40577" name="food" tilewidth="32" tileheight="32" tilecount="1024" columns="32">
+  <image source="food.png" trans="ff00ff" width="1024" height="1024"/>
+ </tileset>
+ <tileset firstgid="41601" name="trees" tilewidth="32" tileheight="32" tilecount="1024" columns="32">
+  <image source="trees-green.png" trans="ff00ff" width="1024" height="1024"/>
+ </tileset>
+ <tileset firstgid="42625" source="../../../../Downloads/lpc-victorian-preview-see-readme/lpc-victorian-preview/terrain-map-v8.tsx"/>
+ <layer id="1" name="Trn_1" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   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
+  </data>
+ </layer>
+ <layer id="2" name="Trn_2" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   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
+  </data>
+ </layer>
+ <layer id="3" name="Trn_3" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   eJzt3M1vFGUAx/HHSFuNChIB9ehLW08gUtCrdoEbaNIePWho8UTF6NX0BGrUA81OMRxMaKPG6L8hxmjiC6DG10TaaoC2RFo1auJv4052+uzMM28dZrb7/SS/bKc7S5b8dp/n2WcHjAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIg3OVH2M0CZ6L+70X93a/T/8pnovH2m7GeIIvnv/9rU2t/7x29WuP/FGWOWlGXl2kzZz6Yz+f2PWP2POPq/XjfmQo6s1ov9OyE5v/8jVv9HHP1v8oyZq2dPr5fvOc+dNWZeWTib789By4tT4cdh/Y+qvxMZO2w8bjRn/z0a63uVPsb8woX1P6b+vIwdegn7PzZrJqPu61fvA8og/RcurP9t3tr5/GJzPj+v2xXrOGz+35Hz/b9fvR9QDsb0zzyR3xsh/T9ozf/zzb4v6bbHW3scNv8P5Ow/KeaJYjTG75PKdEiPjftetX5/zlrvj9+g/pkn/vf6sN7Hw+kft7lmzJZa++8b8/9bXnuvwft89+nn+732c3yueT6vpPPERveBuv9QeS0kLjvV/a6Q/oe86M/22637ntHxs557/s8zT0c9lrm/5VP1/JnyfkhcDqn7w7X27whqjs///dZ9x3X8guee//PM01GPZe5vWe/+XcYSzO32/B83T1+bMZPLypKyOLN2voh6LHN/i9//JyFxydp/cG9oRT+vBo4b99mvkbh5eqvWCHcqW5TN1noh6rHM/S1X1PPVDOu/Y+p+ImX/o9beUM+0xuHp1rEX0n+c3er8YWWXsrPA9SLCPZ2if9fa0M++lP0/pc6fVA4rhwL9j+u9fVR5jvd4ZUTt+YTtFwW51uvH1fnzyoQS/Lx4Qr2fVF6h/0r5W/3+o/yb4nveLOv1d3Tuu8p79F8pt2l8v125I2acD76Xk6zX7fH+I92em8n2ekM2Iy8V8+cmWa9HjfdJX2+ojiz7c4z3G0fYfP+VPieeVy4oF5WvlW+Ub5ufH/3x/mOrf9f+EMqTdt/uF/V8SZlT5pUF5Vflt2nj5NofQnnS7tv9rp6vKyvKqvKH8qfyV0z/7A9VU9pebj5tzCalR+lV+pRblFtPux8XtT8Et7jvgJJ8R+SStpe71PM2ZbuyQ7lbuUe5N6b/qP0huBXdP71UW9H9u3B9RvnK7J/rM8p3o/oP+56O6zPKF3cNSJJrRKIEx/ewfdu812f8WDfmJ+Vn9vwrKTi+F7Fvu6jel5Rl+q+k4PgetW/r+04dfq/8sA5dshdcDWnG98vq/YpydR36Zy+4OrJen3VT3X1sC6412AtePw9MxZ/jkvX6rK316OOw8T241ujmveC9gWszhtbhOo09OfuPWvflmaPDxvfgWqOb9xw/nzDmi2a+rMD/6xW17sszR4eN7/Zag73FasszRycZ39lbrLY8c3SS8Z29xWoreo7m334B7faeMmbfqbKfBcoS7L9ftwO8FrrK4+r7iWbne3Q7lKL/R3XuY83zB3X7EK+djjas/mopOtytcx/J+NpB5wuOHWlfOwCqYU6fieeVBT4bd6WeWWN6lb7Zsp8JytCv3geUwWb/ceMB40XnC3a4X70fUA42+7fHA7tvxovOF+xwTBlXjjb7tMcDu2/7fnQeV4f2eGCf69/PPNC57I6D7PHAPte/n3mgc9kdZzmXeaC7ucYQbHxpxhBsbKwFuxtrwe7GWrC7sRbsbqwFAXSa/wD8aGsP
+  </data>
+ </layer>
+ <objectgroup id="13" name="Walls">
+  <object id="1" x="4096" y="1896" width="208" height="2252"/>
+  <object id="2" x="1780" y="4097" width="2324" height="79"/>
+  <object id="3" x="1664" y="1832" width="126.5" height="2248"/>
+  <object id="4" x="1788" y="1792" width="2312" height="126.667"/>
+  <object id="6" x="3586.33" y="3391.67" width="218.5" height="285.5"/>
+  <object id="7" x="3684.5" y="3601.5"/>
+  <object id="8" x="3733" y="3498"/>
+  <object id="9" x="3848.5" y="3466" width="210.333" height="179"/>
+  <object id="10" x="3898" y="3560"/>
+  <object id="11" x="3105.67" y="3460.67" width="282.333" height="184.667"/>
+  <object id="12" x="2821" y="3460" width="217.333" height="192.667"/>
+  <object id="13" x="2824.5" y="3378.33" width="620.833" height="44"/>
+  <object id="14" x="3522" y="3371.5" width="570.667" height="51.5"/>
+  <object id="15" x="2437.33" y="3142.67" width="84.6667" height="81.3333"/>
+  <object id="16" x="2451.33" y="3181.33" width="4" height="0.666667"/>
+  <object id="17" x="2499.33" y="3140" width="156.667" height="181.333"/>
+  <object id="18" x="2654.7" y="3198.67">
+   <polygon points="0,0 65.2632,35.944 65.9649,124.212 -0.701754,124.667"/>
+  </object>
+  <object id="19" x="2651.33" y="3167.33" width="37.5" height="26.6667"/>
+  <object id="21" x="2499" y="3301.5" width="156" height="55"/>
+  <object id="22" x="2500.5" y="3356.5" width="55.5" height="32"/>
+  <object id="23" x="2407" y="3378.5" width="51" height="137.5"/>
+  <object id="24" x="2526" y="3421" width="66" height="100.5"/>
+  <object id="25" x="2625.5" y="3423.5" width="57" height="96.5"/>
+  <object id="26" x="2726.5" y="3416.83" width="17" height="52.1667"/>
+  <object id="27" x="2247" y="3450.92" width="17" height="53.3333"/>
+  <object id="28" x="1927.25" y="3035" width="17" height="53"/>
+  <object id="30" x="2376.17" y="2978.67" width="17" height="112"/>
+  <object id="31" x="2694.83" y="2978.67" width="17" height="112"/>
+  <object id="32" x="1956" y="2741" width="763" height="327"/>
+  <object id="33" x="1980" y="2690" width="704.667" height="49.3333"/>
+  <object id="34" x="1972.33" y="2730.67"/>
+  <object id="35" x="2700" y="2732.5"/>
+  <object id="36" x="2684.5" y="2715.5" width="22.5" height="24.5"/>
+  <object id="37" x="1961" y="2717.67" width="21" height="25.3333"/>
+  <object id="38" x="2142.75" y="3391.75" width="65" height="95.75"/>
+  <object id="39" x="2047.75" y="3342.5" width="63.25" height="111"/>
+  <object id="40" x="2145.67" y="3167.67" width="219.667" height="160.333"/>
+  <object id="41" x="2208.33" y="3327.33" width="93.6667" height="32.3333"/>
+  <object id="42" x="2208.67" y="3136" width="95" height="29.3333"/>
+  <object id="44" x="2362.67" y="3171.33" width="29.6667" height="30.6667"/>
+  <object id="45" x="2050" y="3107" width="89.3333" height="46.6667"/>
+  <object id="48" x="2111.25" y="3212" width="32.25" height="81"/>
+  <object id="49" x="2080.75" y="3228" width="30.25" height="64.5"/>
+  <object id="50" x="2050.5" y="3268.75" width="57.25" height="44.75"/>
+  <object id="51" x="1950.67" y="3304" width="32.3333" height="104.667"/>
+  <object id="52" x="1952.55" y="3144.73" width="30.9091" height="103.455"/>
+  <object id="53" x="2823.33" y="2431.33" width="16.6667" height="969.333"/>
+  <object id="54" x="2056.67" y="2560.67" width="15.3333" height="44.6667"/>
+  <object id="55" x="1983.33" y="2242.67" width="514" height="311.333"/>
+  <object id="56" x="2044.67" y="2176.67" width="390.667" height="62"/>
+  <object id="57" x="1924" y="2050" width="122.667" height="185.333"/>
+  <object id="58" x="1984" y="1889.33" width="256.667" height="312.667"/>
+  <object id="59" x="1918" y="1956.67" width="34" height="85.3333"/>
+  <object id="60" x="2239.33" y="1987.33" width="225.333" height="95.3333"/>
+  <object id="61" x="2397.33" y="2081.33" width="39.3333" height="99.3333"/>
+  <object id="62" x="2597" y="2404" width="228" height="60"/>
+  <object id="63" x="2601.33" y="2026.67" width="22.6667" height="400.667"/>
+  <object id="64" x="2599" y="2054" width="882" height="27"/>
+  <object id="65" x="3587.33" y="2048.17" width="498.667" height="30.8333"/>
+  <object id="66" x="4074" y="2070" width="16" height="1298"/>
+  <object id="67" x="3784.18" y="3903.91" width="15.4545" height="30.0909"/>
+  <object id="69" x="4007.61" y="3934.54" width="15.4545" height="29.3409"/>
+  <object id="70" x="3592.64" y="3840.36" width="15.4545" height="29.0909"/>
+  <object id="71" x="3305.02" y="3840.79" width="15.4545" height="29.7576"/>
+  <object id="72" x="3048.77" y="3903.45" width="15.4545" height="31.0909"/>
+  <object id="73" x="2663.94" y="3968.29" width="15.4545" height="28.5909"/>
+  <object id="74" x="2695.61" y="3839.95" width="15.4545" height="28.5909"/>
+  <object id="75" x="2568.27" y="3810.79" width="15.4545" height="25.7576"/>
+  <object id="76" x="2503.77" y="3710.7" width="15.4545" height="28.5909"/>
+  <object id="77" x="2377.27" y="3742.2" width="15.4545" height="28.5909"/>
+  <object id="78" x="2248.27" y="3712.7" width="15.4545" height="28.5909"/>
+  <object id="79" x="2120.77" y="3648.2" width="15.4545" height="28.5909"/>
+  <object id="80" x="2023.77" y="3743.2" width="15.4545" height="28.5909"/>
+  <object id="81" x="1960.27" y="3681.2" width="15.4545" height="28.5909"/>
+  <object id="82" x="1928.77" y="3904.2" width="15.4545" height="28.5909"/>
+  <object id="83" x="2839.33" y="2520" width="318" height="32"/>
+  <object id="84" x="3139" y="2080" width="17" height="436"/>
+  <object id="85" x="3269.67" y="3051.33" width="83.3333" height="40"/>
+  <object id="86" x="3686.33" y="2988.33" width="84" height="39.6667"/>
+  <object id="87" x="3784.75" y="2600.25" width="80.5" height="44.25"/>
+  <object id="88" x="3171" y="2353" width="27.6667" height="42.6667"/>
+  <object id="89" x="3168.33" y="2256.67" width="31.3333" height="42.3333"/>
+  <object id="90" x="3334" y="2705" width="218" height="121.5">
+   <ellipse/>
+  </object>
+ </objectgroup>
+ <layer id="4" name="Bldg_1" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   eJzt1k9MHGUcxvGftCW2QNoeiib0RLA2tj17Xlg8GHsocIDbotA26IESj3qgxDRSjAkLITS9QP9EKf69aaKJGm1LaaiXtknbQ/+KLQbwoCbaxGfDEsZ1ZodlmZ3Z5ftJnszmfWd2ZvPM+4IZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAArFhJmix75PRHec6EwutvNjnmkpz3sp0PQuhPq2iM9ifCeC4Xxudb4Fx75kvVf8uoazV7wyJ7GsJ8OQYur40aPvEL/JY/+N654Mtj9//0hs/Jhs/6h1X1GYXUkg13/o+q0Wt2eGlrdZxTW2+q/Qx13euRwCe3/V/R+TStXec8i42N1sUVrfyKjk5rh9b/XLd3jtnKH/iPjK3WxS11/ndHJvgD6f6J7zCm/0X/k7Qyg/7/V+z/KU/qPvCD2/wp9Z6VSFcB3l6L3Gsy64t5Zq2zdLs8Fsf8jN+fU/0tx76xVtm6X54LY/5GbcwGt/2zd0nthxerN6pWG+v/P/aj+X417pytm9qbyViyP+4/o/iNrvx75aVfvrytvKA/U4z1HHimVSpkjVemx1LFfOakM5NH/IXXfRP+h6VXvx5U+ZbNS5ki5sl/d1jpyILY0ljpOKBeUyTz6R7jG1PG4ckapU2od2aO8pm7rHTkYWxpLHaeUK8o0/QMAABSNB61mnW1mh9c5R5TZ1rB/HfzUqaeHyqN1zi/K3rawfx38dKTWa2swOUr/kXc2wP4/ov/I620wO57OgHJC+dAxdj6P+b6GsH8d/Iypo/F0JpUJ5bP0cTzd71rnz9B/5GX2nzrOOMYy+81lnv6jz7n/O9ev2/6e6zz7f/S57f8zPvv7audZ/9F3Vx1NpTPt6G957Kc85u/Tf1GZU18XlXmP3vKdRzR1n84+n/CZ97seAFB6KpJmlcmwnwJBmRw0+0b5ZHBl7MXRlc816n530vtclJ6XR/3PQXH71GMNu43nci6Kw7ce3bmN53IugOKRy/90/P8HAMXpHe3b77J3Qwb0HnzAu4BVcr4vYe0jM81m11zyc3PhnwWFN6+eF1yySP+R8J16+N4lP2T0c6nJ7LJLppqyf//2FrMdLtnZsjR/XdffcOSmz/dhfd1Vz/dccj+j/1n18qtLHvv05bf//6Hr/3TkL/ovqGe0Dstcsqnlv+c9q762umSbzz7ut/9X6/icI8/zd6Gk+O3/AAAAAAAAAAAA2Fj+BdkBFhk=
+  </data>
+ </layer>
+ <layer id="5" name="Bldg_2" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   eJzt3N1rHFUcxvEfTRXsHyBaFURbi4htEeyLCNrutiLiS7ObZBOKoiZpcyFVk6qpZE032lKtRpNArMUEU9J4JTS1N+qdLykEqk3theBVUxu1ENuAiOCFT8mGmWx3dieT3Wxm8/3AjzN7zp7DsE/m7BRmawYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADCtL2LWH/FuUd4+ipp1Rb1blLcTyng46t2+22N2qCd7i/B7MmX2dMq7/UQ5H+nJ3iL8XlLGe1LeLcrb+8q4M+Xdonyd6sq//6N8/dXF/r9Ures2W9/N/r9UPaLsH+0u9VkAAEphaLvZ56qO7aU+E5TCiHI/rTrmkf/ZqNmYalT1o+qnqNOH8JvJ/1uP/K8q5ynV5XTeV6JO3weac0I1zN4RWvnyz3X9f6E5Z1Vj5B9aE8ru94DX/xnNuaqaIv/QG1eGN79ldovqoYhzvKHdbKNqc7rd1O7MmST3stDWZpZUbVDem1R1Eee4ut2sRlWbbhOqoVb9m6G1pKeMAvpU2fepqpV3QrUv4hy/1m72uqveUI0o+9PkDwAAgAXySq/Zq6rm3lKfCRaSO/dUL38HYfDcnsKttT9L7tded5B/QZxsMvtSdaqpcOPtBcx/xn5yL6i1KbN1qnPK7WfV+SanL+j4/emxQua/8uPs/Xd69MOfuLKqUn2fNPtBNZJ0+oKOx4qQP4qjRVntVf2m3C6pJpJOX9DxZvIPnQbl1qjalZy9vwcZL8b+j+IYbzW7qHpHuR1QHczY34OMs/+Hw+GjZhX7zJarBpXbcdWQa38POt6cHmsj/0XtvaPFG883F6X3lTIaVb3pUV/PY/wb8gdCY0u32VZVhN8ELhlRV9Y7dFypirn6Dvbrvl51oD//WhUDug9U3TBQ+PNEccTzXOtDyn1QddyVf+TIdHuT5q5wzb9bua9SrSb/0KjPyH+wy+xYl7+5t2ruSr4rQq0lI79r/x/MSVWLx37/so/vgRmTnwU/Lyy8bfpbaOB6XlLc939VOt6bkf+ffWYXVJf6vNc4d9hswOd3BhYX9/1fR6fZ252zx1dov1+mujHHvj+u/IfJP5Tc93/dyr6n0/u9KD/u+78duoYrQ3wdL6s1q8hSy2tLfWbh8LyyfyGdf0xtPGR/C1vqzCKJ62tbXanPLHxeVPb1c8i/Ru9NpN9fpbY6y1w/1+dqHd+To9bkuJbz5X+b5t6epe5gf5i3Xcp7dzrzBrWNWfL3c33W67gx4V2753Atj8XM1sfNzsemn0Ov09ydievrWfaHBZEr/5nfCfjJ3+9vCqaU+zPK/+/Y9HNIufIv5O8U4M93yuUu5TMSc54TG600u1evz1TOfq+73+8zZQ9o7Sua82A8+5xftNZGjf86hzVROBf12W9VNhOu/C8ri8f1ejIjf3e/36wqtfaHmlPlkf+/WqtG4/+Rf0msUi4X9PmviTvPCd6n138oj7Wx2e919wd5pjBbvpu11j9a8+GAa2J+oso9pc/+sbjT94ReH1ImT2Xk79XvV7Z8a7VWr9bcGXBNAAAAAAAAAAAALG7/AywXL2Y=
+  </data>
+ </layer>
+ <layer id="6" name="Bldg_3" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   eJzt181vDHEcx/EvJ8oqCQfPrgi9IxLioon4B+yhiERIHEnptp22Tjiw1I3Ws4OLckNUPF7E05FExcPBQzxG+pD6TGY289vttp52Z7u771fyyW/mN7Ozv+xnZrc1AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMw2eGYbvdHH9rRZh7I/HZyfu4/ytlsd7/FGH9Pq+ahyTLmVjvZ76b8qnFbPZ5Szyqt0tP+Y/qtCj3q+olxVvqaj/T76B8pWy64gqE70jwz/PmhMmu11si85cs49xr1TGTI99qvTASeDyZFz7rHMa7kPKkOTOk05aU6OnHOPZdB/ZbimToc2mV1PBrmRDOaGnbnr4f4N+q8YDSmzzamg60zHQ5ui/t05997IoP/y1qruvVSw/X599rjSM1vlBdurvey5b81m35vpv9xlnn9fXX32uEM97wx77/Cy52a2mM1qiXOlKIZ/ff6frIt3nSiOLnXfHfY/tT57bFDPW8Let3rZc1/pvyK8bDLrawq2+9fo/3tlcE1p14T4TNCzPzF8/uesNZurzFv7+9c1655paSru2hCvFep9pbJqjP4btunvReWEuj9J/1WnVd1720q9CgAAAFSL+Z3BOLuztOtAvPrV90Bn0PtQZ3AfDPv3wPFSrwxxqFHPU5SpSkKZptQq0+m/KsxRz3OVecp8ZYGyUFlE/wAAAAAAAH/kx2Gzn0r/4VKvBHEZoOuqNlik/p8fMHtxoDjXxvj3Qd1/pP+ydFbfCUdO5D92KM/8u6785ya6C7cmFN8n9f5QuapcHqX/S3/R/zL6H/c+FPD3f7L6rlGm0HvZ+FiA/of93/mDZovV+xJlKf2XjfcF6L9W3U8/+P/XAQCgELq2m3Urp7aXeiWIy6P2aLyp3nuVW/Q/LuV7Pi9ru0e5ktPZaPO5PrdHY6LVbJpS25r/3HO61nnlAvdHbHrbojHf8/lE20+VZ8q98Fx/dOfHMqMjGpep9+VKndP/47ZovOu/h3Kf/mPTp899SWMw+i62ZR+/nTK7o9xV3oXn+qM7Pxb3+98dM76E1/wSvm9PzvujuCaqj/rGYPQ9yPn8X6vfN8pbZVJ4rj+682Pxv/f9ft3fAVcivGYinH9K/xXF/973+3V/BwAAAAAAAAAAAFCdfgGn7VWo
+  </data>
+ </layer>
+ <layer id="7" name="Bldg_4" width="128" height="128">
+  <data encoding="base64" compression="zlib">
+   eJzt3M1uVHUAxuFzD7JGLwIXBm3BG1BY0w+9gRoXxpi0Zc3XSKKJqBR0WRFciISq0HX50AVsQIVE3aCiSW2EpC28piU06Qmcc7TTnpnnSd5AhvOfTPI7TBqmtCgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACq2T+22a+AjfDWsWrX6d+bfv6g2nX696Z5/fva7qNF8fLRp1+nf2/ak/Z79e9br6X96/r3rd87RfFHZ+X3A2k8PLbSus5GskH3Rystrrb/t/tX++qfP7fv8X1Aey2k4/ND9c/9k3P3Gtw3bB07hlba7xyuf3YgZ97O2Rca3DtsDTP5+/tOOr7YoP9LOTOZnde/tf5Ou5k0XGzQfylnLmb39W+92bwPLKXj8po9GFr/2No/K3TvCZ9MFMWnE/XPvTdZFO9P/v+vh3b4Mu3P6t+3rqX9df17wvTq9wJsT89ns+cqdJ0fz9eP4xv7uuiugXQfzHZV6P9MvmbY1uDrBramubwHDKf7SDbqfb3v/Frx+0HoTQv6AwAAAABA671Z8f//Nz3X9PnpjvsNP++peq7p89Md+ve3Xxr2qXqu6fMDm2u6UxSfZaeyz7PT2Znsi876aw/ksYPZoexwdiTrZO+WXEs7zKTd19k32bfZhexiNlvS9MM89lH2cXY8m8pOZCf1b625tLuUXc6uZFez77LvS5rWuVdohxtpdzP7Ifsx+ym7ld0uaVrnXqEd7qTdb53HPyPmbvZn9ldJ0zr3Cu3w6GfD3Fn99VH35ZKmde4V2mXxCd3/y7W02+BUUeyaevp1PgNov7KGr6T9qxX6+zfg9itrOJL2o/r3hbKGY2n/RoX+PgNov7KGk2m/v0J/AAAAAAAAAACAbngIZj8A8A==
+  </data>
+ </layer>
+</map>
