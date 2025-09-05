@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # src/level.py
-# Level/Gameplay state - Here the actual game runs
 import pygame
 from os import path
+import math  # Füge den math import hinzu
 from settings import *
 from game import Game as GameLogic
 from camera import Camera
@@ -206,18 +206,28 @@ class GameRenderer:
         self.screen.blit(zutaten_surface, (40, y_offset))
         y_offset += 35
         
-        # Zutaten-Symbole
+        # Zutaten-Symbole und Namen
         zutaten_farben = {
             "wasserkristall": (0, 150, 255),
             "feueressenz": (255, 100, 0),
-            "erdkristall": (139, 69, 19)
+            "erdkristall": (139, 69, 19),
+            "holzstab": (139, 69, 19),
+            "stahlerz": (169, 169, 169),
+            "mondstein": (200, 200, 255)
         }
         
         start_x = 50
         for i, zutat in enumerate(game_logic.aktive_zutaten):
             color = zutaten_farben.get(zutat, (200, 200, 200))
             rect_x = start_x + i * 70
+            # Zeichne Gegenstand-Symbol
             pygame.draw.rect(self.screen, color, (rect_x, y_offset, 50, 50))
+            
+            # Zeichne Namen darunter
+            item_name = zutat.capitalize()
+            name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
+            name_rect = name_surface.get_rect(centerx=rect_x + 25, top=y_offset + 55)
+            self.screen.blit(name_surface, name_rect)
         
         y_offset += 70
         
@@ -348,6 +358,11 @@ class Level:
         self.screen = screen  # Verwende die übergebene Surface
         self.main_game = main_game  # Reference to main game for spell bar access
         self.game_logic = GameLogic()
+        
+        # Debug-Attribute für Koordinatenanzeige (nur Initialisierung)
+        self.show_coordinates = True
+        self.debug_font = pygame.font.Font(None, 24)  # Dies ist okay, da Font keine Video-Initialisierung benötigt
+
         # Referenz für UI-Status-Anzeige
         self.game_logic._level_ref = self
         # FIX: Verwende die Surface-Dimensionen für die Kamera, nicht SCREEN_-Konstanten
@@ -379,7 +394,76 @@ class Level:
         
         # Debug-Optionen
         self.show_collision_debug = False  # Standardmäßig aus, mit F1 aktivierbar
+
+        # Interaktionszonen hinzufügen
+        # Debug-Ausgabe für Initialisierung
+        print("Initialisiere Interaktionszonen...")
+        self.interaction_zones = {
+            'elara_dialog': {
+                'pos': pygame.math.Vector2(1580, 188),
+                'radius': 150,
+                'text': 'Elara (Nachbarin): "Lumo ist ins Dorf gerannt - aber die Brücke ist eingestürzt! Repariere sie, sonst kommst du nicht hinüber!"',
+                'active': False,
+                'is_checkpoint': True,  # Markiere als Checkpoint
+                'required_items': ['stahlerz', 'holzstab'],  # Benötigte Gegenstände
+                'completion_text': 'Du hast alle Gegenstände gefunden und die Brücke repariert!',
+                'completed': False
+            }
+        }
+        print(f"Interaktionszone erstellt bei Position: {self.interaction_zones['elara_dialog']['pos']}")
     
+        self.show_interaction_text = False
+        self.interaction_text = ""
+        self.interaction_font = pygame.font.Font(None, 32)  # Schriftgröße angepasst für bessere Lesbarkeit
+
+        # Neues System für Questgegenstände/Sammelitems
+        self.quest_items = []  # Liste der gesammelten Questgegenstände
+        self.collectible_items = {
+            # Gegenstände auf dieser Map
+            'holzstab': {
+                'pos': pygame.math.Vector2(27, 59),
+                'name': 'Holzstab',
+                'collected': False,
+                'radius': 50,
+                'color': (139, 69, 19),  # Braun
+                'available': True  # Gegenstand ist auf dieser Map verfügbar
+            },
+            'stahlerz': {
+                'pos': pygame.math.Vector2(3056, 39),
+                'name': 'Stahlerz',
+                'collected': False,
+                'radius': 50,
+                'color': (169, 169, 169),  # Silber
+                'available': True
+            },
+            'mondstein': {
+                'pos': pygame.math.Vector2(2296, 913),
+                'name': 'Mondstein',
+                'collected': False,
+                'radius': 50,
+                'color': (200, 200, 255),  # Bläulich-weiß
+                'available': True
+            },
+            # Vorbereitete Gegenstände für spätere Maps
+            'kristallsplitter': {
+                'name': 'Kristallsplitter',
+                'collected': False,
+                'color': (173, 216, 230),  # Hellblau
+                'available': False  # Noch nicht auf dieser Map verfügbar
+            },
+            'goldener_reif': {
+                'name': 'Goldener Reif',
+                'collected': False,
+                'color': (255, 215, 0),  # Gold
+                'available': False
+            }
+        }
+        
+        # Füge Attribute für die Sammel-Nachricht hinzu
+        self.collection_message = ""
+        self.collection_message_timer = 0
+        self.collection_message_duration = 3000  # 3 Sekunden Anzeigedauer
+
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
@@ -418,16 +502,11 @@ class Level:
             return
 
         player_spawned = False
-        spawn_count = 0
 
         # Durchsuche alle Objekt-Layer nach Spawn-Punkten
         for layer in self.map_loader.tmx_data.visible_layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
-                print(f"🔍 Durchsuche Layer '{layer.name}' nach Spawn-Punkten...")
-
                 for obj in layer.objects:
-                    spawn_count += 1
-
                     # Player Spawn-Punkt
                     if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
                         self.game_logic.player.rect.centerx = obj.x
@@ -436,36 +515,14 @@ class Level:
                         player_spawned = True
                         print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
 
-                    # Enemy Spawns (für alle Enemy-Layer)
-                    elif (obj.name and 
-                          obj.name.lower() in ['enemy', 'demon', 'monster', 'fireworm', 'orc']):
-                        print(f"🔍 Enemy-Objekt gefunden: {obj.name} bei ({obj.x}, {obj.y})")
-
-        # Demons aus der Map spawnen (Das macht die eigentliche Arbeit!)
-        print("🎯 Lade Gegner aus Enemy-Layer...")
-        self.enemy_manager.add_enemies_from_map(self.map_loader)
-        
-        # FALLBACK: Falls keine Gegner aus Map geladen wurden
-        if len(self.enemy_manager.enemies) == 0:
-            print("⚠️ Keine Gegner aus Map geladen - verwende Test-Gegner")
-            self.enemy_manager.respawn_default_enemies()
-
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
-            # Positioniere Player innerhalb der Map-Grenzen, WEITER OBEN!
-            if self.map_loader and self.map_loader.tmx_data:
-                # Setze Player in die OBERE Hälfte der Map
-                map_height = self.map_loader.height
-                self.game_logic.player.rect.centerx = self.map_loader.width // 2  # Mitte der Map
-                self.game_logic.player.rect.centery = map_height // 4  # 25% von oben
-                self.game_logic.player.update_hitbox()
-                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
-            else:
-                # Fallback für wenn keine Map geladen ist - AUCH WEITER OBEN
-                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.rect.centery = self.screen.get_height() // 4  # Oberes Viertel
-                self.game_logic.player.update_hitbox()
-    
+            # Setze eine feste Startposition
+            self.game_logic.player.rect.centerx = 800  # X-Position
+            self.game_logic.player.rect.centery = 400  # Y-Position
+            self.game_logic.player.update_hitbox()
+            print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
         if not self.map_loader or not self.map_loader.tmx_data:
@@ -638,7 +695,10 @@ class Level:
                     magic_system.add_element(ElementType.FEUER)
                     magic_system.add_element(ElementType.WASSER)
                     magic_system.cast_magic(self.game_logic.player)
-    
+            elif event.key == pygame.K_F5:
+                self.show_coordinates = not self.show_coordinates
+                print(f"Koordinatenanzeige: {'An' if self.show_coordinates else 'Aus'}")
+
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
         # Alle Health-Bars durchgehen und Sichtbarkeit umschalten
@@ -703,8 +763,31 @@ class Level:
         # Universal Input System updaten
         self.input_system.update()
         
-        # Bewegung verarbeiten (nutzt jetzt Universal Input System)
-        self.handle_movement(dt)
+        # Bewegung verarbeiten
+        if self.game_logic and self.game_logic.player:
+            # Hole Bewegungsvektor vom Input System
+            direction = pygame.math.Vector2(0, 0)
+            
+            # Tastatur-Input verarbeiten
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                direction.x = -1
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                direction.x = 1
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                direction.y = -1
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                direction.y = 1
+                
+            # Normalisiere den Vektor für diagonale Bewegung
+            if direction.length() > 0:
+                direction = direction.normalize()
+            
+            # Setze die Bewegungsrichtung im Player
+            self.game_logic.player.direction = direction
+            
+            # Führe die Bewegung aus
+            self.game_logic.player.move(dt)
         
         # Spiel-Logik updaten mit Delta Time
         game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
@@ -713,12 +796,12 @@ class Level:
         if game_result == "game_over":
             return "game_over"
         
-        # Magic System explizit updaten mit Feindliste für Kollision
+        # Magic System updaten
         if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
             enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
             self.game_logic.player.magic_system.update(dt, enemies_list)
         
-        # Demons updaten mit Player-Referenz für AI
+        # Demons updaten
         self.enemy_manager.update(dt, self.game_logic.player)
         
         # Health-Bar System updaten
@@ -727,20 +810,147 @@ class Level:
         # Kamera updaten
         self.camera.update(self.game_logic.player)
         
-        return None
+        # Prüfe Interaktionszonen
+        self.check_interaction_zones()
+        
+        # Sammelbare Gegenstände überprüfen
+        self.check_collectibles()
+        
+        # Update die Collection Message Timer
+        if self.collection_message_timer > 0:
+            self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
     
-    def handle_movement(self, dt):
-        """Behandelt Spieler-Bewegung mit Universal Input System"""
-        import pygame
+    def check_interaction_zones(self):
+        """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist"""
+        if not self.game_logic or not self.game_logic.player:
+            return
+
+        player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
+        self.show_interaction_text = False
+
+        for zone_id, zone in self.interaction_zones.items():
+            distance = player_pos.distance_to(zone['pos'])
+
+            if distance <= zone['radius']:
+                zone['active'] = True
+                
+                # Debug-Ausgabe um zu sehen welche Items wir haben
+                print(f"Aktuelle Quest-Items: {self.quest_items}")
+                print(f"Benötigte Items: {zone.get('required_items', [])}")
+                
+                # Prüfe ob dies ein Checkpoint ist
+                if zone.get('is_checkpoint', False) and not zone.get('completed', False):
+                    required_items = set(zone.get('required_items', []))
+                    collected_items = set(self.quest_items)
+                    
+                    # Debug-Ausgabe für Item-Überprüfung
+                    print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
+                    
+                    if required_items.issubset(collected_items):
+                        print("Alle benötigten Items gefunden!")
+                        # Alle Items vorhanden - zeige Abschlusstext
+                        self.show_interaction_text = True
+                        self.interaction_text = zone['completion_text']
+                        zone['completed'] = True
+                        
+                        # Speichere das Spiel und kehre zum Hauptmenü zurück
+                        print("Starte Level-Abschluss...")
+                        self.trigger_level_completion()
+                    else:
+                        # Nicht alle Items vorhanden - zeige normalen Dialog
+                        self.show_interaction_text = True
+                        self.interaction_text = zone['text']
+                        print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
+                else:
+                    # Normale Interaktionszone oder bereits abgeschlossen
+                    self.show_interaction_text = True
+                    self.interaction_text = zone.get('text', '')
+                break
+            else:
+                zone['active'] = False
+
+    def update(self, dt):
+        """Update-Schleife mit Delta Time"""
+        # Universal Input System updaten
+        self.input_system.update()
         
-        # Bewegungsvektor vom Universal Input System holen
-        direction = self.input_system.get_movement_vector()
+        # Bewegung verarbeiten
+        if self.game_logic and self.game_logic.player:
+            # Hole Bewegungsvektor vom Input System
+            direction = pygame.math.Vector2(0, 0)
+            
+            # Tastatur-Input verarbeiten
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                direction.x = -1
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                direction.x = 1
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                direction.y = -1
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                direction.y = 1
+                
+            # Normalisiere den Vektor für diagonale Bewegung
+            if direction.length() > 0:
+                direction = direction.normalize()
+            
+            # Setze die Bewegungsrichtung im Player
+            self.game_logic.player.direction = direction
+            
+            # Führe die Bewegung aus
+            self.game_logic.player.move(dt)
+    
+        # Rest des Update-Codes...
+        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
         
-        # Setze die Bewegungsrichtung im Player
-        self.game_logic.player.direction = direction
+        if game_result == "game_over":
+            return "game_over"
         
-        # Führe die Bewegung aus (Player macht dt-Berechnung intern)
-        self.game_logic.player.move(dt)
+        # Magic System updaten
+        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
+            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
+            self.game_logic.player.magic_system.update(dt, enemies_list)
+        
+        # Demons updaten
+        self.enemy_manager.update(dt, self.game_logic.player)
+        
+        # Health-Bar System updaten
+        self.health_bar_manager.update(dt)
+        
+        # Kamera updaten
+        self.camera.update(self.game_logic.player)
+        
+        # Prüfe Interaktionszonen
+        self.check_interaction_zones()
+        
+        # Sammelbare Gegenstände überprüfen
+        self.check_collectibles()
+        
+        # Update die Collection Message Timer
+        if self.collection_message_timer > 0:
+            self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
+    
+    def trigger_level_completion(self):
+        """Behandelt den Abschluss des Levels"""
+        print("Level-Abschluss wird ausgeführt...")
+        
+        # Speichere das Spiel automatisch
+        if hasattr(self, '_save_callback') and self._save_callback:
+            print("Speichere Spielstand...")
+            self._save_callback(1)  # Speichere in Slot 1
+        
+        # Warte kurz, damit der Spieler die Nachricht lesen kann
+        pygame.time.wait(2000)
+        
+        # Setze einen Flag im main_game, um zum Hauptmenü zurückzukehren
+        if self.main_game:
+            print("Setze Flag für Rückkehr zum Hauptmenü...")
+            self.main_game.return_to_menu = True
+            # Zusätzlich direkt den Spielzustand ändern
+            if hasattr(self.main_game, 'set_state'):
+                self.main_game.set_state('MAIN_MENU')
+        else:
+            print("Warnung: main_game Referenz nicht gefunden!")
     
     def render(self):
         """Rendering des Levels"""
@@ -751,9 +961,26 @@ class Level:
             self.renderer.draw_background()
             self.renderer.draw_ground_stones(self.camera)
         
+        # Sammelbare Gegenstände zeichnen
+        self.render_collectibles()
+        
         # Spieler
         self.renderer.draw_player(self.game_logic.player, self.camera)
         
+        # Collection Message anzeigen
+        if self.collection_message_timer > pygame.time.get_ticks():
+            message_surface = self.debug_font.render(self.collection_message, True, (255, 255, 255))
+            message_rect = message_surface.get_rect()
+            message_rect.centerx = self.screen.get_width() // 2
+            message_rect.centery = self.screen.get_height() // 2 - 50
+            
+            # Hintergrund für bessere Lesbarkeit
+            bg_rect = message_rect.inflate(20, 10)
+            bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(bg_surface, (0, 0, 0, 128), bg_surface.get_rect())
+            self.screen.blit(bg_surface, bg_rect)
+            self.screen.blit(message_surface, message_rect)
+    
         # Magie-Projektile zeichnen (nach Spieler, vor Feinden für korrekte Layering)
         if self.game_logic and self.game_logic.player:
             self.game_logic.player.magic_system.draw_projectiles(self.screen, self.camera)
@@ -774,8 +1001,61 @@ class Level:
         
         # UI
         self.renderer.draw_ui(self.game_logic)
+        if self.show_coordinates:
+            self.render_coordinates()
         self.renderer.draw_controls()
     
+        if self.show_interaction_text:
+            self.render_interaction_text()
+    
+    def render_interaction_text(self):
+        """Zeichnet den Interaktionstext in einem Textfeld"""
+        if self.show_interaction_text:
+            # Maximale Breite für das Textfeld
+            max_width = 800
+            
+            # Text in mehrere Zeilen aufteilen für bessere Lesbarkeit
+            words = self.interaction_text.split()
+            lines = []
+            current_line = []
+            
+            for word in words:
+                current_line.append(word)
+                # Test, ob die aktuelle Zeile zu lang wird
+                test_surface = self.interaction_font.render(' '.join(current_line), True, (255, 255, 255))
+                if test_surface.get_width() > max_width:
+                    if len(current_line) > 1:
+                        current_line.pop()
+                        lines.append(' '.join(current_line))
+                        current_line = [word]
+                    else:
+                        lines.append(' '.join(current_line))
+                        current_line = []
+            
+            if current_line:
+                lines.append(' '.join(current_line))
+            
+            # Textfeld erstellen
+            line_height = self.interaction_font.get_linesize()
+            total_height = line_height * len(lines) + 40  # Extra Padding
+            
+            # Hintergrund
+            bg_surface = pygame.Surface((max_width + 40, total_height), pygame.SRCALPHA)
+            pygame.draw.rect(bg_surface, (0, 0, 0, 180), bg_surface.get_rect(), border_radius=10)
+            
+            # Position des Textfelds (zentriert oben)
+            bg_rect = bg_surface.get_rect(centerx=self.screen.get_width() // 2, top=50)
+            self.screen.blit(bg_surface, bg_rect)
+            
+            # Text rendern
+            for i, line in enumerate(lines):
+                text_surface = self.interaction_font.render(line, True, (255, 255, 255))
+                text_rect = text_surface.get_rect(
+                    left=bg_rect.left + 20,
+                    top=bg_rect.top + 20 + i * line_height
+                )
+                self.screen.blit(text_surface, text_rect)
+
     def restart_level(self):
         """Startet das Level nach Game Over neu"""
         print("🔄 Level wird neu gestartet...")
@@ -977,3 +1257,90 @@ class Level:
         """Haupt-Update-Methode für das Level"""
         self.update(dt)
         self.render()
+    def render_coordinates(self):
+        """Zeigt die Mausposition und Spielerposition an"""
+        try:
+            # Mausposition holen (Bildschirmkoordinaten)
+            mouse_pos = pygame.mouse.get_pos()
+            
+            # Mausposition in Weltkoordinaten umrechnen
+            world_x = mouse_pos[0] + self.camera.camera_rect.x
+            world_y = mouse_pos[1] + self.camera.camera_rect.y
+            
+            # Debug Text erstellen
+            mouse_text = f"Maus: ({int(world_x)}, {int(world_y)})"
+            
+            # Spielerposition (falls verfügbar)
+            if self.game_logic and self.game_logic.player:
+                player_x = self.game_logic.player.rect.centerx
+                player_y = self.game_logic.player.rect.centery
+                player_text = f"Spieler: ({int(player_x)}, {int(player_y)})"
+            else:
+                player_text = "Spieler: nicht verfügbar"
+            
+            # Text rendern
+            mouse_surface = self.debug_font.render(mouse_text, True, (255, 255, 0))
+            player_surface = self.debug_font.render(player_text, True, (255, 255, 0))
+            
+            # Hintergrund für bessere Lesbarkeit
+            padding = 5
+            bg_rect_mouse = mouse_surface.get_rect(topleft=(10, 10)).inflate(padding * 2, padding * 2)
+            bg_rect_player = player_surface.get_rect(topleft=(10, 30)).inflate(padding * 2, padding * 2)
+            
+            # Zeichne den Hintergrund
+            pygame.draw.rect(self.screen, (0, 0, 0, 128), bg_rect_mouse)
+            pygame.draw.rect(self.screen, (0, 0, 0, 128), bg_rect_player)
+            
+            # Position für Debug-Info
+            self.screen.blit(mouse_surface, (10, 10))
+            self.screen.blit(player_surface, (10, 30))
+        except Exception as e:
+            print(f"Fehler beim Rendern der Koordinaten: {e}")
+
+    def render_collectibles(self):
+        """Rendert die sammelbaren Questgegenstände auf der Map"""
+        for item_id, item in self.collectible_items.items():
+            # Nur verfügbare und noch nicht gesammelte Items rendern
+            if not item.get('available', False) or item['collected']:
+                continue
+            
+            # Erstelle ein temporäres Rect für die Kamera-Transformation
+            item_rect = pygame.Rect(item['pos'].x - 10, item['pos'].y - 10, 20, 20)
+            screen_pos = self.camera.apply_rect(item_rect)
+            
+            # Item als schimmernder Kreis zeichnen
+            glow_intensity = (math.sin(pygame.time.get_ticks() * 0.005) + 1) * 0.5
+            main_color = item['color']
+            glow_color = tuple(int(c * glow_intensity) for c in main_color)
+            
+            # Äußerer Gloweffekt
+            pygame.draw.circle(self.screen, glow_color, screen_pos.center, 20)
+            # Innerer Kern
+            pygame.draw.circle(self.screen, main_color, screen_pos.center, 12)
+
+    def check_collectibles(self):
+        """Überprüft ob der Spieler Questgegenstände aufsammeln kann"""
+        if not self.game_logic or not self.game_logic.player:
+            return
+
+        player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
+        
+        for item_id, item in self.collectible_items.items():
+            # Nur verfügbare und noch nicht gesammelte Items prüfen
+            if not item.get('available', False) or item['collected']:
+                continue
+                
+            distance = player_pos.distance_to(item['pos'])
+            
+            if distance <= item['radius']:
+                if item_id not in self.quest_items:
+                    self.quest_items.append(item_id)
+                    item['collected'] = True
+                    # Setze direkt die Collection Message
+                    self.collection_message = f"{item['name']} eingesammelt!"
+                    self.collection_message_timer = pygame.time.get_ticks() + self.collection_message_duration
+                    print(f"Item eingesammelt: {item['name']}")
+                    
+                    # Füge das Item zum Spieler-Inventar hinzu
+                    if item_id not in self.game_logic.aktive_zutaten:
+                        self.game_logic.aktive_zutaten.append(item_id)
