@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # src/level.py
-# Level/Gameplay state - Here the actual game runs
 import pygame
 from os import path
+import math  # Füge den math import hinzu
 from settings import *
 from game import Game as GameLogic
 from camera import Camera
@@ -206,18 +206,28 @@ class GameRenderer:
         self.screen.blit(zutaten_surface, (40, y_offset))
         y_offset += 35
         
-        # Zutaten-Symbole
+        # Zutaten-Symbole und Namen
         zutaten_farben = {
             "wasserkristall": (0, 150, 255),
             "feueressenz": (255, 100, 0),
-            "erdkristall": (139, 69, 19)
+            "erdkristall": (139, 69, 19),
+            "holzstab": (139, 69, 19),
+            "stahlerz": (169, 169, 169),
+            "mondstein": (200, 200, 255)
         }
         
         start_x = 50
         for i, zutat in enumerate(game_logic.aktive_zutaten):
             color = zutaten_farben.get(zutat, (200, 200, 200))
             rect_x = start_x + i * 70
+            # Zeichne Gegenstand-Symbol
             pygame.draw.rect(self.screen, color, (rect_x, y_offset, 50, 50))
+            
+            # Zeichne Namen darunter
+            item_name = zutat.capitalize()
+            name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
+            name_rect = name_surface.get_rect(centerx=rect_x + 25, top=y_offset + 55)
+            self.screen.blit(name_surface, name_rect)
         
         y_offset += 70
         
@@ -341,13 +351,446 @@ class GameRenderer:
         if fill_width > 0:
             pygame.draw.rect(self.screen, (50, 150, 255), (bar_x, bar_y, fill_width, bar_height))
 
-class Level:
+    def render_entities_with_depth(self, player, enemies, depth_objects, camera):
+        """🎮 Fake-3D: Rendert alle Entities nach Y-Position sortiert"""
+        entities = []
+        
+        # Player hinzufügen
+        entities.append({
+            'type': 'player',
+            'entity': player,
+            'y_bottom': player.rect.bottom,
+            'render_func': lambda: self.draw_player(player, camera)
+        })
+        
+        # Enemies hinzufügen
+        if enemies:
+            for enemy in enemies:
+                entities.append({
+                    'type': 'enemy', 
+                    'entity': enemy,
+                    'y_bottom': enemy.rect.bottom,
+                    'render_func': lambda e=enemy: self.draw_enemy(e, camera)
+                })
+        
+        # Depth-Objekte aus der Map hinzufügen
+        if depth_objects:
+            for obj in depth_objects:
+                entities.append({
+                    'type': 'depth_object',
+                    'entity': obj,
+                    'y_bottom': obj['y_bottom'],
+                    'render_func': lambda o=obj: self.draw_depth_object(o, camera)
+                })
+        
+        # Nach Y-Position sortieren (je weiter unten, desto später gerendert = vor anderen Objekten)
+        entities.sort(key=lambda x: x['y_bottom'])
+        
+        # Alle Entities in der richtigen Reihenfolge rendern
+        for entity_data in entities:
+            entity_data['render_func']()
+    
+    def draw_depth_object(self, obj, camera):
+        """Zeichnet ein Depth-Objekt aus der Map"""
+        # Kamera-Transformation anwenden
+        screen_rect = camera.apply_rect(obj['rect'])
+        
+        # Prüfe ob Objekt im sichtbaren Bereich ist
+        if (screen_rect.right < 0 or screen_rect.left > self.screen.get_width() or 
+            screen_rect.bottom < 0 or screen_rect.top > self.screen.get_height()):
+            return
+        
+        # Verschiedene Objekt-Typen zeichnen
+        obj_name = obj['name'].lower()
+        
+        if 'tree' in obj_name:
+            self.draw_tree_object(screen_rect, obj)
+        elif 'rock' in obj_name or 'stone' in obj_name:
+            self.draw_rock_object(screen_rect, obj)
+        elif 'building' in obj_name or 'house' in obj_name:
+            self.draw_building_object(screen_rect, obj)
+        elif 'fence' in obj_name:
+            self.draw_fence_object(screen_rect, obj)
+        else:
+            # Fallback: Einfaches Rechteck
+            pygame.draw.rect(self.screen, obj['color'], screen_rect)
+            pygame.draw.rect(self.screen, (0, 0, 0), screen_rect, 2)  # Rahmen
+    
+    def draw_tree_object(self, screen_rect, obj):
+        """Zeichnet einen Baum"""
+        # Stamm (untere 40% der Höhe)
+        trunk_height = int(screen_rect.height * 0.4)
+        trunk_width = int(screen_rect.width * 0.3)
+        trunk_rect = pygame.Rect(
+            screen_rect.centerx - trunk_width // 2,
+            screen_rect.bottom - trunk_height,
+            trunk_width,
+            trunk_height
+        )
+        pygame.draw.rect(self.screen, (101, 67, 33), trunk_rect)  # Braun
+        
+        # Krone (obere 80% der Höhe, überlappend)
+        crown_height = int(screen_rect.height * 0.8)
+        crown_width = int(screen_rect.width * 0.9)
+        crown_rect = pygame.Rect(
+            screen_rect.centerx - crown_width // 2,
+            screen_rect.top,
+            crown_width,
+            crown_height
+        )
+        pygame.draw.ellipse(self.screen, (34, 139, 34), crown_rect)  # Grün
+        
+        # Schatten-Effekt
+        shadow_rect = crown_rect.copy()
+        shadow_rect.inflate_ip(-4, -4)
+        pygame.draw.ellipse(self.screen, (0, 100, 0), shadow_rect, 3)
+    
+    def draw_rock_object(self, screen_rect, obj):
+        """Zeichnet einen Stein/Felsen"""
+        # Hauptstein
+        pygame.draw.ellipse(self.screen, (105, 105, 105), screen_rect)
+        # Highlight
+        highlight_rect = screen_rect.copy()
+        highlight_rect.width //= 3
+        highlight_rect.height //= 3
+        pygame.draw.ellipse(self.screen, (169, 169, 169), highlight_rect)
+        # Schatten
+        pygame.draw.ellipse(self.screen, (64, 64, 64), screen_rect, 2)
+    
+    def draw_building_object(self, screen_rect, obj):
+        """Zeichnet ein Gebäude"""
+        # Hauptgebäude
+        pygame.draw.rect(self.screen, (139, 69, 19), screen_rect)
+        
+        # Dach (Dreieck oben)
+        roof_points = [
+            (screen_rect.centerx, screen_rect.top - 20),
+            (screen_rect.left - 10, screen_rect.top),
+            (screen_rect.right + 10, screen_rect.top)
+        ]
+        pygame.draw.polygon(self.screen, (160, 82, 45), roof_points)
+        
+        # Fenster (falls groß genug)
+        if screen_rect.width > 40 and screen_rect.height > 40:
+            window_size = min(screen_rect.width // 4, screen_rect.height // 4)
+            window_rect = pygame.Rect(
+                screen_rect.left + window_size,
+                screen_rect.top + window_size,
+                window_size,
+                window_size
+            )
+            pygame.draw.rect(self.screen, (135, 206, 235), window_rect)  # Hellblau
+    
+    def draw_fence_object(self, screen_rect, obj):
+        """Zeichnet einen Zaun"""
+        # Horizontale Balken
+        rail_height = screen_rect.height // 4
+        for i in range(3):
+            rail_y = screen_rect.top + i * rail_height + rail_height // 2
+            pygame.draw.rect(self.screen, (160, 82, 45), 
+                           (screen_rect.left, rail_y, screen_rect.width, rail_height // 2))
+        
+        # Vertikale Pfosten
+        post_width = screen_rect.width // 8
+        for i in range(0, screen_rect.width, screen_rect.width // 4):
+            post_x = screen_rect.left + i
+            pygame.draw.rect(self.screen, (101, 67, 33),
+                           (post_x, screen_rect.top, post_width, screen_rect.height))
+    
+    def draw_enemy(self, enemy, camera):
+        """Zeichnet einen Feind (erweitert falls nötig)"""
+        # Deine existierende Enemy-Render-Logik hier
+        enemy_pos = camera.apply(enemy)
+        if hasattr(enemy, 'image') and enemy.image:
+            scaled_image = self.asset_manager.get_scaled_sprite(
+                enemy.image, (enemy_pos.width, enemy_pos.height)
+            )
+            self.screen.blit(scaled_image, (enemy_pos.x, enemy_pos.y))
+        else:
+            # Fallback
+            pygame.draw.rect(self.screen, (255, 0, 0), enemy_pos)
+    
+    def draw_background(self, map_loader=None, camera=None):
+        """🚀 Task 5: Zeichnet den Hintergrund - Multi-Resolution-kompatibel"""
+        if map_loader and camera and map_loader.tmx_data:
+            self.screen.fill((0, 0, 0))  # Schwarzer Hintergrund für besseren Kontrast
+            map_loader.render(self.screen, camera)
+        else:
+            self.screen.fill(BACKGROUND_COLOR)
+            # 🚀 Task 5: Standard-Hintergrund mit dynamischen Größen
+            screen_width = self.screen.get_width()
+            screen_height = self.screen.get_height()
+            tree_rect = pygame.Rect(0, screen_height - 400, screen_width, 200)
+            pygame.draw.rect(self.screen, (34, 139, 34), tree_rect)
+            ground_rect = pygame.Rect(0, screen_height - 200, screen_width, 200)
+            pygame.draw.rect(self.screen, (139, 69, 19), ground_rect)
+    
+    def draw_ground_stones(self, camera):
+        """🚀 Task 5: Zeichnet Steine mit Kamera-Transformation - Multi-Resolution"""
+        screen_width = self.screen.get_width()  # 🚀 Task 5: Dynamische Screen-Breite
+        for stone in self.stones:
+            stone_rect = pygame.Rect(stone['x'], stone['y'], stone['size'], stone['size'])
+            stone_pos = camera.apply_rect(stone_rect)
+            
+            if -50 < stone_pos.x < screen_width + 50:
+                scaled_size = int(stone['size'] * camera.zoom_factor)
+                pygame.draw.circle(self.screen, stone['color'], 
+                                 (int(stone_pos.x + scaled_size//2), 
+                                  int(stone_pos.y + scaled_size//2)), 
+                                 max(1, scaled_size//2))
+    
+    def draw_player(self, player, camera):
+        """🚀 Task 6: Zeichnet den Spieler - Alpha-optimiert für bessere Performance"""
+        # Prüfe Unsichtbarkeit
+        if hasattr(player, 'magic_system') and player.magic_system.is_invisible(player):
+            # 🚀 Task 6: Nutze Alpha-Cache für unsichtbare Spieler
+            if hasattr(player, 'image') and player.image:
+                player_pos = camera.apply(player)
+                # Nutze optimierte Alpha-Caching statt per-Frame Surface-Erstellung
+                transparent_sprite = self._get_cached_transparent_sprite(
+                    player.image, 80, (player_pos.width, player_pos.height)
+                )
+                self.screen.blit(transparent_sprite, (player_pos.x, player_pos.y))
+            else:
+                # 🚀 Task 6: Transparenter Fallback mit Alpha-Cache-Pattern
+                player_pos = camera.apply(player)
+                # Erstelle einfachen transparenten Rechteck-Cache (für Fallback)
+                fallback_key = ('fallback_transparent_rect', player_pos.width, player_pos.height, 80)
+                if fallback_key not in self._alpha_cache:
+                    transparent_surface = pygame.Surface((player_pos.width, player_pos.height), pygame.SRCALPHA)
+                    pygame.draw.rect(transparent_surface, (255, 255, 0, 80), (0, 0, player_pos.width, player_pos.height))
+                    self._alpha_cache[fallback_key] = transparent_surface
+                self.screen.blit(self._alpha_cache[fallback_key], (player_pos.x, player_pos.y))
+        else:
+            # Normale Darstellung
+            if hasattr(player, 'image') and player.image:
+                player_pos = camera.apply(player)  # Gibt bereits skaliertes Rect zurück
+                # Performance-Optimierung: Nutze gecachte Skalierung statt jedes Mal neu zu skalieren
+                scaled_image = self.asset_manager.get_scaled_sprite(
+                    player.image, 
+                    (player_pos.width, player_pos.height)
+                )
+                self.screen.blit(scaled_image, (player_pos.x, player_pos.y))
+                
+                # 🚀 Task 6: Schild-Effekt mit Low-Effects-Mode (RPi4-Optimierung)
+                if hasattr(player, 'magic_system') and player.magic_system.is_shielded(player):
+                    from config import DisplayConfig
+                    settings = DisplayConfig.get_optimized_settings()
+                    
+                    if settings.get('LOW_EFFECTS', False):
+                        # 🚀 RPi4: Einfacher Schild-Kreis ohne Animation
+                        shield_center = (player_pos.centerx, player_pos.centery)
+                        pygame.draw.circle(self.screen, (100, 150, 255), shield_center, 
+                                         int(player_pos.width // 2 + 10), 3)
+                    else:
+                        # PC: Animierter Schild mit Pulsierender Effekt
+                        import math
+                        shield_center = (player_pos.centerx, player_pos.centery)
+                        current_time = pygame.time.get_ticks()
+                        pulse = abs(math.sin(current_time * 0.01)) * 10 + 5
+                        pygame.draw.circle(self.screen, (100, 150, 255), shield_center, 
+                                         int(player_pos.width // 2 + pulse), 3)
+            else:
+                # Fallback für fehlende Sprites - helle Farbe für bessere Sichtbarkeit
+                player_pos = camera.apply(player)
+                pygame.draw.rect(self.screen, (255, 255, 0), player_pos)  # Gelb statt grün
+                # Zusätzlicher Rahmen für noch bessere Sichtbarkeit
+                pygame.draw.rect(self.screen, (255, 255, 255), player_pos, 3)
+    
+    def draw_collision_debug(self, player, camera, collision_objects):
+        """Zeichnet Kollisionsboxen für Debugging"""
+        # Player-Hitbox zeichnen
+        player_hitbox_transformed = camera.apply_rect(player.hitbox)
+        pygame.draw.rect(self.screen, (255, 0, 0), player_hitbox_transformed, 2)  # Rot für Player-Hitbox
+        
+        # Kollisionsobjekte zeichnen
+        for collision_rect in collision_objects:
+            collision_transformed = camera.apply_rect(collision_rect)
+            pygame.draw.rect(self.screen, (0, 255, 255), collision_transformed, 2)  # Cyan für Kollisionsobjekte
+    
+    def draw_ui(self, game_logic):
+        """Zeichnet die Benutzeroberfläche"""
+        # UI-Hintergrund
+        ui_rect = pygame.Rect(20, 20, 600, 320)  # Größer für Magie-Anzeige
+        pygame.draw.rect(self.screen, UI_BACKGROUND, ui_rect)
+        pygame.draw.rect(self.screen, TEXT_COLOR, ui_rect, 3)
+        
+        y_offset = 40
+        
+        # Titel
+        title = self.font.render(GAME_TITLE, True, TEXT_COLOR)
+        self.screen.blit(title, (40, y_offset))
+        y_offset += 50
+        
+        # Punkte
+        score_text = "Punkte: {}".format(game_logic.score)
+        score_surface = self.font.render(score_text, True, TEXT_COLOR)
+        self.screen.blit(score_surface, (40, y_offset))
+        y_offset += 40
+        
+        # Aktive Zutaten
+        zutaten_text = "Inventar ({}/5):".format(len(game_logic.aktive_zutaten))
+        zutaten_surface = self.font.render(zutaten_text, True, TEXT_COLOR)
+        self.screen.blit(zutaten_surface, (40, y_offset))
+        y_offset += 35
+        
+        # Zutaten-Symbole und Namen
+        zutaten_farben = {
+            "wasserkristall": (0, 150, 255),
+            "feueressenz": (255, 100, 0),
+            "erdkristall": (139, 69, 19),
+            "holzstab": (139, 69, 19),
+            "stahlerz": (169, 169, 169),
+            "mondstein": (200, 200, 255)
+        }
+        
+        start_x = 50
+        for i, zutat in enumerate(game_logic.aktive_zutaten):
+            color = zutaten_farben.get(zutat, (200, 200, 200))
+            rect_x = start_x + i * 70
+            # Zeichne Gegenstand-Symbol
+            pygame.draw.rect(self.screen, color, (rect_x, y_offset, 50, 50))
+            
+            # Zeichne Namen darunter
+            item_name = zutat.capitalize()
+            name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
+            name_rect = name_surface.get_rect(centerx=rect_x + 25, top=y_offset + 55)
+            self.screen.blit(name_surface, name_rect)
+        
+        y_offset += 70
+        
+        # Magie-System UI (falls Player verfügbar)
+        if hasattr(game_logic, 'player') and game_logic.player:
+            self.draw_magic_ui(game_logic.player, 40, y_offset)
+            y_offset += 80
+        
+        # Letztes Brau-Ergebnis
+        result_lines = game_logic.last_brew_result.split('\n')
+        for line in result_lines:
+            if line.strip():
+                result_surface = self.small_font.render(line, True, TEXT_COLOR)
+                self.screen.blit(result_surface, (40, y_offset))
+                y_offset += 30
+        
+        # Map-Status anzeigen
+        y_offset += 10
+        map_status = "🗺️ Map geladen" if hasattr(game_logic, 'level') and game_logic.level and game_logic.level.use_map else "⚠️ Standard-Grafik"
+        # Fallback für wenn game_logic keine level-Referenz hat
+        try:
+            level_instance = getattr(game_logic, '_level_ref', None)
+            if level_instance and hasattr(level_instance, 'use_map') and level_instance.use_map:
+                map_status = "🗺️ Map geladen"
+        except:
+            pass
+        map_surface = self.small_font.render(map_status, True, (150, 255, 150))
+        self.screen.blit(map_surface, (40, y_offset))
+    
+    def draw_controls(self):
+        """🚀 Task 5: Zeichnet die Steuerungshinweise - Multi-Resolution-optimiert"""
+        controls = [
+            "🎮 STEUERUNG:",
+            "← → ↑ ↓ / WASD Bewegung",
+            "1,2,3 Magic-Elemente", 
+            "Leertaste: Brauen",
+            "Backspace: Zutat entfernen",
+            "🔮 MAGIE:",
+            "1: Wasser, 2: Feuer, 3: Stein",
+            "C: Zaubern, X: Elemente löschen",
+            "R: Reset, M: Musik ein/aus",
+            "F1: Kollisions-Debug",
+            "F2: Health-Bars ein/aus",
+            "💾 SPEICHERN:",
+            "F9-F12: Speichern (Slot 1-4)",
+            "Shift+F9-F12: Löschen (Slot 1-4)",
+            "ESC: Zurück zum Menü"
+        ]
+        
+        # 🚀 Task 5: Dynamische Screen-Größen statt Konstanten
+        screen_height = self.screen.get_height()
+        screen_width = self.screen.get_width()
+        start_y = screen_height - 380  # Mehr Platz für zusätzliche Zeilen
+        for i, control in enumerate(controls):
+            color = TEXT_COLOR if i > 0 else (255, 255, 0)
+            # Magie-Titel hervorheben
+            if control.startswith("🔮"):
+                color = (150, 255, 255)
+            # Speicher-Titel hervorheben
+            elif control.startswith("💾"):
+                color = (255, 200, 100)
+            control_surface = self.small_font.render(control, True, color)
+            self.screen.blit(control_surface, (screen_width - 350, start_y + i * 23))
+    
+    def draw_magic_ui(self, player, x, y):
+        """Zeichnet die Magie-System UI mit Mana-Anzeige"""
+        magic_system = player.magic_system
+        
+        # Titel
+        magic_title = self.small_font.render("🔮 Magie:", True, (150, 255, 255))
+        self.screen.blit(magic_title, (x, y))
+        
+        # Ausgewählte Elemente
+        if magic_system.selected_elements:
+            elements_text = f"Elemente: {magic_system.get_selected_elements_str()}"
+        else:
+            elements_text = "Elemente: Keine ausgewählt"
+            
+        elements_surface = self.small_font.render(elements_text, True, TEXT_COLOR)
+        self.screen.blit(elements_surface, (x, y + 25))
+        
+        # Element-Symbole zeichnen
+        element_colors = {
+            "feuer": (255, 100, 0),
+            "wasser": (0, 150, 255), 
+            "stein": (139, 69, 19)
+        }
+        
+        start_x = x + 200
+        for i, element in enumerate(magic_system.selected_elements):
+            color = element_colors.get(element.value, (200, 200, 200))
+            rect_x = start_x + i * 35
+            pygame.draw.circle(self.screen, color, (rect_x + 12, y + 35), 12)
+            # Element-Symbol
+            symbol = {"feuer": "🔥", "wasser": "💧", "stein": "🗿"}.get(element.value, "?")
+            # Kleiner Text für Symbole (falls Font verfügbar)
+            try:
+                symbol_surface = self.small_font.render(symbol, True, (255, 255, 255))
+                symbol_rect = symbol_surface.get_rect(center=(rect_x + 12, y + 35))
+                self.screen.blit(symbol_surface, symbol_rect)
+            except:
+                # Fallback: Einfache Farbe
+                pass
+        
+        # Mana-Anzeige
+        mana_text = f"Mana: {int(player.current_mana)}/{player.max_mana}"
+        mana_surface = self.small_font.render(mana_text, True, (100, 100, 255))
+        self.screen.blit(mana_surface, (x, y + 60))
+        
+        # Mana-Balken
+        bar_width = 120
+        bar_height = 8
+        bar_x = x + 120
+        bar_y = y + 65
+        
+        # Hintergrund (schwarz)
+        pygame.draw.rect(self.screen, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        
+        # Mana-Füllstand (blau)
+        fill_width = int(bar_width * player.get_mana_percentage())
+        if fill_width > 0:
+            pygame.draw.rect(self.screen, (50, 150, 255), (bar_x, bar_y, fill_width, bar_height))
+
+    class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
     
     def __init__(self, screen, main_game=None):
         self.screen = screen  # Verwende die übergebene Surface
         self.main_game = main_game  # Reference to main game for spell bar access
         self.game_logic = GameLogic()
+        
+        # Debug-Attribute für Koordinatenanzeige (nur Initialisierung)
+        self.show_coordinates = True
+        self.debug_font = pygame.font.Font(None, 24)  # Dies ist okay, da Font keine Video-Initialisierung benötigt
+
         # Referenz für UI-Status-Anzeige
         self.game_logic._level_ref = self
         # FIX: Verwende die Surface-Dimensionen für die Kamera, nicht SCREEN_-Konstanten
@@ -379,13 +822,82 @@ class Level:
         
         # Debug-Optionen
         self.show_collision_debug = False  # Standardmäßig aus, mit F1 aktivierbar
+
+        # Interaktionszonen hinzufügen
+        # Debug-Ausgabe für Initialisierung
+        print("Initialisiere Interaktionszonen...")
+        self.interaction_zones = {
+            'elara_dialog': {
+                'pos': pygame.math.Vector2(1580, 188),
+                'radius': 150,
+                'text': 'Elara (Nachbarin): "Lumo ist ins Dorf gerannt - aber die Brücke ist eingestürzt! Repariere sie, sonst kommst du nicht hinüber!"',
+                'active': False,
+                'is_checkpoint': True,  # Markiere als Checkpoint
+                'required_items': ['stahlerz', 'holzstab'],  # Benötigte Gegenstände
+                'completion_text': 'Du hast alle Gegenstände gefunden und die Brücke repariert!',
+                'completed': False
+            }
+        }
+        print(f"Interaktionszone erstellt bei Position: {self.interaction_zones['elara_dialog']['pos']}")
     
+        self.show_interaction_text = False
+        self.interaction_text = ""
+        self.interaction_font = pygame.font.Font(None, 32)  # Schriftgröße angepasst für bessere Lesbarkeit
+
+        # Neues System für Questgegenstände/Sammelitems
+        self.quest_items = []  # Liste der gesammelten Questgegenstände
+        self.collectible_items = {
+            # Gegenstände auf dieser Map
+            'holzstab': {
+                'pos': pygame.math.Vector2(27, 59),
+                'name': 'Holzstab',
+                'collected': False,
+                'radius': 50,
+                'color': (139, 69, 19),  # Braun
+                'available': True  # Gegenstand ist auf dieser Map verfügbar
+            },
+            'stahlerz': {
+                'pos': pygame.math.Vector2(3056, 39),
+                'name': 'Stahlerz',
+                'collected': False,
+                'radius': 50,
+                'color': (169, 169, 169),  # Silber
+                'available': True
+            },
+            'mondstein': {
+                'pos': pygame.math.Vector2(2296, 913),
+                'name': 'Mondstein',
+                'collected': False,
+                'radius': 50,
+                'color': (200, 200, 255),  # Bläulich-weiß
+                'available': True
+            },
+            # Vorbereitete Gegenstände für spätere Maps
+            'kristallsplitter': {
+                'name': 'Kristallsplitter',
+                'collected': False,
+                'color': (173, 216, 230),  # Hellblau
+                'available': False  # Noch nicht auf dieser Map verfügbar
+            },
+            'goldener_reif': {
+                'name': 'Goldener Reif',
+                'collected': False,
+                'color': (255, 215, 0),  # Gold
+                'available': False
+            }
+        }
+        
+        # Füge Attribute für die Sammel-Nachricht hinzu
+        self.collection_message = ""
+        self.collection_message_timer = 0
+        self.collection_message_duration = 3000  # 3 Sekunden Anzeigedauer
+
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
             map_path = path.join(MAP_DIR, "Map3.tmx") # Verwende MAP_DIR aus settings
             
-            self.map_loader = MapLoader(map_path)
+            self.map_loader = MapLoader(map_path)https://github.com/Lambaga/Alchemist_SUI
             
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
@@ -418,16 +930,11 @@ class Level:
             return
 
         player_spawned = False
-        spawn_count = 0
 
         # Durchsuche alle Objekt-Layer nach Spawn-Punkten
         for layer in self.map_loader.tmx_data.visible_layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
-                print(f"🔍 Durchsuche Layer '{layer.name}' nach Spawn-Punkten...")
-
                 for obj in layer.objects:
-                    spawn_count += 1
-
                     # Player Spawn-Punkt
                     if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
                         self.game_logic.player.rect.centerx = obj.x
@@ -436,36 +943,14 @@ class Level:
                         player_spawned = True
                         print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
 
-                    # Enemy Spawns (für alle Enemy-Layer)
-                    elif (obj.name and 
-                          obj.name.lower() in ['enemy', 'demon', 'monster', 'fireworm', 'orc']):
-                        print(f"🔍 Enemy-Objekt gefunden: {obj.name} bei ({obj.x}, {obj.y})")
-
-        # Demons aus der Map spawnen (Das macht die eigentliche Arbeit!)
-        print("🎯 Lade Gegner aus Enemy-Layer...")
-        self.enemy_manager.add_enemies_from_map(self.map_loader)
-        
-        # FALLBACK: Falls keine Gegner aus Map geladen wurden
-        if len(self.enemy_manager.enemies) == 0:
-            print("⚠️ Keine Gegner aus Map geladen - verwende Test-Gegner")
-            self.enemy_manager.respawn_default_enemies()
-
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
-            # Positioniere Player innerhalb der Map-Grenzen, WEITER OBEN!
-            if self.map_loader and self.map_loader.tmx_data:
-                # Setze Player in die OBERE Hälfte der Map
-                map_height = self.map_loader.height
-                self.game_logic.player.rect.centerx = self.map_loader.width // 2  # Mitte der Map
-                self.game_logic.player.rect.centery = map_height // 4  # 25% von oben
-                self.game_logic.player.update_hitbox()
-                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
-            else:
-                # Fallback für wenn keine Map geladen ist - AUCH WEITER OBEN
-                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.rect.centery = self.screen.get_height() // 4  # Oberes Viertel
-                self.game_logic.player.update_hitbox()
-    
+            # Setze eine feste Startposition
+            self.game_logic.player.rect.centerx = 800  # X-Position
+            self.game_logic.player.rect.centery = 400  # Y-Position
+            self.game_logic.player.update_hitbox()
+            print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
         if not self.map_loader or not self.map_loader.tmx_data:
@@ -638,7 +1123,10 @@ class Level:
                     magic_system.add_element(ElementType.FEUER)
                     magic_system.add_element(ElementType.WASSER)
                     magic_system.cast_magic(self.game_logic.player)
-    
+            elif event.key == pygame.K_F5:
+                self.show_coordinates = not self.show_coordinates
+                print(f"Koordinatenanzeige: {'An' if self.show_coordinates else 'Aus'}")
+
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
         # Alle Health-Bars durchgehen und Sichtbarkeit umschalten
@@ -703,8 +1191,31 @@ class Level:
         # Universal Input System updaten
         self.input_system.update()
         
-        # Bewegung verarbeiten (nutzt jetzt Universal Input System)
-        self.handle_movement(dt)
+        # Bewegung verarbeiten
+        if self.game_logic and self.game_logic.player:
+            # Hole Bewegungsvektor vom Input System
+            direction = pygame.math.Vector2(0, 0)
+            
+            # Tastatur-Input verarbeiten
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                direction.x = -1
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                direction.x = 1
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                direction.y = -1
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                direction.y = 1
+                
+            # Normalisiere den Vektor für diagonale Bewegung
+            if direction.length() > 0:
+                direction = direction.normalize()
+            
+            # Setze die Bewegungsrichtung im Player
+            self.game_logic.player.direction = direction
+            
+            # Führe die Bewegung aus
+            self.game_logic.player.move(dt)
         
         # Spiel-Logik updaten mit Delta Time
         game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
@@ -713,12 +1224,12 @@ class Level:
         if game_result == "game_over":
             return "game_over"
         
-        # Magic System explizit updaten mit Feindliste für Kollision
+        # Magic System updaten
         if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
             enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
             self.game_logic.player.magic_system.update(dt, enemies_list)
         
-        # Demons updaten mit Player-Referenz für AI
+        # Demons updaten
         self.enemy_manager.update(dt, self.game_logic.player)
         
         # Health-Bar System updaten
@@ -727,20 +1238,147 @@ class Level:
         # Kamera updaten
         self.camera.update(self.game_logic.player)
         
-        return None
+        # Prüfe Interaktionszonen
+        self.check_interaction_zones()
+        
+        # Sammelbare Gegenstände überprüfen
+        self.check_collectibles()
+        
+        # Update die Collection Message Timer
+        if self.collection_message_timer > 0:
+            self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
     
-    def handle_movement(self, dt):
-        """Behandelt Spieler-Bewegung mit Universal Input System"""
-        import pygame
+    def check_interaction_zones(self):
+        """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist"""
+        if not self.game_logic or not self.game_logic.player:
+            return
+
+        player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
+        self.show_interaction_text = False
+
+        for zone_id, zone in self.interaction_zones.items():
+            distance = player_pos.distance_to(zone['pos'])
+
+            if distance <= zone['radius']:
+                zone['active'] = True
+                
+                # Debug-Ausgabe um zu sehen welche Items wir haben
+                print(f"Aktuelle Quest-Items: {self.quest_items}")
+                print(f"Benötigte Items: {zone.get('required_items', [])}")
+                
+                # Prüfe ob dies ein Checkpoint ist
+                if zone.get('is_checkpoint', False) and not zone.get('completed', False):
+                    required_items = set(zone.get('required_items', []))
+                    collected_items = set(self.quest_items)
+                    
+                    # Debug-Ausgabe für Item-Überprüfung
+                    print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
+                    
+                    if required_items.issubset(collected_items):
+                        print("Alle benötigten Items gefunden!")
+                        # Alle Items vorhanden - zeige Abschlusstext
+                        self.show_interaction_text = True
+                        self.interaction_text = zone['completion_text']
+                        zone['completed'] = True
+                        
+                        # Speichere das Spiel und kehre zum Hauptmenü zurück
+                        print("Starte Level-Abschluss...")
+                        self.trigger_level_completion()
+                    else:
+                        # Nicht alle Items vorhanden - zeige normalen Dialog
+                        self.show_interaction_text = True
+                        self.interaction_text = zone['text']
+                        print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
+                else:
+                    # Normale Interaktionszone oder bereits abgeschlossen
+                    self.show_interaction_text = True
+                    self.interaction_text = zone.get('text', '')
+                break
+            else:
+                zone['active'] = False
+
+    def update(self, dt):
+        """Update-Schleife mit Delta Time"""
+        # Universal Input System updaten
+        self.input_system.update()
         
-        # Bewegungsvektor vom Universal Input System holen
-        direction = self.input_system.get_movement_vector()
+        # Bewegung verarbeiten
+        if self.game_logic and self.game_logic.player:
+            # Hole Bewegungsvektor vom Input System
+            direction = pygame.math.Vector2(0, 0)
+            
+            # Tastatur-Input verarbeiten
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                direction.x = -1
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                direction.x = 1
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                direction.y = -1
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                direction.y = 1
+                
+            # Normalisiere den Vektor für diagonale Bewegung
+            if direction.length() > 0:
+                direction = direction.normalize()
+            
+            # Setze die Bewegungsrichtung im Player
+            self.game_logic.player.direction = direction
+            
+            # Führe die Bewegung aus
+            self.game_logic.player.move(dt)
+    
+        # Rest des Update-Codes...
+        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
         
-        # Setze die Bewegungsrichtung im Player
-        self.game_logic.player.direction = direction
+        if game_result == "game_over":
+            return "game_over"
         
-        # Führe die Bewegung aus (Player macht dt-Berechnung intern)
-        self.game_logic.player.move(dt)
+        # Magic System updaten
+        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
+            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
+            self.game_logic.player.magic_system.update(dt, enemies_list)
+        
+        # Demons updaten
+        self.enemy_manager.update(dt, self.game_logic.player)
+        
+        # Health-Bar System updaten
+        self.health_bar_manager.update(dt)
+        
+        # Kamera updaten
+        self.camera.update(self.game_logic.player)
+        
+        # Prüfe Interaktionszonen
+        self.check_interaction_zones()
+        
+        # Sammelbare Gegenstände überprüfen
+        self.check_collectibles()
+        
+        # Update die Collection Message Timer
+        if self.collection_message_timer > 0:
+            self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
+    
+    def trigger_level_completion(self):
+        """Behandelt den Abschluss des Levels"""
+        print("Level-Abschluss wird ausgeführt...")
+        
+        # Speichere das Spiel automatisch
+        if hasattr(self, '_save_callback') and self._save_callback:
+            print("Speichere Spielstand...")
+            self._save_callback(1)  # Speichere in Slot 1
+        
+        # Warte kurz, damit der Spieler die Nachricht lesen kann
+        pygame.time.wait(2000)
+        
+        # Setze einen Flag im main_game, um zum Hauptmenü zurückzukehren
+        if self.main_game:
+            print("Setze Flag für Rückkehr zum Hauptmenü...")
+            self.main_game.return_to_menu = True
+            # Zusätzlich direkt den Spielzustand ändern
+            if hasattr(self.main_game, 'set_state'):
+                self.main_game.set_state('MAIN_MENU')
+        else:
+            print("Warnung: main_game Referenz nicht gefunden!")
     
     def render(self):
         """Rendering des Levels"""
@@ -751,9 +1389,26 @@ class Level:
             self.renderer.draw_background()
             self.renderer.draw_ground_stones(self.camera)
         
+        # Sammelbare Gegenstände zeichnen
+        self.render_collectibles()
+        
         # Spieler
         self.renderer.draw_player(self.game_logic.player, self.camera)
         
+        # Collection Message anzeigen
+        if self.collection_message_timer > pygame.time.get_ticks():
+            message_surface = self.debug_font.render(self.collection_message, True, (255, 255, 255))
+            message_rect = message_surface.get_rect()
+            message_rect.centerx = self.screen.get_width() // 2
+            message_rect.centery = self.screen.get_height() // 2 - 50
+            
+            # Hintergrund für bessere Lesbarkeit
+            bg_rect = message_rect.inflate(20, 10)
+            bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(bg_surface, (0, 0, 0, 128), bg_surface.get_rect())
+            self.screen.blit(bg_surface, bg_rect)
+            self.screen.blit(message_surface, message_rect)
+    
         # Magie-Projektile zeichnen (nach Spieler, vor Feinden für korrekte Layering)
         if self.game_logic and self.game_logic.player:
             self.game_logic.player.magic_system.draw_projectiles(self.screen, self.camera)
@@ -774,8 +1429,61 @@ class Level:
         
         # UI
         self.renderer.draw_ui(self.game_logic)
+        if self.show_coordinates:
+            self.render_coordinates()
         self.renderer.draw_controls()
     
+        if self.show_interaction_text:
+            self.render_interaction_text()
+    
+    def render_interaction_text(self):
+        """Zeichnet den Interaktionstext in einem Textfeld"""
+        if self.show_interaction_text:
+            # Maximale Breite für das Textfeld
+            max_width = 800
+            
+            # Text in mehrere Zeilen aufteilen für bessere Lesbarkeit
+            words = self.interaction_text.split()
+            lines = []
+            current_line = []
+            
+            for word in words:
+                current_line.append(word)
+                # Test, ob die aktuelle Zeile zu lang wird
+                test_surface = self.interaction_font.render(' '.join(current_line), True, (255, 255, 255))
+                if test_surface.get_width() > max_width:
+                    if len(current_line) > 1:
+                        current_line.pop()
+                        lines.append(' '.join(current_line))
+                        current_line = [word]
+                    else:
+                        lines.append(' '.join(current_line))
+                        current_line = []
+            
+            if current_line:
+                lines.append(' '.join(current_line))
+            
+            # Textfeld erstellen
+            line_height = self.interaction_font.get_linesize()
+            total_height = line_height * len(lines) + 40  # Extra Padding
+            
+            # Hintergrund
+            bg_surface = pygame.Surface((max_width + 40, total_height), pygame.SRCALPHA)
+            pygame.draw.rect(bg_surface, (0, 0, 0, 180), bg_surface.get_rect(), border_radius=10)
+            
+            # Position des Textfelds (zentriert oben)
+            bg_rect = bg_surface.get_rect(centerx=self.screen.get_width() // 2, top=50)
+            self.screen.blit(bg_surface, bg_rect)
+            
+            # Text rendern
+            for i, line in enumerate(lines):
+                text_surface = self.interaction_font.render(line, True, (255, 255, 255))
+                text_rect = text_surface.get_rect(
+                    left=bg_rect.left + 20,
+                    top=bg_rect.top + 20 + i * line_height
+                )
+                self.screen.blit(text_surface, text_rect)
+
     def restart_level(self):
         """Startet das Level nach Game Over neu"""
         print("🔄 Level wird neu gestartet...")
@@ -949,31 +1657,4 @@ class Level:
     def _setup_health_bars(self):
         """Private Methode zum Neuerstellen der Health-Bars nach Reset"""
         # Player Health-Bar hinzufügen
-        if self.game_logic and self.game_logic.player:
-            player_health_bar = create_player_health_bar(
-                self.game_logic.player,
-                width=100,
-                height=12,
-                offset_y=-35,
-                show_when_full=True
-            )
-            self.health_bar_manager.add_entity(
-                self.game_logic.player, 
-                renderer=player_health_bar.renderer,
-                width=player_health_bar.width,
-                height=player_health_bar.height,
-                offset_y=player_health_bar.offset_y,
-                show_when_full=player_health_bar.show_when_full
-            )
-        
-        # Health-Bars für alle Feinde hinzufügen
-        if self.enemy_manager:
-            for enemy in self.enemy_manager.enemies:
-                self.add_enemy_health_bar(enemy)
-        
-        print("🔄 Health-Bars neu erstellt")
-    
-    def run(self, dt):
-        """Haupt-Update-Methode für das Level"""
-        self.update(dt)
-        self.render()
+        if

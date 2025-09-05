@@ -52,7 +52,7 @@ class Game:
         self.alchemy_system = AlchemySystem()
         
         # Legacy-Attribute für Kompatibilität
-        self.aktive_zutaten = []  # Wird durch alchemy_system.active_ingredients ersetzt
+        self.aktive_zutaten = []  # Stelle sicher, dass diese Liste initialisiert
         
         # Spielstatus
         self.last_brew_result = "Spiel gestartet"

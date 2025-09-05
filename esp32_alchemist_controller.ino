@@ -16,15 +16,11 @@
 
 // ===== PIN DEFINITIONS =====
 // Digital Pins für Buttons (mit Pull-up Widerständen)
-const int PIN_BUTTON_FIRE = 2;   // GPIO2 - B1 Feuer
-const int PIN_BUTTON_WATER = 4;  // GPIO4 - B2 Wasser  
-const int PIN_BUTTON_STONE = 5;  // GPIO5 - B3 Stein
-const int PIN_BUTTON_CAST = 18;  // GPIO18 - B4 Zauber ausführen
-const int PIN_BUTTON_CLEAR = 19; // GPIO19 - B5 Kombination löschen
+const int PIN_BUTTON_FIRE = 12;   // GPI12 - B1 Feuer
+const int PIN_BUTTON_WATER = 13;  // GPI13 - B2 Wasser  
+const int PIN_BUTTON_STONE = 8;  // GPI08 - B3 Stein
+const int PIN_BUTTON_CAST = 7;  // GPIO07 - B4 Zauber ausführen
 
-// Analog Pins für Joystick
-const int PIN_JOYSTICK_X = 34;   // ADC1_CH6 - X-Achse
-const int PIN_JOYSTICK_Y = 35;   // ADC1_CH7 - Y-Achse
 
 // Optional: LED für Status-Anzeige
 const int PIN_STATUS_LED = 2;    // Eingebaute LED
