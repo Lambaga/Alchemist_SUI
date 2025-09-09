@@ -81,8 +81,20 @@ class Player(pygame.sprite.Sprite, CombatEntity):
                                     if self.animation_frames["idle"] 
                                     else self.create_placeholder())
         self.rect: pygame.Rect = self.image.get_rect(center=(pos_x, pos_y))
-        # Perfekt angepasste Hitbox - genau um den Charakter herum
-        self.hitbox: pygame.Rect = self.rect.inflate(-50, -70)
+        # Hitbox: halbe Höhe – obere Hälfte abgeschnitten (Bottom bleibt relativ zum Sprite)
+        self._hitbox_inflate = (-70, -70)  # dauerhaft gleiche Berechnung
+        self._skin = 1  # kleiner Abstand zur Kante, verhindert Zittern an Ecken
+        base_hitbox = self.rect.inflate(*self._hitbox_inflate)
+        new_height = max(1, base_hitbox.height // 2)
+        self.hitbox: pygame.Rect = pygame.Rect(
+            base_hitbox.x,
+            base_hitbox.bottom - new_height,  # obere Hälfte abgeschnitten
+            base_hitbox.width,
+            new_height
+        )
+        # Fester Offset: wie weit liegt die Basis-Hitbox unter dem Sprite-Bottom?
+        # Damit wir nach Kollisionen rect aus der Hitbox korrekt ableiten können.
+        self._hitbox_bottom_offset = self.rect.bottom - base_hitbox.bottom
         self.position: pygame.math.Vector2 = pygame.math.Vector2(self.rect.center)
         
         # Für Kollisionserkennung
@@ -116,7 +128,14 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         Die Hitbox wird zentriert auf die aktuelle Position gesetzt und
         die Vector2-Position für präzise Bewegungsberechnungen aktualisiert.
         """
-        self.hitbox = self.rect.inflate(-70, -70)
+        base_hitbox = self.rect.inflate(*self._hitbox_inflate)  # konsistent zu __init__
+        new_height = max(1, base_hitbox.height // 2)
+        self.hitbox = pygame.Rect(
+            base_hitbox.x,
+            base_hitbox.bottom - new_height,  # obere Hälfte abgeschnitten
+            base_hitbox.width,
+            new_height
+        )
         self.position = pygame.math.Vector2(self.rect.center)
 
     def create_placeholder(self) -> pygame.Surface:
@@ -289,30 +308,27 @@ class Player(pygame.sprite.Sprite, CombatEntity):
             - Berücksichtigt Blickrichtung für Sprite-Orientierung
         """
         if self.direction.magnitude() > 0:
-            # Normalisiere die Richtung, um diagonale Bewegung zu korrigieren
+            # Richtung normalisieren (diagonal konstant)
             normalized_direction = self.direction.normalize()
-            
-            # Aktualisiere Blickrichtung
-            if normalized_direction.x > 0:
-                self.facing_right = True
-            elif normalized_direction.x < 0:
-                self.facing_right = False
-            
-            # Berechne die Bewegung mit Float-Präzision
-            speed_multiplier = self.speed * dt * 60  # * 60 für 60fps Referenz
-            
-            # Berechnungen mit der Float-Position durchführen
-            self.position.x += normalized_direction.x * speed_multiplier
-            self.position.y += normalized_direction.y * speed_multiplier
-            
-            # Die Integer-Hitbox von der Float-Position aktualisieren
-            self.hitbox.centerx = round(self.position.x)
-            self.collision('horizontal')  # Kollision mit der gerundeten Position prüfen
-            self.hitbox.centery = round(self.position.y)
-            self.collision('vertical')  # Kollision mit der gerundeten Position prüfen
-            
-            # Das finale rect von der (möglicherweise korrigierten) Hitbox aktualisieren
-            self.rect.center = self.hitbox.center
+            self.facing_right = normalized_direction.x > 0 if normalized_direction.x != 0 else self.facing_right
+
+            step = self.speed * dt * 60  # 60-FPS-Referenz
+
+            # --- Horizontal separat bewegen ---
+            dx = normalized_direction.x * step
+            if dx != 0:
+                self.position.x += dx
+                self.rect.centerx = round(self.position.x)
+                self.update_hitbox()
+                self.collision('horizontal')  # korrigiert hitbox + rect + position.x
+
+            # --- Vertikal separat bewegen ---
+            dy = normalized_direction.y * step
+            if dy != 0:
+                self.position.y += dy
+                self.rect.centery = round(self.position.y)
+                self.update_hitbox()
+                self.collision('vertical')    # korrigiert hitbox + rect + position.y
 
     def collision(self, direction):
         """
@@ -329,58 +345,74 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         """
         Optimierte Kollisionserkennung mit räumlicher Hashtabelle
         """
-        # Aktualisiere Position im räumlichen Hash
         self.collision_system.update_dynamic_object(self)
-        
+
         if direction == 'horizontal':
             collisions = self.collision_system.check_horizontal_collision(self, self.direction.x)
-            
-            for collision_obj in collisions:
-                collision_rect = self.collision_system._get_rect_from_object(collision_obj)
-                if collision_rect and collision_rect.colliderect(self.hitbox):
-                    if self.direction.x > 0:  # Bewegung nach rechts
-                        self.hitbox.right = collision_rect.left
-                    elif self.direction.x < 0:  # Bewegung nach links
-                        self.hitbox.left = collision_rect.right
-                    
-                    self.position.x = self.hitbox.centerx  # Float-Position synchronisieren
-                    break  # Erste Kollision reicht
-                        
+            if collisions:
+                rects = []
+                for obj in collisions:
+                    r = self.collision_system._get_rect_from_object(obj)
+                    if r and r.colliderect(self.hitbox):
+                        rects.append(r)
+                if rects:
+                    if self.direction.x > 0:
+                        min_left = min(r.left for r in rects)
+                        self.hitbox.right = min_left - self._skin
+                    elif self.direction.x < 0:
+                        max_right = max(r.right for r in rects)
+                        self.hitbox.left = max_right + self._skin
+                    # Sprite folgt Hitbox (nur X)
+                    self.rect.centerx = self.hitbox.centerx
+                    self.position.x = self.rect.centerx
+
         elif direction == 'vertical':
             collisions = self.collision_system.check_vertical_collision(self, self.direction.y)
-            
-            for collision_obj in collisions:
-                collision_rect = self.collision_system._get_rect_from_object(collision_obj)
-                if collision_rect and collision_rect.colliderect(self.hitbox):
-                    if self.direction.y > 0:  # Bewegung nach unten
-                        self.hitbox.bottom = collision_rect.top
-                    elif self.direction.y < 0:  # Bewegung nach oben
-                        self.hitbox.top = collision_rect.bottom
-                    
-                    self.position.y = self.hitbox.centery  # Float-Position synchronisieren
-                    break  # Erste Kollision reicht
-    
+            if collisions:
+                rects = []
+                for obj in collisions:
+                    r = self.collision_system._get_rect_from_object(obj)
+                    if r and r.colliderect(self.hitbox):
+                        rects.append(r)
+                if rects:
+                    if self.direction.y > 0:
+                        min_top = min(r.top for r in rects)
+                        self.hitbox.bottom = min_top - self._skin
+                    elif self.direction.y < 0:
+                        max_bottom = max(r.bottom for r in rects)
+                        self.hitbox.top = max_bottom + self._skin
+                    # Sprite folgt Hitbox (Y) mit konstantem Bottom-Offset
+                    self.rect.bottom = self.hitbox.bottom + self._hitbox_bottom_offset
+                    self.position.y = self.rect.centery
+
     def collision_traditional(self, direction):
         """
         Traditionelle Kollisionserkennung (Fallback)
         """
         if direction == 'horizontal':
-            for sprite in self.obstacle_sprites:
-                if sprite.hitbox.colliderect(self.hitbox):
-                    if self.direction.x > 0:  # Bewegung nach rechts
-                        self.hitbox.right = sprite.hitbox.left
-                    if self.direction.x < 0:  # Bewegung nach links
-                        self.hitbox.left = sprite.hitbox.right
-                    self.position.x = self.hitbox.centerx  # Float-Position synchronisieren
+            # Alle kollidierenden Objekte prüfen und beste Kante wählen
+            hits = [s for s in self.obstacle_sprites if s.hitbox.colliderect(self.hitbox)]
+            if hits:
+                if self.direction.x > 0:
+                    min_left = min(s.hitbox.left for s in hits)
+                    self.hitbox.right = min_left - self._skin
+                elif self.direction.x < 0:
+                    max_right = max(s.hitbox.right for s in hits)
+                    self.hitbox.left = max_right + self._skin
+                self.rect.centerx = self.hitbox.centerx
+                self.position.x = self.rect.centerx
 
         if direction == 'vertical':
-            for sprite in self.obstacle_sprites:
-                if sprite.hitbox.colliderect(self.hitbox):
-                    if self.direction.y > 0:  # Bewegung nach unten
-                        self.hitbox.bottom = sprite.hitbox.top
-                    if self.direction.y < 0:  # Bewegung nach oben
-                        self.hitbox.top = sprite.hitbox.bottom
-                    self.position.y = self.hitbox.centery  # Float-Position synchronisieren
+            hits = [s for s in self.obstacle_sprites if s.hitbox.colliderect(self.hitbox)]
+            if hits:
+                if self.direction.y > 0:
+                    min_top = min(s.hitbox.top for s in hits)
+                    self.hitbox.bottom = min_top - self._skin
+                elif self.direction.y < 0:
+                    max_bottom = max(s.hitbox.bottom for s in hits)
+                    self.hitbox.top = max_bottom + self._skin
+                self.rect.bottom = self.hitbox.bottom + self._hitbox_bottom_offset
+                self.position.y = self.rect.centery
 
     def set_obstacle_sprites(self, obstacle_sprites):
         """Setzt die Sprite-Gruppe für Kollisionserkennung"""

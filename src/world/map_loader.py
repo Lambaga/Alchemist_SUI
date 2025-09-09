@@ -50,74 +50,90 @@ class MapLoader:
             self.height = 0
         
         self.collision_objects = []
+        self.depth_objects = []
+        self.foreground_tiles = []  # NEU: Für Foreground-Tiles
+        
         self.build_map()
-
-    def render(self, surface, camera):
-        """
-        🚀 RPi4-Optimiert: Zeichnet nur sichtbare Tiles im Kamera-Viewport (Tile Culling).
-        Falls Tileset-Grafiken fehlen, werden Platzhalter-Rechtecke gezeichnet.
-        """
-        if not self.tmx_data:
-            return # Nichts zu zeichnen, wenn die Karte nicht geladen wurde
-
-        # 🚀 TILE CULLING: Berechne sichtbaren Tile-Bereich aus Kamera-Viewport
-        screen_width = surface.get_width()
-        screen_height = surface.get_height()
-        
-        # Kamera-Position in Weltkoordinaten
-        camera_x = camera.camera_rect.x
-        camera_y = camera.camera_rect.y
-        
-        # Erweitere den sichtbaren Bereich um 1 Tile als Puffer (verhindert Pop-in)
-        tile_buffer = 1
-        
-        # Berechne Tile-Indizes für sichtbaren Bereich
-        start_x = max(0, int(camera_x // self.tmx_data.tilewidth) - tile_buffer)
-        end_x = min(self.tmx_data.width, int((camera_x + screen_width) // self.tmx_data.tilewidth) + tile_buffer + 1)
-        start_y = max(0, int(camera_y // self.tmx_data.tileheight) - tile_buffer)
-        end_y = min(self.tmx_data.height, int((camera_y + screen_height) // self.tmx_data.tileheight) + tile_buffer + 1)
-        
-        # Debug-Info (nur bei ersten paar Frames)
-        debug_culling = hasattr(self, '_debug_frame_count')
-        if not debug_culling:
-            self._debug_frame_count = 0
-        
-        if self._debug_frame_count < 3:  # Nur erste 3 Frames
-            total_tiles = self.tmx_data.width * self.tmx_data.height
-            visible_tiles = (end_x - start_x) * (end_y - start_y)
-            print(f"🚀 Tile Culling: {visible_tiles}/{total_tiles} Tiles sichtbar ({visible_tiles/total_tiles*100:.1f}%)")
-            self._debug_frame_count += 1
-
-        for layer in self.tmx_data.visible_layers:
-            if isinstance(layer, pytmx.TiledTileLayer):
-                # 🚀 Nur sichtbare Tiles iterieren (statt alle Tiles der Map)
-                for x in range(start_x, end_x):
-                    for y in range(start_y, end_y):
-                        gid = layer.data[y][x] if y < len(layer.data) and x < len(layer.data[y]) else 0
-                        
-                        if gid:  # Nur zeichnen wenn es eine Kachel gibt
-                            tile_image = self.tmx_data.get_tile_image_by_gid(gid)
-                            tile_rect = pygame.Rect(x * self.tmx_data.tilewidth, 
-                                                    y * self.tmx_data.tileheight, 
-                                                    self.tmx_data.tilewidth, 
-                                                    self.tmx_data.tileheight)
-                            transformed_rect = camera.apply_rect(tile_rect)
-                            
-                            if tile_image:
-                                # Performance-Optimierung: Nutze gecachte Skalierung für Tiles
-                                target_size = (
-                                    int(self.tmx_data.tilewidth * camera.zoom_factor),
-                                    int(self.tmx_data.tileheight * camera.zoom_factor)
-                                )
-                                scaled_image = self.asset_manager.get_scaled_sprite(tile_image, target_size)
-                                surface.blit(scaled_image, (transformed_rect.x, transformed_rect.y))
-                            else:
-                                # Fallback: Platzhalter-Rechteck zeichnen (bereits durch apply_rect skaliert)
-                                color = self.get_placeholder_color(gid)
-                                pygame.draw.rect(surface, color, transformed_rect)
-                                # Optional: Rahmen für bessere Sichtbarkeit
-                                pygame.draw.rect(surface, (255, 255, 255), transformed_rect, max(1, int(camera.zoom_factor)))
+        self.load_depth_objects_from_map()
+        self.extract_foreground_layer()  # NEU: Lade Foreground-Layer
     
+    def extract_foreground_layer(self):
+        """Extrahiert den Foreground-Tile-Layer"""
+        if not self.tmx_data:
+            return
+        
+        self.foreground_layer = None
+        
+        for layer in self.tmx_data.visible_layers:
+            # Suche nach Foreground/Front Layer
+            if hasattr(layer, 'data') and layer.name.lower() in ['foreground', 'front', 'overlay']:
+                self.foreground_layer = layer
+                print(f"🎭 Foreground-Layer gefunden: {layer.name}")
+                break
+        
+        if not self.foreground_layer:
+            print("⚠️ Kein Foreground-Layer gefunden")
+    
+    def render(self, surface, camera):
+        """Rendert alle Layer inklusive Foreground in der richtigen Reihenfolge"""
+        if not self.tmx_data:
+            return
+        
+        # 1. Alle normalen Layer rendern (außer Foreground)
+        for layer in self.tmx_data.visible_layers:
+            if hasattr(layer, 'data') and layer.name.lower() not in ['foreground', 'front', 'overlay']:
+                self._render_tile_layer(layer, surface, camera)
+    
+    def render_foreground(self, surface, camera):
+        """Rendert Foreground-Layer genau wie andere Tile-Layer"""
+        if not self.foreground_layer:
+            return
+        
+        # Nutze die gleiche Render-Methode wie für normale Layer
+        self._render_tile_layer(self.foreground_layer, surface, camera)
+
+    def _render_tile_layer(self, layer, surface, camera):
+        """Rendert einen einzelnen Tile-Layer ohne Qualitätsverlust"""
+        if not layer or not hasattr(layer, 'data'):
+            return
+        
+        # Sichtbarer Bereich
+        screen_rect = pygame.Rect(
+            camera.camera_rect.x, camera.camera_rect.y,
+            surface.get_width(), surface.get_height()
+        )
+        
+        tile_width = self.tmx_data.tilewidth
+        tile_height = self.tmx_data.tileheight
+        
+        start_x = max(0, screen_rect.left // tile_width)
+        start_y = max(0, screen_rect.top // tile_height)
+        end_x = min(layer.width, (screen_rect.right // tile_width) + 1)
+        end_y = min(layer.height, (screen_rect.bottom // tile_height) + 1)
+        
+        for y in range(start_y, end_y):
+            for x in range(start_x, end_x):
+                gid = layer.data[y][x]
+                if gid == 0:
+                    continue
+                
+                tile_x = x * tile_width - camera.camera_rect.x
+                tile_y = y * tile_height - camera.camera_rect.y
+                
+                # Original TMX-Tile-Image verwenden (keine Skalierung!)
+                try:
+                    tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+                    if tile_image:
+                        surface.blit(tile_image, (tile_x, tile_y))
+                    else:
+                        # Fallback
+                        color = self.get_placeholder_color(gid)
+                        pygame.draw.rect(surface, color, (tile_x, tile_y, tile_width, tile_height))
+                except:
+                    # Fallback
+                    color = self.get_placeholder_color(gid)
+                    pygame.draw.rect(surface, color, (tile_x, tile_y, tile_width, tile_height))
+
     def get_placeholder_color(self, gid):
         """
         Gibt eine Platzhalter-Farbe basierend auf der Kachel-ID zurück.
@@ -186,4 +202,42 @@ class MapLoader:
 
         except Exception as e:
             print("FEHLER beim Laden der Kollisionsobjekte: {}".format(e))
+
+    def load_depth_objects_from_map(self):
+        """Lädt Objekte mit Depth-Information aus der Tiled-Map"""
+        if not self.tmx_data:
+            return
+        
+        for layer in self.tmx_data.visible_layers:
+            if hasattr(layer, 'objects') and layer.name.lower() in ['decoration', 'objects', 'depth_objects']:
+                for obj in layer.objects:
+                    if obj.name:
+                        depth_obj = {
+                            'rect': pygame.Rect(obj.x, obj.y, obj.width, obj.height),
+                            'name': obj.name,
+                            'type': getattr(obj, 'type', 'decoration'),
+                            'y_bottom': obj.y + obj.height,  # Wichtig für Sorting!
+                            'depth_layer': getattr(obj, 'depth_layer', 'auto'),  # Custom Property
+                            'image_path': getattr(obj, 'image_path', None),  # Optional: Pfad zu Sprite
+                            'color': self._get_object_color(obj.name),  # Fallback-Farbe
+                            'properties': dict(obj.properties) if hasattr(obj, 'properties') else {}
+                        }
+                        self.depth_objects.append(depth_obj)
+                        print(f"🎨 Depth-Objekt geladen: {obj.name} bei ({obj.x}, {obj.y}) - Y-Bottom: {depth_obj['y_bottom']}")
+    
+    def _get_object_color(self, obj_name):
+        """Gibt Fallback-Farben für verschiedene Objekttypen zurück"""
+        color_map = {
+            'tree': (34, 139, 34),      # Grün
+            'rock': (105, 105, 105),    # Grau
+            'building': (139, 69, 19),   # Braun
+            'fence': (160, 82, 45),      # Saddlbraun
+            'bush': (0, 100, 0),        # Dunkelgrün
+        }
+        
+        for key, color in color_map.items():
+            if key.lower() in obj_name.lower():
+                return color
+        
+        return (200, 200, 200)  # Standard-Grau
 
