@@ -719,13 +719,21 @@ class Level:
                         player_spawned = True
                         print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
 
-        # Fallback falls kein Player-Spawn in der Map definiert ist
-        if not player_spawned:
-            # Setze eine feste Startposition
-            self.game_logic.player.rect.centerx = 800  # X-Position
-            self.game_logic.player.rect.centery = 400  # Y-Position
-            self.game_logic.player.update_hitbox()
-            print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+        # Wenn Map_Town.tmx geladen wird und kein Spawn gefunden wurde, setze unten rechts
+        if not player_spawned and hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
+            map_name = getattr(self.map_loader.tmx_data, 'filename', None)
+            # Alternativ: prüfe auf Map_Town.tmx im Pfad
+            if self.map_loader.tmx_data and 'Map_Town.tmx' in str(self.map_loader.tmx_data.filename):
+                self.game_logic.player.rect.centerx = self.map_loader.width - 100
+                self.game_logic.player.rect.centery = self.map_loader.height - 100
+                self.game_logic.player.update_hitbox()
+                print("✅ Player unten rechts auf Map_Town.tmx gespawnt")
+            else:
+                # Standard-Spawn für andere Maps
+                self.game_logic.player.rect.centerx = 800  # X-Position
+                self.game_logic.player.rect.centery = 400  # Y-Position
+                self.game_logic.player.update_hitbox()
+                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
 
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
@@ -1135,27 +1143,37 @@ class Level:
             self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
     
     def trigger_level_completion(self):
-        """Behandelt den Abschluss des Levels"""
+        """Behandelt den Abschluss des Levels und Map-Wechsel"""
         print("Level-Abschluss wird ausgeführt...")
-        
-        # Speichere das Spiel automatisch
-        if hasattr(self, '_save_callback') and self._save_callback:
-            print("Speichere Spielstand...")
-            self._save_callback(1)  # Speichere in Slot 1
-        
-        # Warte kurz, damit der Spieler die Nachricht lesen kann
+
+        # Zeige Schriftzug für 2 Sekunden
+        self.collection_message = "Level 1 abgeschlossen"
+        self.collection_message_timer = pygame.time.get_ticks() + 2000
+
+        # Rendering erzwingen, damit die Nachricht sichtbar ist
+        self.render()
+        pygame.display.flip()
         pygame.time.wait(2000)
-        
-        # Setze einen Flag im main_game, um zum Hauptmenü zurückzukehren
-        if self.main_game:
-            print("Setze Flag für Rückkehr zum Hauptmenü...")
-            self.main_game.return_to_menu = True
-            # Zusätzlich direkt den Spielzustand ändern
-            if hasattr(self.main_game, 'set_state'):
-                self.main_game.set_state('MAIN_MENU')
-        else:
-            print("Warnung: main_game Referenz nicht gefunden!")
-    
+
+        # Lade die nächste Map (Level 2)
+        self.load_next_map("Map_Town.tmx")
+
+    def load_next_map(self, map_name):
+        """Lädt die nächste Map und setzt den Spieler neu"""
+        try:
+            map_path = path.join(MAP_DIR, map_name)
+            self.map_loader = MapLoader(map_path)
+            if self.map_loader and self.map_loader.tmx_data:
+                self.use_map = True
+                self.spawn_entities_from_map()
+                # Optional: Quest-Items für das nächste Level zurücksetzen
+                self.quest_items.clear()
+                print(f"✅ Neue Map geladen: {map_name}")
+            else:
+                print(f"❌ Fehler beim Laden der Map: {map_name}")
+        except Exception as e:
+            print(f"❌ Fehler beim Map-Wechsel: {e}")
+
     def render(self):
         """Rendering mit Foreground-Layer"""
         # 1. Hintergrund (immer zuerst)
@@ -1170,8 +1188,8 @@ class Level:
         
         # 3. 🎭 ENTITIES + FOREGROUND-LAYER
         enemies = list(self.enemy_manager.enemies) if self.enemy_manager else []
-        depth_objects = self.map_loader.depth_objects if self.map_loader else []
-        
+        depth_objects = getattr(self.map_loader, "depth_objects", []) if self.map_loader and hasattr(self.map_loader, "depth_objects") else []
+
         # Nutze das Foreground-Layer System
         self.renderer.render_with_foreground_layer(
             player=self.game_logic.player,

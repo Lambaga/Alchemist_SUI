@@ -16,6 +16,7 @@ class MapLoader:
         """
         # Initialize AssetManager
         self.asset_manager = AssetManager()
+        self.foreground_layer = None  # Initialisiere das Attribut, um AttributeError zu vermeiden
         
         try:
             self.tmx_data = pytmx.load_pygame(filename, pixelalpha=True)
