@@ -1168,14 +1168,30 @@ class Level:
     def load_next_map(self, map_name):
         """Lädt die nächste Map und setzt den Spieler neu"""
         try:
+            # Inventar und Quest-Items zurücksetzen
+            if self.game_logic:
+                self.game_logic.aktive_zutaten = []  # Inventar leeren
+            self.quest_items.clear()  # Quest-Items zurücksetzen
+            
+            # Interaktionszonen zurücksetzen für neue Map
+            self.interaction_zones = {}
+            
+            # Sammelbare Gegenstände zurücksetzen
+            self.collectible_items = {}
+            
+            # Map laden
             map_path = path.join(MAP_DIR, map_name)
             self.map_loader = MapLoader(map_path)
+            
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
                 self.spawn_entities_from_map()
-                # Optional: Quest-Items für das nächste Level zurücksetzen
-                self.quest_items.clear()
+                
+                # Enemies neu spawnen
+                self.enemy_manager.clear_enemies()  # Alte Gegner entfernen
+                
                 print(f"✅ Neue Map geladen: {map_name}")
+                print("🔄 Inventar und Quest-Items zurückgesetzt")
             else:
                 print(f"❌ Fehler beim Laden der Map: {map_name}")
         except Exception as e:
