@@ -144,14 +144,17 @@ class Game:
             self.last_brew_result = f"✨ {recipe.result_name} gebraut! (+{points} Punkte)"
             print(f"🧪 Erfolgreich gebraut: {recipe.result_name} | Punkte: +{points} | Gesamt: {self.score}")
             
-            # Reset aktive_zutaten after brewing
-            self.aktive_zutaten = []
+            # Behalte nur Quest-Gegenstände im Inventar
+            quest_items = ['holzstab', 'stahlerz', 'mondstein', 'kristall', 'goldreif']
+            self.aktive_zutaten = [item for item in self.aktive_zutaten if item.lower() in quest_items]
             
             return recipe
         else:
             # Gescheiterte Alchemie
             self.last_brew_result = "💨 Nichts Brauchbares entstanden..."
-            self.aktive_zutaten = []  # Zutaten trotzdem verbraucht
+            # Behalte nur Quest-Gegenstände im Inventar
+            quest_items = ['holzstab', 'stahlerz', 'mondstein', 'kristall', 'goldreif']
+            self.aktive_zutaten = [item for item in self.aktive_zutaten if item.lower() in quest_items]
             print("💨 Brauen fehlgeschlagen.")
             return None
             
