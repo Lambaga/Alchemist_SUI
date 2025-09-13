@@ -48,6 +48,10 @@ class ElementMixer:
         self.selected_elements = []  # List of selected element IDs
         self.current_combination = None  # Current spell combination
         
+        # Debounce protection against double event handling
+        self.last_element_press = {"element": None, "time": 0}
+        self.debounce_time = 0.1  # 100ms debounce
+        
         # UI Configuration
         self.element_size = 48  # 48x48 pixel elements
         self.element_spacing = 8
@@ -59,6 +63,7 @@ class ElementMixer:
         pygame.font.init()
         self.font = pygame.font.Font(None, 20)
         self.small_font = pygame.font.Font(None, 16)
+        self.label_font = pygame.font.Font(None, 22)
         
         # Load element icons (or create placeholders)
         self.element_icons = {}
@@ -71,6 +76,13 @@ class ElementMixer:
         # UI surfaces
         self.background_surface = None
         self.create_background_surface()
+
+        # Cached element name lookup for display
+        self.element_name_map = {e["id"]: e["name"] for e in self.elements}
+        # Bottom label styling
+        self.label_margin_top = 6
+        self.label_padding = 6
+        self.label_bg_alpha = 160
         
         # Animation states
         self.element_animations = [0.0] * 3  # For element press feedback
@@ -209,6 +221,22 @@ class ElementMixer:
         Returns:
             True if element was added successfully
         """
+        # Get current time for debounce check
+        current_time = pygame.time.get_ticks() / 1000.0  # Convert to seconds
+        
+        # Check for debounce: same element pressed within debounce_time
+        if (self.last_element_press["element"] == element_id and 
+            current_time - self.last_element_press["time"] < self.debounce_time):
+            print(f"🚫 DEBOUNCE: Ignoring duplicate press of '{element_id}' within {self.debounce_time}s")
+            return False
+        
+        # Update debounce tracking
+        self.last_element_press = {"element": element_id, "time": current_time}
+        
+        print(f"🔍 DEBUG: handle_element_press called with '{element_id}'")
+        print(f"🔍 DEBUG: Current selected_elements: {self.selected_elements}")
+        print(f"🔍 DEBUG: Length before: {len(self.selected_elements)}")
+        
         # Find element index for animation
         element_index = -1
         for i, element in enumerate(self.elements):
@@ -217,14 +245,24 @@ class ElementMixer:
                 break
         
         if element_index >= 0:
+            # If we already have 2 elements, reset first
+            if len(self.selected_elements) >= 2:
+                print("🔍 DEBUG: Resetting because we already have 2 elements")
+                self.reset_combination()
+                print(f"� DEBUG: After reset, selected_elements: {self.selected_elements}")
+            
             # Add element to selection (max 2)
             if len(self.selected_elements) < 2:
+                print(f"🔍 DEBUG: Adding element '{element_id}' to selection")
                 self.selected_elements.append(element_id)
+                print(f"🔍 DEBUG: After adding, selected_elements: {self.selected_elements}")
                 self.element_animations[element_index] = 1.0
                 
-                # Check if we have a valid combination
+                # Check if we have a valid combination (only when we have exactly 2)
                 if len(self.selected_elements) == 2:
+                    print(f"🔍 DEBUG: Have 2 elements, checking combination")
                     combination_key = tuple(self.selected_elements)
+                    print(f"🔍 DEBUG: Combination key: {combination_key}")
                     if combination_key in config.spells.MAGIC_COMBINATIONS:
                         self.current_combination = config.spells.MAGIC_COMBINATIONS[combination_key]
                         self.combination_animation = 1.0
@@ -234,37 +272,31 @@ class ElementMixer:
                         ))
                         return True
                     else:
-                        # Invalid combination - reset
-                        print("❌ Invalid combination: {} + {}".format(
+                        # Invalid combination - reset and wait for new selection
+                        print("❌ Invalid combination: {} + {} - try again".format(
                             self.selected_elements[0], self.selected_elements[1]
                         ))
                         self.reset_combination()
                         return False
                 
-                print("Selected element: {} (need {} more)".format(
+                print("📝 Selected element: {} (need {} more)".format(
                     element_id, 2 - len(self.selected_elements)
                 ))
                 return True
-            else:
-                # Already have 2 elements - reset and start over
-                self.reset_combination()
-                self.selected_elements.append(element_id)
-                self.element_animations[element_index] = 1.0
-                print("Reset and selected: {}".format(element_id))
-                return True
         
+        print(f"🔍 DEBUG: Element index not found for '{element_id}'")
         return False
     
-    def handle_cast_spell(self) -> bool:
+    def handle_cast_spell(self) -> dict:
         """
         Handle spell casting - starts cooldown if combination is ready
         
         Returns:
-            True if spell was cast successfully
+            Dict with spell data if successful, None if failed
         """
         if not self.current_combination:
             print("🚫 No spell combination ready")
-            return False
+            return None
         
         spell_id = self.current_combination["id"]
         
@@ -277,17 +309,23 @@ class ElementMixer:
                 self.current_combination["display_name"], cooldown_duration
             ))
             
+            # Erstelle Spell-Daten bevor Reset
+            spell_data = {
+                "combination": self.current_combination.copy(),
+                "elements": self.selected_elements.copy(),
+                "success": True
+            }
+            
             # Reset combination after casting
-            combination_to_return = self.current_combination.copy()
             self.reset_combination()
             
-            return True
+            return spell_data
         else:
             remaining = self.cooldown_manager.time_remaining(spell_id)
             print("🚫 Spell {} on cooldown: {:.1f}s remaining".format(
                 self.current_combination["display_name"], remaining
             ))
-            return False
+            return None
     
     def reset_combination(self):
         """Reset the current element combination"""
@@ -338,6 +376,39 @@ class ElementMixer:
         combination_x = element_x + self.element_spacing
         combination_y = y + self.background_padding
         self.render_combination(screen, combination_x, combination_y)
+
+        # Draw selected elements label under the bar
+        self.render_selected_label(screen, x, y)
+
+    def get_selected_elements_text(self) -> str:
+        """Return human-readable text of currently selected elements"""
+        if not self.selected_elements:
+            return "Ausgewählt: —"
+        names = [self.element_name_map.get(eid, eid) for eid in self.selected_elements]
+        return "Ausgewählt: " + " + ".join(names)
+
+    def render_selected_label(self, screen: pygame.Surface, x: int, y: int):
+        """Render a compact label below the element bar indicating selection"""
+        text = self.get_selected_elements_text()
+        text_surface = self.label_font.render(text, True, (255, 255, 255))
+
+        # Center the label under the mixer background
+        bg_width = self.background_surface.get_width()
+        label_y = y + self.background_surface.get_height() + self.label_margin_top
+        label_x = x + (bg_width - text_surface.get_width()) // 2
+
+        # Background pill for readability
+        pill_surf = pygame.Surface(
+            (text_surface.get_width() + 2 * self.label_padding,
+             text_surface.get_height() + 2 * self.label_padding),
+            pygame.SRCALPHA,
+        )
+        bg_color = (*config.colors.UI_BACKGROUND, self.label_bg_alpha)
+        pill_surf.fill(bg_color)
+        pygame.draw.rect(pill_surf, bg_color, pill_surf.get_rect(), border_radius=8)
+
+        screen.blit(pill_surf, (label_x - self.label_padding, label_y - self.label_padding))
+        screen.blit(text_surface, (label_x, label_y))
     
     def render_element(self, screen: pygame.Surface, index: int, element: Dict, x: int, y: int):
         """Render a single element"""

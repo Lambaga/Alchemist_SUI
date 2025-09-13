@@ -706,6 +706,7 @@ class Level:
             return
 
         player_spawned = False
+        spawn_offset_x = -300
 
         # Durchsuche alle Objekt-Layer nach Spawn-Punkten
         for layer in self.map_loader.tmx_data.visible_layers:
@@ -713,19 +714,29 @@ class Level:
                 for obj in layer.objects:
                     # Player Spawn-Punkt
                     if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
-                        self.game_logic.player.rect.centerx = obj.x
+                        self.game_logic.player.rect.centerx = obj.x + spawn_offset_x
                         self.game_logic.player.rect.centery = obj.y
                         self.game_logic.player.update_hitbox()
                         player_spawned = True
-                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
+                        print(f"✅ Player gespawnt bei ({obj.x + spawn_offset_x}, {obj.y}) [Offset {spawn_offset_x} px]")
 
         # Fallback falls kein Player-Spawn in der Map definiert ist
         if not player_spawned:
             # Setze eine feste Startposition
-            self.game_logic.player.rect.centerx = 800  # X-Position
-            self.game_logic.player.rect.centery = 400  # Y-Position
+            # Berechne Map-Mitte für bessere Spawn-Position
+            if self.map_loader and self.map_loader.tmx_data:
+                map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
+                map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
+                self.game_logic.player.rect.centerx = map_center_x + spawn_offset_x
+                self.game_logic.player.rect.centery = map_center_y
+                print(f"🎮 Spieler in Map-Mitte positioniert: ({map_center_x + spawn_offset_x}, {map_center_y}) [Offset {spawn_offset_x} px]")
+            else:
+                # Fallback für Standard-Maps
+                self.game_logic.player.rect.centerx = 800  # X-Position
+                self.game_logic.player.rect.centery = 400  # Y-Position
+                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+            
             self.game_logic.player.update_hitbox()
-            print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
 
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
@@ -835,14 +846,17 @@ class Level:
                 # Pause wird vom Main Game gehandhabt
                 pass
             elif action == 'ingredient_1':
-                # 1 = Wasser-Element für Magie
-                self.handle_magic_element('water')
+                # 1 = Wasser-Element für Magie - DEAKTIVIERT: Element Mixer handhabt das
+                # self.handle_magic_element('water')
+                pass
             elif action == 'ingredient_2':
-                # 2 = Feuer-Element für Magie
-                self.handle_magic_element('fire')
+                # 2 = Feuer-Element für Magie - DEAKTIVIERT: Element Mixer handhabt das
+                # self.handle_magic_element('fire')  
+                pass
             elif action == 'ingredient_3':
-                # 3 = Stein-Element für Magie
-                self.handle_magic_element('stone')
+                # 3 = Stein-Element für Magie - DEAKTIVIERT: Element Mixer handhabt das
+                # self.handle_magic_element('stone')
+                pass
             # Magie-System Actions
             elif action == 'cast_magic':
                 self.handle_cast_magic()
@@ -1037,18 +1051,34 @@ class Level:
 
             if distance <= zone['radius']:
                 zone['active'] = True
-                
-                # Debug-Ausgabe um zu sehen welche Items wir haben
-                print(f"Aktuelle Quest-Items: {self.quest_items}")
-                print(f"Benötigte Items: {zone.get('required_items', [])}")
+
+                # Debounce/State tracking for logs to avoid spamming every frame
+                now_ms = pygame.time.get_ticks()
+                zone.setdefault('was_inside', False)
+                zone.setdefault('last_items_state', None)
+                zone.setdefault('last_info_time', 0)
+                zone.setdefault('info_cooldown_ms', 2000)
+
+                entering = not zone['was_inside']
+                zone['was_inside'] = True
                 
                 # Prüfe ob dies ein Checkpoint ist
                 if zone.get('is_checkpoint', False) and not zone.get('completed', False):
                     required_items = set(zone.get('required_items', []))
                     collected_items = set(self.quest_items)
-                    
-                    # Debug-Ausgabe für Item-Überprüfung
-                    print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
+
+                    # Build state signature for change detection
+                    items_state = (tuple(sorted(required_items)), tuple(sorted(collected_items)))
+                    state_changed = items_state != zone.get('last_items_state')
+                    time_ok = (now_ms - zone.get('last_info_time', 0)) >= zone.get('info_cooldown_ms', 2000)
+
+                    # Debug-Ausgabe nur bei Eintritt, Zustandsänderung oder nach Cooldown
+                    if entering or state_changed or time_ok:
+                        print(f"Aktuelle Quest-Items: {self.quest_items}")
+                        print(f"Benötigte Items: {zone.get('required_items', [])}")
+                        print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
+                        zone['last_items_state'] = items_state
+                        zone['last_info_time'] = now_ms
                     
                     if required_items.issubset(collected_items):
                         print("Alle benötigten Items gefunden!")
@@ -1064,7 +1094,8 @@ class Level:
                         # Nicht alle Items vorhanden - zeige normalen Dialog
                         self.show_interaction_text = True
                         self.interaction_text = zone['text']
-                        print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
+                        if entering or state_changed or time_ok:
+                            print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
                 else:
                     # Normale Interaktionszone oder bereits abgeschlossen
                     self.show_interaction_text = True
@@ -1072,6 +1103,8 @@ class Level:
                 break
             else:
                 zone['active'] = False
+                # Reset inside flag when leaving zone
+                zone['was_inside'] = False
 
     def update(self, dt):
         """Update-Schleife mit Delta Time"""
@@ -1414,12 +1447,49 @@ class Level:
             magic_system.add_element(ElementType.STEIN)
     
     def handle_cast_magic(self):
-        """Behandelt Magie-Zauber-Eingabe"""
+        """Behandelt Magie-Zauber-Eingabe - kombiniert Element Mixer mit Player Magic System"""
         if not self.game_logic or not self.game_logic.player:
             return
         
-        magic_system = self.game_logic.player.magic_system
-        magic_system.cast_magic(self.game_logic.player)
+        # Prüfe Element Mixer (neues System)
+        spell_data = None
+        
+        if hasattr(self.main_game, 'element_mixer'):
+            spell_data = self.main_game.element_mixer.handle_cast_spell()
+            if spell_data and spell_data.get("success"):
+                print("✨ Element Mixer spell cast successful - triggering magic effects")
+            else:
+                print("🚫 Element Mixer: No spell ready or on cooldown")
+        
+        # Wenn Element Mixer erfolgreich, führe echte Magie-Effekte aus
+        if spell_data and spell_data.get("success"):
+            magic_system = self.game_logic.player.magic_system
+            spell_elements = spell_data.get("elements", [])
+            
+            # Konvertiere Element Mixer Elemente zu Magic System Format
+            from systems.magic_system import ElementType
+            element_map = {
+                "water": ElementType.WASSER,
+                "fire": ElementType.FEUER, 
+                "stone": ElementType.STEIN
+            }
+            
+            # Setze Elemente im Magic System
+            magic_system.clear_elements()
+            for element_name in spell_elements:
+                if element_name in element_map:
+                    magic_system.add_element(element_map[element_name])
+                    print(f"🔥 Added {element_name} to magic system")
+            
+            # Führe echte Magie aus
+            magic_system.cast_magic(self.game_logic.player)
+            print("⚡ Player Magic System executed with Element Mixer data")
+            
+        else:
+            # Fallback zu altem Player Magic System
+            magic_system = self.game_logic.player.magic_system
+            magic_system.cast_magic(self.game_logic.player)
+            print("⚡ Player Magic System fallback cast attempted")
     
     def handle_clear_magic(self):
         """Behandelt Magie-Elemente-Löschen"""

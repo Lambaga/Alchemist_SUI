@@ -263,12 +263,20 @@ class Game:
                     # ✨ ELEMENT MIXING: Handle element keys 1-3 (nur im Gameplay)
                     elif self.game_state == GameState.GAMEPLAY:
                         # Element selection: 1=Water, 2=Fire, 3=Stone
+                        element_handled = False
                         if event.key == pygame.K_1:
                             self.element_mixer.handle_element_press("water")
+                            element_handled = True
                         elif event.key == pygame.K_2:
                             self.element_mixer.handle_element_press("fire")
+                            element_handled = True
                         elif event.key == pygame.K_3:
                             self.element_mixer.handle_element_press("stone")
+                            element_handled = True
+                        
+                        # Wenn Element-Event behandelt wurde, nicht weiterleiten
+                        if element_handled:
+                            continue  # Skip weitere Event-Verarbeitung
             
             # Handle events based on current game state
             if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
@@ -296,8 +304,15 @@ class Game:
                     # Other state changes are handled by menu_system internally
             
             elif self.game_state == GameState.GAMEPLAY:
-                # Pass events to level if in gameplay
-                if self.level and hasattr(self.level, 'handle_event'):
+                # Skip level handling ONLY for element keys 1-3 to prevent double processing
+                skip_level = False
+                if (event.type == pygame.KEYDOWN and 
+                    event.key in [pygame.K_1, pygame.K_2, pygame.K_3]):
+                    skip_level = True
+                    print(f"🚫 Skipping level handling for element key: {event.key}")
+                
+                # Pass events to level if in gameplay (except element keys 1-3)
+                if not skip_level and self.level and hasattr(self.level, 'handle_event'):
                     self.level.handle_event(event)
     
     
