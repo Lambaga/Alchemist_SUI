@@ -761,6 +761,33 @@ class Level:
                         self.game_logic.player.rect.centery = spawn_y
                         self.game_logic.player.update_hitbox()
                         player_spawned = True
+                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
+
+        # Wenn Map_Town.tmx geladen wird und kein Spawn gefunden wurde, setze unten rechts
+        if not player_spawned and hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
+            map_name = getattr(self.map_loader.tmx_data, 'filename', None)
+            # Alternativ: prüfe auf Map_Town.tmx im Pfad
+            if self.map_loader.tmx_data and 'Map_Town.tmx' in str(self.map_loader.tmx_data.filename):
+                self.game_logic.player.rect.centerx = self.map_loader.width - 100
+                self.game_logic.player.rect.centery = self.map_loader.height - 100
+                self.game_logic.player.update_hitbox()
+                print("✅ Player unten rechts auf Map_Town.tmx gespawnt")
+            else:
+                # Standard-Spawn für andere Maps
+                # Berechne Map-Mitte für bessere Spawn-Position
+                if self.map_loader and self.map_loader.tmx_data:
+                    map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
+                    map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
+                self.game_logic.player.rect.centerx = map_center_x + spawn_offset_x
+                self.game_logic.player.rect.centery = map_center_y
+                print(f"🎮 Spieler in Map-Mitte positioniert: ({map_center_x + spawn_offset_x}, {map_center_y}) [Offset {spawn_offset_x} px]")
+            else:
+                # Fallback für Standard-Maps
+                self.game_logic.player.rect.centerx = 800  # X-Position
+                    self.game_logic.player.rect.centery = 400  # Y-Position
+                        print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+            
+            self.game_logic.player.update_hitbox()
                         print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Objekt '{obj.name}'")
                         break
                     
