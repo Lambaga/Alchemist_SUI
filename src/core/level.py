@@ -671,13 +671,21 @@ class Level:
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            map_path = path.join(MAP_DIR, "Map3.tmx") # Verwende MAP_DIR aus settings
+            map_path = path.join(MAP_DIR, "Map_Village.tmx")
             
             self.map_loader = MapLoader(map_path)
             
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
+                print(f"✅ Map geladen: {map_path}")
                 
+                # Debug: Zeige alle verfügbaren Layer
+                print("🗂️ Verfügbare Layer:")
+                for layer in self.map_loader.tmx_data.visible_layers:
+                    layer_type = "Objekt" if hasattr(layer, 'objects') else "Tile"
+                    object_count = len(layer.objects) if hasattr(layer, 'objects') else 0
+                    print(f"  - {layer.name} ({layer_type}) - {object_count} Objekte")
+            
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
                 self.spawn_entities_from_map()
                 
@@ -687,9 +695,11 @@ class Level:
                 # Fallback: Standard-Position (nur wenn keine Map)
                 self.game_logic.player.rect.bottom = self.screen.get_height() - 200
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+                self.game_logic.player.update_hitbox()
+                print("⚠️ Map konnte nicht geladen werden - Standard-Position verwendet")
                 
         except Exception as e:
+            print(f"❌ Fehler beim Laden der Map: {e}")
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
             else:
@@ -698,7 +708,8 @@ class Level:
                 # Fallback: Standard-Position (nur wenn Map fehlschlägt)
                 self.game_logic.player.rect.bottom = self.screen.get_height() - 200
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+                self.game_logic.player.update_hitbox()
+                print("⚠️ Fallback auf Standard-Position")
     
     def spawn_entities_from_map(self):
         """Lädt Entities aus der Map oder verwendet Fallback"""
@@ -710,31 +721,72 @@ class Level:
         # Durchsuche alle Objekt-Layer nach Spawn-Punkten
         for layer in self.map_loader.tmx_data.visible_layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
+                print(f"🔍 Prüfe Objekt-Layer: {layer.name}")
                 for obj in layer.objects:
-                    # Player Spawn-Punkt
-                    if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
-                        self.game_logic.player.rect.centerx = obj.x
-                        self.game_logic.player.rect.centery = obj.y
+                    print(f"  - Objekt gefunden: '{obj.name}' bei ({obj.x}, {obj.y})")
+                    
+                    # Player Spawn-Punkt - erweiterte Erkennung
+                    if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn', 'start']:
+                        # Korrigiere negative Koordinaten für Map_Village
+                        spawn_x = obj.x
+                        spawn_y = obj.y
+                        
+                        # Prüfe ob Koordinaten außerhalb des gültigen Bereichs sind
+                        map_width = self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth
+                        map_height = self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight
+                        
+                        if spawn_x < 0 or spawn_y < 0 or spawn_x > map_width or spawn_y > map_height:
+                            print(f"⚠️ Spawn-Position ({spawn_x}, {spawn_y}) ist außerhalb der Map (0,0 - {map_width},{map_height})")
+                            # Korrigiere zu gültiger Position in der Mitte der Map
+                            spawn_x = map_width // 2
+                            spawn_y = map_height // 2
+                            print(f"🔧 Korrigiert zu Map-Mitte: ({spawn_x}, {spawn_y})")
+                        
+                        self.game_logic.player.rect.centerx = spawn_x
+                        self.game_logic.player.rect.centery = spawn_y
                         self.game_logic.player.update_hitbox()
                         player_spawned = True
-                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
+                        print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Objekt '{obj.name}'")
+                        break
+                    
+                    # Enemy Spawns
+                    elif obj.name and 'enemy' in obj.name.lower():
+                        print(f"🎯 Enemy-Spawn gefunden: {obj.name} bei ({obj.x}, {obj.y})")
+                        # Enemy-Spawning wird vom EnemyManager gehandhabt
+            
+                if player_spawned:
+                    break  # Stoppe die Suche nach dem ersten gefundenen Player-Spawn
 
-        # Wenn Map_Town.tmx geladen wird und kein Spawn gefunden wurde, setze unten rechts
-        if not player_spawned and hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
-            map_name = getattr(self.map_loader.tmx_data, 'filename', None)
-            # Alternativ: prüfe auf Map_Town.tmx im Pfad
-            if self.map_loader.tmx_data and 'Map_Town.tmx' in str(self.map_loader.tmx_data.filename):
-                self.game_logic.player.rect.centerx = self.map_loader.width - 100
-                self.game_logic.player.rect.centery = self.map_loader.height - 100
-                self.game_logic.player.update_hitbox()
-                print("✅ Player unten rechts auf Map_Town.tmx gespawnt")
-            else:
-                # Standard-Spawn für andere Maps
-                self.game_logic.player.rect.centerx = 800  # X-Position
-                self.game_logic.player.rect.centery = 400  # Y-Position
-                self.game_logic.player.update_hitbox()
-                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+        # Fallback falls kein Spawn-Punkt gefunden
+        if not player_spawned:
+            print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+            
+            # Spezielle Behandlung für bekannte Maps
+            if hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
+                map_filename = str(getattr(self.map_loader.tmx_data, 'filename', ''))
+                
+                # Berechne Map-Dimensionen
+                map_width = self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth
+                map_height = self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight
+                
+                if 'Map_Village.tmx' in map_filename:
+                    # Map_Village: 80x80 Tiles = 2560x2560 Pixel - spawn in der Mitte
+                    spawn_x = map_width // 2  # 1280
+                    spawn_y = map_height // 2  # 1280
+                    self.game_logic.player.rect.centerx = spawn_x
+                    self.game_logic.player.rect.centery = spawn_y
+                    self.game_logic.player.update_hitbox()
+                    print(f"✅ Player in Mitte von Map_Village gespawnt ({spawn_x}, {spawn_y})")
+                else:
+                    # Standard-Spawn für andere Maps
+                    self.game_logic.player.rect.centerx = 800
+                    self.game_logic.player.rect.centery = 400
+                    self.game_logic.player.update_hitbox()
+                    print("✅ Standard-Spawn verwendet (800, 400)")
 
+        # Enemy-Spawning delegieren an EnemyManager
+        self.enemy_manager.add_enemies_from_map(self.map_loader)
+    
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
         if not self.map_loader or not self.map_loader.tmx_data:
@@ -1447,4 +1499,66 @@ class Level:
         magic_system = self.game_logic.player.magic_system
         magic_system.clear_elements()
     
-    # ...existing code...
+    def add_enemies_from_map(self, map_loader):
+        """Spawnt ALLE Gegner aus Tiled-Objekten auf allen passenden Ebenen."""
+        if not map_loader or not map_loader.tmx_data:
+            return
+        
+        pytmx_success = False
+        
+        # Versuche zuerst mit pytmx zu laden
+        try:
+            import pytmx
+            # Dynamischer Pfad basierend auf map_loader
+            map_path = getattr(map_loader, 'map_path', None)
+            if not map_path:
+                # Fallback für Map_Village
+                map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map_Village.tmx"  # ✅ Geändert
+            
+            tmx_data = pytmx.load_pygame(map_path, pixelalpha=True)
+            pytmx_success = True
+            
+            # Durchlaufe alle Objekt-Layer in der Reihenfolge
+            for layer in tmx_data.visible_layers:
+                if isinstance(layer, pytmx.TiledObjectGroup):
+                    for obj in layer:
+                        # Spawne den Gegner an der Objekt-Position
+                        enemy_type = obj.name.lower() if obj.name else "default_enemy"
+                        print(f"Spawne {enemy_type} bei ({obj.x}, {obj.y})")
+                        
+                        # Nutze die EnemyManager Methode zum Spawnen
+                        self.enemy_manager.spawn_enemy(enemy_type, obj.x, obj.y)
+        
+        except Exception as e:
+            print(f"⚠️ Fehler beim Laden der Map mit pytmx: {e}")
+        
+        # Fallback: XML-Parsing nur wenn pytmx versagt
+        if not pytmx_success:
+            print("⚠️ pytmx failed, using XML fallback...")
+            try:
+                import xml.etree.ElementTree as ET
+                # Dynamischer Pfad basierend auf map_loader
+                map_path = getattr(map_loader, 'map_path', None)
+                if not map_path:
+                    # Fallback für Map_Village
+                    map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map_Village.tmx"  # ✅ Geändert
+                
+                tree = ET.parse(map_path)
+                root = tree.getroot()
+                
+                # Durchlaufe alle Objekte in der XML
+                for elem in root.iter('object'):
+                    obj_name = elem.get('name')
+                    obj_type = elem.get('type')
+                    x = float(elem.get('x', 0))
+                    y = float(elem.get('y', 0))
+                    
+                    # Spawne den Gegner an der Objekt-Position
+                    enemy_type = obj_name.lower() if obj_name else "default_enemy"
+                    print(f"Spawne {enemy_type} bei ({x}, {y})")
+                    
+                    # Nutze die EnemyManager Methode zum Spawnen
+                    self.enemy_manager.spawn_enemy(enemy_type, x, y)
+            
+            except Exception as e:
+                print(f"❌ Fehler beim XML-Parsing der Map: {e}")

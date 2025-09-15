@@ -1,0 +1,20 @@
+{
+  "map": "D:\\Jonas\\Alchemist_SUI\\assets\\maps\\Map_Town.tmx",
+  "gaps": [
+    {
+      "start": 15563,
+      "end": 15744,
+      "length": 182
+    }
+  ],
+  "suggestions": [
+    {
+      "gap_start": 15563,
+      "gap_end": 15744,
+      "gap_length": 182,
+      "rule": "gid in [15563,15744] => gid - 182",
+      "offset_applied": 182
+    }
+  ],
+  "remap_entries": 182
+}

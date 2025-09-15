@@ -1,0 +1,167 @@
+{
+  "map": "D:\\Jonas\\Alchemist_SUI\\assets\\maps\\Map_Town.tmx",
+  "tilesets": [
+    {
+      "name": "terrain-map-v8",
+      "firstgid": 1,
+      "lastgid": 15562,
+      "tilecount": 15562
+    },
+    {
+      "name": "vten",
+      "firstgid": 15745,
+      "lastgid": 18816,
+      "tilecount": 3072
+    },
+    {
+      "name": "windoors",
+      "firstgid": 18817,
+      "lastgid": 19840,
+      "tilecount": 1024
+    },
+    {
+      "name": "vhouse",
+      "firstgid": 19841,
+      "lastgid": 21888,
+      "tilecount": 2048
+    },
+    {
+      "name": "roofs",
+      "firstgid": 21889,
+      "lastgid": 25984,
+      "tilecount": 4096
+    },
+    {
+      "name": "vacc",
+      "firstgid": 25985,
+      "lastgid": 28544,
+      "tilecount": 2560
+    },
+    {
+      "name": "bricks",
+      "firstgid": 28545,
+      "lastgid": 30592,
+      "tilecount": 2048
+    },
+    {
+      "name": "vwindoors",
+      "firstgid": 30593,
+      "lastgid": 35712,
+      "tilecount": 5120
+    },
+    {
+      "name": "container",
+      "firstgid": 35713,
+      "lastgid": 36736,
+      "tilecount": 1024
+    },
+    {
+      "name": "vmkt",
+      "firstgid": 36737,
+      "lastgid": 38016,
+      "tilecount": 1280
+    },
+    {
+      "name": "vgard",
+      "firstgid": 38017,
+      "lastgid": 39040,
+      "tilecount": 1024
+    },
+    {
+      "name": "vstreets",
+      "firstgid": 39041,
+      "lastgid": 40576,
+      "tilecount": 1536
+    },
+    {
+      "name": "food",
+      "firstgid": 40577,
+      "lastgid": 41600,
+      "tilecount": 1024
+    },
+    {
+      "name": "trees",
+      "firstgid": 41601,
+      "lastgid": 42624,
+      "tilecount": 1024
+    }
+  ],
+  "gaps": [
+    {
+      "start": 15563,
+      "end": 15744,
+      "length": 182
+    }
+  ],
+  "usage_summary": {
+    "valid": 9609
+  },
+  "unique_gid_count": 1175,
+  "layer_summaries": [
+    {
+      "name": "Trn_1",
+      "total_tiles": 4895,
+      "used_gids": 4895,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Trn_2",
+      "total_tiles": 1259,
+      "used_gids": 1259,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Trn_3",
+      "total_tiles": 763,
+      "used_gids": 763,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Bldg_1",
+      "total_tiles": 643,
+      "used_gids": 643,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Bldg_2",
+      "total_tiles": 636,
+      "used_gids": 636,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Bldg_3",
+      "total_tiles": 337,
+      "used_gids": 337,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Bldg_4",
+      "total_tiles": 216,
+      "used_gids": 216,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    },
+    {
+      "name": "Foreground",
+      "total_tiles": 860,
+      "used_gids": 860,
+      "gap_hits": 0,
+      "oob_hits": 0,
+      "unknown_hits": 0
+    }
+  ],
+  "problematic_gid_samples": []
+}

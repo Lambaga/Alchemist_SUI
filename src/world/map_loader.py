@@ -67,7 +67,7 @@ class MapLoader:
         
         for layer in self.tmx_data.visible_layers:
             # Suche nach Foreground/Front Layer
-            if hasattr(layer, 'data') and layer.name.lower() in ['foreground', 'front', 'overlay']:
+            if hasattr(layer, 'data') and layer.name and layer.name.lower() in ['foreground', 'front', 'overlay']:
                 self.foreground_layer = layer
                 print(f"🎭 Foreground-Layer gefunden: {layer.name}")
                 break
@@ -82,7 +82,7 @@ class MapLoader:
         
         # 1. Alle normalen Layer rendern (außer Foreground)
         for layer in self.tmx_data.visible_layers:
-            if hasattr(layer, 'data') and layer.name.lower() not in ['foreground', 'front', 'overlay']:
+            if hasattr(layer, 'data') and layer.name and layer.name.lower() not in ['foreground', 'front', 'overlay']:
                 self._render_tile_layer(layer, surface, camera)
     
     def render_foreground(self, surface, camera):
