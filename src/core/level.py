@@ -686,7 +686,7 @@ class Level:
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            # Lade die aktuelle Map aus der Progression
+            # ✅ BEHALTEN: Lade die aktuelle Map aus der Progression
             current_map = self.map_progression[self.current_map_index]
             map_path = path.join(MAP_DIR, current_map)
             
@@ -725,19 +725,6 @@ class Level:
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
                 self.game_logic.player.update_hitbox()
                 
-        except Exception as e:
-            print(f"❌ Fehler beim Laden der Map: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            self.map_loader = None
-            self.use_map = False
-            # Fallback: Standard-Position
-            self.game_logic.player.rect.bottom = self.screen.get_height() - 200
-            self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-            self.game_logic.player.update_hitbox()
-            print("⚠️ Fallback auf Standard-Position")
-
     def spawn_entities_from_map(self):
         """Lädt Entities aus der Map oder verwendet Fallback - mit Object Group Support"""
         if not self.map_loader or not self.map_loader.tmx_data:
@@ -748,41 +735,123 @@ class Level:
         # 1. Durchsuche alle Tile-Layer nach Spawn-Punkten (bestehende Methode)
         for layer in self.map_loader.tmx_data.visible_layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
-                print(f"🔍 Prüfe Objekt-Layer: {layer.name or 'None'}")
+                # ✅ BEHALTEN: Sichere Layer-Name Behandlung
+                print(f"🔍 Prüfe Objekt-Layer: {getattr(layer, 'name', 'None')}")
                 for obj in layer.objects:
-                    # Player Spawn-Punkt
-                    if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
-                        self.game_logic.player.rect.centerx = obj.x
-                        self.game_logic.player.rect.centery = obj.y
+                    print(f"  - Objekt gefunden: '{obj.name}' bei ({obj.x}, {obj.y})")
+                    
+                    # Player Spawn-Punkt - erweiterte Erkennung
+                    if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn', 'start']:
+                        # Korrigiere negative Koordinaten für Map_Village
+                        spawn_x = obj.x
+                        spawn_y = obj.y
+                        
+                        # Prüfe ob Koordinaten außerhalb des gültigen Bereichs sind
+                        map_width = self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth
+                        map_height = self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight
+                        
+                        if spawn_x < 0 or spawn_y < 0 or spawn_x > map_width or spawn_y > map_height:
+                            print(f"⚠️ Spawn-Position ({spawn_x}, {spawn_y}) ist außerhalb der Map (0,0 - {map_width},{map_height})")
+                            # Korrigiere zu gültiger Position in der Mitte der Map
+                            spawn_x = map_width // 2
+                            spawn_y = map_height // 2
+                            print(f"🔧 Korrigiert zu Map-Mitte: ({spawn_x}, {spawn_y})")
+                        
+                        self.game_logic.player.rect.centerx = spawn_x
+                        self.game_logic.player.rect.centery = spawn_y
                         self.game_logic.player.update_hitbox()
                         player_spawned = True
-                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
-
-        # Wenn Map_Town.tmx geladen wird und kein Spawn gefunden wurde, setze unten rechts
-        if not player_spawned and hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
-            map_name = getattr(self.map_loader.tmx_data, 'filename', None)
-            # Alternativ: prüfe auf Map_Town.tmx im Pfad
-            if self.map_loader.tmx_data and 'Map_Town.tmx' in str(self.map_loader.tmx_data.filename):
-                self.game_logic.player.rect.centerx = self.map_loader.width - 100
-                self.game_logic.player.rect.centery = self.map_loader.height - 100
-                self.game_logic.player.update_hitbox()
-                print("✅ Player unten rechts auf Map_Town.tmx gespawnt")
-            else:
-                # Standard-Spawn für andere Maps
-                # Berechne Map-Mitte für bessere Spawn-Position
-            if self.map_loader and self.map_loader.tmx_data:
-                map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
-                map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
-                self.game_logic.player.rect.centerx = map_center_x + spawn_offset_x
-                self.game_logic.player.rect.centery = map_center_y
-                print(f"🎮 Spieler in Map-Mitte positioniert: ({map_center_x + spawn_offset_x}, {map_center_y}) [Offset {spawn_offset_x} px]")
-            else:
-                # Fallback für Standard-Maps
-                self.game_logic.player.rect.centerx = 800  # X-Position
-                    self.game_logic.player.rect.centery = 400  # Y-Position
-                        print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+                        print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Objekt '{obj.name}'")
+                        break
+                    
+                    # Enemy Spawns
+                    elif obj.name and 'enemy' in obj.name.lower():
+                        print(f"🎯 Enemy-Spawn gefunden: {obj.name} bei ({obj.x}, {obj.y})")
+                        # Enemy-Spawning wird vom EnemyManager gehandhabt
             
-            self.game_logic.player.update_hitbox()
+                if player_spawned:
+                    break  # Stoppe die Suche nach dem ersten gefundenen Player-Spawn
+
+        # 2. NEU: Durchsuche Object Groups nach Spawn-Objekten
+        if not player_spawned and hasattr(self.map_loader.tmx_data, 'objectgroups'):
+            print("🔍 Prüfe Object Groups...")
+            try:
+                # Suche nach Object Groups mit Namen wie "spawn", "Spawn", etc.
+                spawn_group_names = ['spawn', 'Spawn', 'SPAWN', 'player_spawn', 'Player']
+                
+                for group_name in spawn_group_names:
+                    try:
+                        spawn_layer = self.map_loader.tmx_data.get_layer_by_name(group_name)
+                        if spawn_layer and hasattr(spawn_layer, 'objects'):
+                            print(f"  ✅ Spawn Object Group gefunden: '{group_name}'")
+                            
+                            for obj in spawn_layer.objects:
+                                obj_name = getattr(obj, 'name', None)
+                                print(f"    - Objekt: '{obj_name}' bei ({obj.x}, {obj.y})")
+                                
+                                # Spawn an erstem Objekt in der Spawn-Gruppe
+                                if obj_name and obj_name.lower() in ['spawn', 'player', 'start'] or not obj_name:
+                                    # Validiere Spawn-Position
+                                    spawn_x = max(50, min(obj.x, self.map_loader.width - 50))
+                                    spawn_y = max(50, min(obj.y, self.map_loader.height - 50))
+                                    
+                                    self.game_logic.player.rect.centerx = spawn_x
+                                    self.game_logic.player.rect.centery = spawn_y
+                                    self.game_logic.player.update_hitbox()
+                                    player_spawned = True
+                                    print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Spawn Group '{group_name}'")
+                                    break
+                            
+                            if player_spawned:
+                                break
+                                
+                    except ValueError:
+                        # Gruppe existiert nicht
+                        continue
+                    except Exception as e:
+                        print(f"  ⚠️ Fehler beim Prüfen der Gruppe '{group_name}': {e}")
+                        continue
+            
+            except Exception as e:
+                print(f"⚠️ Fehler bei Object Group Suche: {e}")
+
+        # 3. Fallback falls kein Spawn-Punkt gefunden
+        if not player_spawned:
+            print("⚠️ Kein Player-Spawn in Map gefunden - verwende mapspezifische Standard-Position")
+            
+            # ✅ BEHALTEN: Mapspezifische Fallback-Positionen
+            if hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
+                map_filename = str(getattr(self.map_loader.tmx_data, 'filename', ''))
+                
+                if 'Map3.tmx' in map_filename:
+                    # Map3: Standard-Position
+                    self.game_logic.player.rect.centerx = 800
+                    self.game_logic.player.rect.centery = 400
+                    self.game_logic.player.update_hitbox()
+                    print("✅ Player in Map3 Standard-Position gespawnt (800, 400)")
+                    
+                elif 'Map_Village.tmx' in map_filename:
+                    # Map_Village: Zentriert
+                    self.game_logic.player.rect.centerx = 1280  # Mitte der 80x80 Map
+                    self.game_logic.player.rect.centery = 1280
+                    self.game_logic.player.update_hitbox()
+                    print("✅ Player in Map_Village Mitte gespawnt (1280, 1280)")
+                    
+                elif 'Map_Town.tmx' in map_filename:
+                    # Map_Town: unten rechts  
+                    map_width = self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth
+                    map_height = self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight
+                    self.game_logic.player.rect.centerx = map_width - 100
+                    self.game_logic.player.rect.centery = map_height - 100
+                    self.game_logic.player.update_hitbox()
+                    print("✅ Player unten rechts auf Map_Town gespawnt")
+                    
+                else:
+                    # Unbekannte Map: Allgemeine Standard-Position
+                    self.game_logic.player.rect.centerx = 400
+                    self.game_logic.player.rect.centery = 300
+                    self.game_logic.player.update_hitbox()
+                    print("✅ Player in unbekannter Map Standard-Position gespawnt (400, 300)")
 
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
@@ -1020,66 +1089,28 @@ class Level:
             pygame.mixer.music.unpause()
     
     def update(self, dt):
-        """Update-Schleife mit Delta Time - Erweitert für Universal Input"""
-        # Universal Input System updaten
-        self.input_system.update()
+        """Aktualisiert das Level und alle Entities"""
+        if not self.game_logic:
+            return
         
-        # Bewegung verarbeiten
-        if self.game_logic and self.game_logic.player:
-            # Hole Bewegungsvektor vom Input System
-            direction = pygame.math.Vector2(0, 0)
-            
-            # Tastatur-Input verarbeiten
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                direction.x = -1
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                direction.x = 1
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                direction.y = -1
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                direction.y = 1
-                
-            # Normalisiere den Vektor für diagonale Bewegung
-            if direction.length() > 0:
-                direction = direction.normalize()
-            
-            # Setze die Bewegungsrichtung im Player
-            self.game_logic.player.direction = direction
-            
-            # Führe die Bewegung aus
-            self.game_logic.player.move(dt)
+        # Game Logic Update
+        self.game_logic.update(dt)
         
-        # Spiel-Logik updaten mit Delta Time
-        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
-        
-        # Prüfe auf Game Over
-        if game_result == "game_over":
-            return "game_over"
-        
-        # Magic System updaten
-        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
-            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
-            self.game_logic.player.magic_system.update(dt, enemies_list)
-        
-        # Demons updaten
+        # Feinde aktualisieren
         self.enemy_manager.update(dt, self.game_logic.player)
         
-        # Health-Bar System updaten
+        # Kamera aktualisieren
+        if hasattr(self.game_logic, 'player'):
+            self.camera.update(self.game_logic.player)
+        
+        # Health-Bars aktualisieren
         self.health_bar_manager.update(dt)
         
-        # Kamera updaten
-        self.camera.update(self.game_logic.player)
-        
-        # Prüfe Interaktionszonen
+        # Interaktionszonen prüfen
         self.check_interaction_zones()
         
-        # Sammelbare Gegenstände überprüfen
-        self.check_collectibles()
-        
-        # Update die Collection Message Timer
-        if self.collection_message_timer > 0:
-            self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
+        # ✅ NEU: Level-Abschluss prüfen
+        self.check_level_completion()
     
     def check_interaction_zones(self):
         """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist"""
@@ -1192,28 +1223,30 @@ class Level:
             self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
     
     def trigger_level_completion(self):
-        """Behandelt den Abschluss des Levels und Map-Wechsel"""
-        print("Level-Abschluss wird ausgeführt...")
-
-        # Zeige Schriftzug für 2 Sekunden
-        self.collection_message = "Level 1 abgeschlossen"
-        self.collection_message_timer = pygame.time.get_ticks() + 2000
-
-        # Rendering erzwingen, damit die Nachricht sichtbar ist
-        self.render()
-        pygame.display.flip()
-        pygame.time.wait(2000)
-
-        # Lade die nächste Map (Level 2)
-        self.load_next_map("Map_Town.tmx")
-
-    def load_next_map(self, map_name):
-        """Lädt die nächste Map und setzt den Spieler neu"""
-        try:
-            # Inventar und Quest-Items zurücksetzen
-            if self.game_logic:
-                self.game_logic.aktive_zutaten = []  # Inventar leeren
-            self.quest_items.clear()  # Quest-Items zurücksetzen
+        """Wird aufgerufen wenn ein Level abgeschlossen ist - lädt nächste Map"""
+        print("🎉 Level abgeschlossen!")
+        
+        # Markiere aktuelles Level als abgeschlossen
+        self.map_completed = True
+        
+        # Prüfe ob es eine nächste Map gibt
+        if self.current_map_index + 1 < len(self.map_progression):
+            next_map_index = self.current_map_index + 1
+            next_map_name = self.map_progression[next_map_index]
+            
+            print(f"🗺️ Lade nächste Map: {next_map_name}")
+            
+            # Level-Status zurücksetzen
+            self.map_completed = False
+            
+            # Spieler-Position für neue Map setzen
+            self.spawn_entities_from_map()
+            
+            # Enemies neu spawnen
+            self.enemy_manager.clear_enemies()  # Alte Gegner entfernen
+            
+            print(f"✅ Neue Map geladen: {map_name}")
+            print("🔄 Inventar und Quest-Items zurückgesetzt")
             
             # Interaktionszonen zurücksetzen für neue Map
             self.interaction_zones = {}
@@ -1222,22 +1255,59 @@ class Level:
             self.collectible_items = {}
             
             # Map laden
+            self.load_next_map(next_map_name, next_map_index)
+            
+        else:
+            print("🎊 Alle Maps abgeschlossen! Spiel beendet!")
+            if hasattr(self, 'main_game') and self.main_game:
+                self.main_game.show_message("🎊 Herzlichen Glückwunsch! Alle Maps abgeschlossen!")
+            
+            # Hier könntest du zum Hauptmenü zurückkehren oder Credits anzeigen
+            # self.main_game.return_to_menu()
+    
+    def load_next_map(self, map_name, map_index=None):
+        """Lädt die nächste Map in der Progression"""
+        try:
+            print(f"🔄 Wechsle zu Map: {map_name}")
+            
+            # Update Map-Index
+            if map_index is not None:
+                self.current_map_index = map_index
+            
+            # Neue Map laden
             map_path = path.join(MAP_DIR, map_name)
             self.map_loader = MapLoader(map_path)
             
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
+                print(f"✅ Neue Map geladen: {map_path}")
+                
+                # Level-Status zurücksetzen
+                self.map_completed = False
+                
+                # Spieler-Position für neue Map setzen
                 self.spawn_entities_from_map()
                 
-                # Enemies neu spawnen
-                self.enemy_manager.clear_enemies()  # Alte Gegner entfernen
+                # Enemies für neue Map laden
+                self.respawn_enemies_only()
                 
-                print(f"✅ Neue Map geladen: {map_name}")
-                print("🔄 Inventar und Quest-Items zurückgesetzt")
+                # Kollisionsobjekte neu aufbauen
+                self.setup_collision_objects()
+                
+                # Health-Bars neu einrichten
+                self.setup_health_bars()
+                
+                # Kamera zentrieren
+                if hasattr(self.game_logic, 'player'):
+                    self.camera.center_on_target(self.game_logic.player)
+                
+                print(f"🎮 Map-Wechsel zu {map_name} abgeschlossen!")
+                
             else:
-                print(f"❌ Fehler beim Laden der Map: {map_name}")
+                print(f"❌ Fehler beim Laden von {map_name}")
+                
         except Exception as e:
-            print(f"❌ Fehler beim Map-Wechsel: {e}")
+            print(f"❌ Fehler beim Map-Wechsel zu {map_name}: {e}")
 
     def render(self):
         """Rendering mit Foreground-Layer"""
@@ -1512,4 +1582,102 @@ class Level:
         magic_system = self.game_logic.player.magic_system
         magic_system.clear_elements()
     
-    # ...existing code...
+    def add_enemies_from_map(self, map_loader):
+        """Spawnt ALLE Gegner aus Tiled-Objekten auf allen passenden Ebenen."""
+        if not map_loader or not map_loader.tmx_data:
+            return
+        
+        pytmx_success = False
+        
+        # Versuche zuerst mit pytmx zu laden
+        try:
+            import pytmx
+            # Dynamischer Pfad basierend auf map_loader
+            map_path = getattr(map_loader, 'map_path', None)
+            if not map_path:
+                # Fallback für Map_Village
+                map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map_Village.tmx"  # ✅ Geändert
+            
+            tmx_data = pytmx.load_pygame(map_path, pixelalpha=True)
+            pytmx_success = True
+            
+            # Durchlaufe alle Objekt-Layer in der Reihenfolge
+            for layer in tmx_data.visible_layers:
+                if isinstance(layer, pytmx.TiledObjectGroup):
+                    for obj in layer:
+                        # Spawne den Gegner an der Objekt-Position
+                        enemy_type = obj.name.lower() if obj.name else "default_enemy"
+                        print(f"Spawne {enemy_type} bei ({obj.x}, {obj.y})")
+                        
+                        # Nutze die EnemyManager Methode zum Spawnen
+                        self.enemy_manager.spawn_enemy(enemy_type, obj.x, obj.y)
+        
+        except Exception as e:
+            print(f"⚠️ Fehler beim Laden der Map mit pytmx: {e}")
+        
+        # Fallback: XML-Parsing nur wenn pytmx versagt
+        if not pytmx_success:
+            print("⚠️ pytmx failed, using XML fallback...")
+            try:
+                import xml.etree.ElementTree as ET
+                # Dynamischer Pfad basierend auf map_loader
+                map_path = getattr(map_loader, 'map_path', None)
+                if not map_path:
+                    # Fallback für Map_Village
+                    map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map_Village.tmx"  # ✅ Geändert
+                
+                tree = ET.parse(map_path)
+                root = tree.getroot()
+                
+                # Durchlaufe alle Objekte in der XML
+                for elem in root.iter('object'):
+                    obj_name = elem.get('name')
+                    obj_type = elem.get('type')
+                    x = float(elem.get('x', 0))
+                    y = float(elem.get('y', 0))
+                    
+                    # Spawne den Gegner an der Objekt-Position
+                    enemy_type = obj_name.lower() if obj_name else "default_enemy"
+                    print(f"Spawne {enemy_type} bei ({x}, {y})")
+                    
+                    # Nutze die EnemyManager Methode zum Spawnen
+                    self.enemy_manager.spawn_enemy(enemy_type, x, y)
+            
+            except Exception as e:
+                print(f"❌ Fehler beim XML-Parsing der Map: {e}")
+    
+    def check_level_completion(self):
+        """Prüft ob die aktuellen Level-Ziele erreicht wurden"""
+        if self.map_completed:
+            return  # Bereits abgeschlossen
+        
+        current_map = self.map_progression[self.current_map_index]
+        
+        # Map3 Abschluss-Bedingungen
+        if current_map == "Map3.tmx":
+            # Beispiel-Bedingungen für Map3:
+            # 1. Alle Enemies besiegt
+            enemies_defeated = len(self.enemy_manager.enemies) == 0
+            
+            # 2. Spieler erreicht bestimmte Position (z.B. Ausgang)
+            player_pos = (self.game_logic.player.rect.centerx, self.game_logic.player.rect.centery)
+            exit_zone = pygame.Rect(2400, 1800, 200, 200)  # Beispiel-Ausgangszone für Map3
+            player_at_exit = exit_zone.collidepoint(player_pos)
+            
+            # 3. Kombiniere Bedingungen
+            if enemies_defeated and player_at_exit:
+                print("🎯 Map3 Abschluss-Bedingungen erfüllt!")
+                self.trigger_level_completion()
+        
+        # Map_Village Abschluss-Bedingungen  
+        elif current_map == "Map_Village.tmx":
+            # Beispiel-Bedingungen für Map_Village:
+            # 1. Alle Enemies besiegt
+            enemies_defeated = len(self.enemy_manager.enemies) == 0
+            
+            # 2. Bestimmte Interaktion abgeschlossen
+            village_task_completed = True  # Hier deine spezifische Logik
+            
+            if enemies_defeated and village_task_completed:
+                print("🎯 Map_Village Abschluss-Bedingungen erfüllt!")
+                self.trigger_level_completion()
