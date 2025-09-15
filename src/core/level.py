@@ -770,9 +770,9 @@ class Level:
             else:
                 # Standard-Spawn für andere Maps
                 # Berechne Map-Mitte für bessere Spawn-Position
-            if self.map_loader and self.map_loader.tmx_data:
-                map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
-                map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
+                if self.map_loader and self.map_loader.tmx_data:
+                    map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
+                    map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
                 self.game_logic.player.rect.centerx = map_center_x + spawn_offset_x
                 self.game_logic.player.rect.centery = map_center_y
                 print(f"🎮 Spieler in Map-Mitte positioniert: ({map_center_x + spawn_offset_x}, {map_center_y}) [Offset {spawn_offset_x} px]")
