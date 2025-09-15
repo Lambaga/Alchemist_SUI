@@ -668,10 +668,17 @@ class Level:
         self.collection_message_timer = 0
         self.collection_message_duration = 3000  # 3 Sekunden Anzeigedauer
 
+        # Map-Progression System
+        self.current_map_index = 0
+        self.map_progression = [
+            "Map3.tmx",        # 1. Map: Map3 
+            "Map_Village.tmx"  # 2. Map: Map_Village nach Abschluss
+        ]
+        self.map_completed = False
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            map_path = path.join(MAP_DIR, "Map_Village.tmx")
+            map_path = path.join(MAP_DIR, "Map3.tmx")  # ✅ Zurück zu Map3 als Start-Map
             
             self.map_loader = MapLoader(map_path)
             
@@ -684,7 +691,7 @@ class Level:
                 for layer in self.map_loader.tmx_data.visible_layers:
                     layer_type = "Objekt" if hasattr(layer, 'objects') else "Tile"
                     object_count = len(layer.objects) if hasattr(layer, 'objects') else 0
-                    print(f"  - {layer.name} ({layer_type}) - {object_count} Objekte")
+                    print(f"  - {layer.name or 'None'} ({layer_type}) - {object_count} Objekte")
             
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
                 self.spawn_entities_from_map()
@@ -1023,66 +1030,28 @@ class Level:
             pygame.mixer.music.unpause()
     
     def update(self, dt):
-        """Update-Schleife mit Delta Time - Erweitert für Universal Input"""
-        # Universal Input System updaten
-        self.input_system.update()
+        """Aktualisiert das Level und alle Entities"""
+        if not self.game_logic:
+            return
         
-        # Bewegung verarbeiten
-        if self.game_logic and self.game_logic.player:
-            # Hole Bewegungsvektor vom Input System
-            direction = pygame.math.Vector2(0, 0)
-            
-            # Tastatur-Input verarbeiten
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                direction.x = -1
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                direction.x = 1
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                direction.y = -1
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                direction.y = 1
-                
-            # Normalisiere den Vektor für diagonale Bewegung
-            if direction.length() > 0:
-                direction = direction.normalize()
-            
-            # Setze die Bewegungsrichtung im Player
-            self.game_logic.player.direction = direction
-            
-            # Führe die Bewegung aus
-            self.game_logic.player.move(dt)
+        # Game Logic Update
+        self.game_logic.update(dt)
         
-        # Spiel-Logik updaten mit Delta Time
-        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
-        
-        # Prüfe auf Game Over
-        if game_result == "game_over":
-            return "game_over"
-        
-        # Magic System updaten
-        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
-            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
-            self.game_logic.player.magic_system.update(dt, enemies_list)
-        
-        # Demons updaten
+        # Feinde aktualisieren
         self.enemy_manager.update(dt, self.game_logic.player)
         
-        # Health-Bar System updaten
+        # Kamera aktualisieren
+        if hasattr(self.game_logic, 'player'):
+            self.camera.update(self.game_logic.player)
+        
+        # Health-Bars aktualisieren
         self.health_bar_manager.update(dt)
         
-        # Kamera updaten
-        self.camera.update(self.game_logic.player)
-        
-        # Prüfe Interaktionszonen
+        # Interaktionszonen prüfen
         self.check_interaction_zones()
         
-        # Sammelbare Gegenstände überprüfen
-        self.check_collectibles()
-        
-        # Update die Collection Message Timer
-        if self.collection_message_timer > 0:
-            self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
+        # ✅ NEU: Level-Abschluss prüfen
+        self.check_level_completion()
     
     def check_interaction_zones(self):
         """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist"""
@@ -1195,36 +1164,80 @@ class Level:
             self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
     
     def trigger_level_completion(self):
-        """Behandelt den Abschluss des Levels und Map-Wechsel"""
-        print("Level-Abschluss wird ausgeführt...")
-
-        # Zeige Schriftzug für 2 Sekunden
-        self.collection_message = "Level 1 abgeschlossen"
-        self.collection_message_timer = pygame.time.get_ticks() + 2000
-
-        # Rendering erzwingen, damit die Nachricht sichtbar ist
-        self.render()
-        pygame.display.flip()
-        pygame.time.wait(2000)
-
-        # Lade die nächste Map (Level 2)
-        self.load_next_map("Map_Town.tmx")
-
-    def load_next_map(self, map_name):
-        """Lädt die nächste Map und setzt den Spieler neu"""
+        """Wird aufgerufen wenn ein Level abgeschlossen ist - lädt nächste Map"""
+        print("🎉 Level abgeschlossen!")
+        
+        # Markiere aktuelles Level als abgeschlossen
+        self.map_completed = True
+        
+        # Prüfe ob es eine nächste Map gibt
+        if self.current_map_index + 1 < len(self.map_progression):
+            next_map_index = self.current_map_index + 1
+            next_map_name = self.map_progression[next_map_index]
+            
+            print(f"🗺️ Lade nächste Map: {next_map_name}")
+            
+            # Level-Abschluss Nachricht anzeigen
+            if hasattr(self, 'main_game') and self.main_game:
+                if next_map_index == 1:  # Map_Village
+                    self.main_game.show_message("🏆 Map3 abgeschlossen! Willkommen im Dorf!")
+                else:
+                    self.main_game.show_message(f"🏆 Level abgeschlossen! Nächste Map: {next_map_name}")
+            
+            # Wechsle zur nächsten Map
+            self.load_next_map(next_map_name, next_map_index)
+            
+        else:
+            print("🎊 Alle Maps abgeschlossen! Spiel beendet!")
+            if hasattr(self, 'main_game') and self.main_game:
+                self.main_game.show_message("🎊 Herzlichen Glückwunsch! Alle Maps abgeschlossen!")
+            
+            # Hier könntest du zum Hauptmenü zurückkehren oder Credits anzeigen
+            # self.main_game.return_to_menu()
+    
+    def load_next_map(self, map_name, map_index=None):
+        """Lädt die nächste Map in der Progression"""
         try:
+            print(f"🔄 Wechsle zu Map: {map_name}")
+            
+            # Update Map-Index
+            if map_index is not None:
+                self.current_map_index = map_index
+            
+            # Neue Map laden
             map_path = path.join(MAP_DIR, map_name)
             self.map_loader = MapLoader(map_path)
+            
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
+                print(f"✅ Neue Map geladen: {map_path}")
+                
+                # Level-Status zurücksetzen
+                self.map_completed = False
+                
+                # Spieler-Position für neue Map setzen
                 self.spawn_entities_from_map()
-                # Optional: Quest-Items für das nächste Level zurücksetzen
-                self.quest_items.clear()
-                print(f"✅ Neue Map geladen: {map_name}")
+                
+                # Enemies für neue Map laden
+                self.respawn_enemies_only()
+                
+                # Kollisionsobjekte neu aufbauen
+                self.setup_collision_objects()
+                
+                # Health-Bars neu einrichten
+                self.setup_health_bars()
+                
+                # Kamera zentrieren
+                if hasattr(self.game_logic, 'player'):
+                    self.camera.center_on_target(self.game_logic.player)
+                
+                print(f"🎮 Map-Wechsel zu {map_name} abgeschlossen!")
+                
             else:
-                print(f"❌ Fehler beim Laden der Map: {map_name}")
+                print(f"❌ Fehler beim Laden von {map_name}")
+                
         except Exception as e:
-            print(f"❌ Fehler beim Map-Wechsel: {e}")
+            print(f"❌ Fehler beim Map-Wechsel zu {map_name}: {e}")
 
     def render(self):
         """Rendering mit Foreground-Layer"""
@@ -1562,3 +1575,39 @@ class Level:
             
             except Exception as e:
                 print(f"❌ Fehler beim XML-Parsing der Map: {e}")
+    
+    def check_level_completion(self):
+        """Prüft ob die aktuellen Level-Ziele erreicht wurden"""
+        if self.map_completed:
+            return  # Bereits abgeschlossen
+        
+        current_map = self.map_progression[self.current_map_index]
+        
+        # Map3 Abschluss-Bedingungen
+        if current_map == "Map3.tmx":
+            # Beispiel-Bedingungen für Map3:
+            # 1. Alle Enemies besiegt
+            enemies_defeated = len(self.enemy_manager.enemies) == 0
+            
+            # 2. Spieler erreicht bestimmte Position (z.B. Ausgang)
+            player_pos = (self.game_logic.player.rect.centerx, self.game_logic.player.rect.centery)
+            exit_zone = pygame.Rect(2400, 1800, 200, 200)  # Beispiel-Ausgangszone für Map3
+            player_at_exit = exit_zone.collidepoint(player_pos)
+            
+            # 3. Kombiniere Bedingungen
+            if enemies_defeated and player_at_exit:
+                print("🎯 Map3 Abschluss-Bedingungen erfüllt!")
+                self.trigger_level_completion()
+        
+        # Map_Village Abschluss-Bedingungen  
+        elif current_map == "Map_Village.tmx":
+            # Beispiel-Bedingungen für Map_Village:
+            # 1. Alle Enemies besiegt
+            enemies_defeated = len(self.enemy_manager.enemies) == 0
+            
+            # 2. Bestimmte Interaktion abgeschlossen
+            village_task_completed = True  # Hier deine spezifische Logik
+            
+            if enemies_defeated and village_task_completed:
+                print("🎯 Map_Village Abschluss-Bedingungen erfüllt!")
+                self.trigger_level_completion()
