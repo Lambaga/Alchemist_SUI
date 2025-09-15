@@ -17,7 +17,7 @@ class GameRenderer:
     def __init__(self, screen):
         self.screen = screen
         self.font = pygame.font.Font(None, 50)
-        self.small_font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 28)  # Kleinere Schrift für Inventar-Items
         self.generate_ground_stones()
         
         # Performance-Optimierung: Asset Manager für gecachte Sprite-Skalierung
@@ -213,13 +213,16 @@ class GameRenderer:
             "erdkristall": (139, 69, 19),
             "holzstab": (139, 69, 19),
             "stahlerz": (169, 169, 169),
-            "mondstein": (200, 200, 255)
+            "mondstein": (200, 200, 255),
+            "kristall": (160, 32, 240),  # Lila für Kristall
+            "goldreif": (255, 215, 0)  # Gold für Goldreif
         }
         
         start_x = 50
+        item_spacing = 100  # Noch größerer Abstand zwischen Items (vorher 90)
         for i, zutat in enumerate(game_logic.aktive_zutaten):
             color = zutaten_farben.get(zutat, (200, 200, 200))
-            rect_x = start_x + i * 70
+            rect_x = start_x + i * item_spacing
             # Zeichne Gegenstand-Symbol
             pygame.draw.rect(self.screen, color, (rect_x, y_offset, 50, 50))
             
@@ -649,17 +652,21 @@ class Level:
                 'available': True
             },
             # Vorbereitete Gegenstände für spätere Maps
-            'kristallsplitter': {
-                'name': 'Kristallsplitter',
+            'kristall': {
+                'pos': pygame.math.Vector2(24, 885),
+                'name': 'Kristall',
                 'collected': False,
-                'color': (173, 216, 230),  # Hellblau
-                'available': False  # Noch nicht auf dieser Map verfügbar
+                'radius': 50,
+                'color': (186, 85, 211),  # Lila/Violett
+                'available': True
             },
-            'goldener_reif': {
-                'name': 'Goldener Reif',
+            'goldreif': {
+                'pos': pygame.math.Vector2(2453, 33),
+                'name': 'Goldreif',
                 'collected': False,
+                'radius': 50,
                 'color': (255, 215, 0),  # Gold
-                'available': False
+                'available': True
             }
         }
         
@@ -1203,14 +1210,30 @@ class Level:
     def load_next_map(self, map_name):
         """Lädt die nächste Map und setzt den Spieler neu"""
         try:
+            # Inventar und Quest-Items zurücksetzen
+            if self.game_logic:
+                self.game_logic.aktive_zutaten = []  # Inventar leeren
+            self.quest_items.clear()  # Quest-Items zurücksetzen
+            
+            # Interaktionszonen zurücksetzen für neue Map
+            self.interaction_zones = {}
+            
+            # Sammelbare Gegenstände zurücksetzen
+            self.collectible_items = {}
+            
+            # Map laden
             map_path = path.join(MAP_DIR, map_name)
             self.map_loader = MapLoader(map_path)
+            
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
                 self.spawn_entities_from_map()
-                # Optional: Quest-Items für das nächste Level zurücksetzen
-                self.quest_items.clear()
+                
+                # Enemies neu spawnen
+                self.enemy_manager.clear_enemies()  # Alte Gegner entfernen
+                
                 print(f"✅ Neue Map geladen: {map_name}")
+                print("🔄 Inventar und Quest-Items zurückgesetzt")
             else:
                 print(f"❌ Fehler beim Laden der Map: {map_name}")
         except Exception as e:
