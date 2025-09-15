@@ -34,6 +34,7 @@ class MapLoader:
         """
         # Initialize AssetManager
         self.asset_manager = AssetManager()
+        self.foreground_layer = None  # Initialisiere das Attribut, um AttributeError zu vermeiden
         
         # Cache für geladene Tile-Images (Performance-Optimierung)
         # BEHOBEN: Verwende String-Keys statt GID-Keys um Tileset-Konflikte zu vermeiden

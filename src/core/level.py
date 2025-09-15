@@ -668,62 +668,101 @@ class Level:
         self.collection_message_timer = 0
         self.collection_message_duration = 3000  # 3 Sekunden Anzeigedauer
 
+        # Map-Progression System
+        self.current_map_index = 0
+        self.map_progression = [
+            "Map3.tmx",        # 1. Map: Map3 
+            "Map_Village.tmx"  # 2. Map: Map_Village nach Abschluss
+        ]
+        self.map_completed = False
+
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            map_path = path.join(MAP_DIR, "Map3.tmx") # Verwende MAP_DIR aus settings
+            # Lade die aktuelle Map aus der Progression
+            current_map = self.map_progression[self.current_map_index]
+            map_path = path.join(MAP_DIR, current_map)
             
             self.map_loader = MapLoader(map_path)
             
             if self.map_loader and self.map_loader.tmx_data:
                 self.use_map = True
+                print(f"✅ Map geladen: {map_path}")
                 
+                # Debug: Zeige alle verfügbaren Layer UND Object Groups
+                print("🗂️ Verfügbare Layer:")
+                for layer in self.map_loader.tmx_data.visible_layers:
+                    layer_type = "Objekt" if hasattr(layer, 'objects') else "Tile"
+                    object_count = len(layer.objects) if hasattr(layer, 'objects') else 0
+                    layer_name = getattr(layer, 'name', 'None')
+                    print(f"  - {layer_name} ({layer_type}) - {object_count} Objekte")
+                
+                # Debug: Zeige Object Groups separat
+                if hasattr(self.map_loader.tmx_data, 'objectgroups'):
+                    print("🗂️ Object Groups:")
+                    for obj_group in self.map_loader.tmx_data.objectgroups:
+                        print(f"  - {obj_group.name} - {len(obj_group.objects)} Objekte")
+                        for obj in obj_group.objects:
+                            obj_name = getattr(obj, 'name', 'unnamed')
+                            print(f"    * '{obj_name}' bei ({obj.x}, {obj.y})")
+            
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
                 self.spawn_entities_from_map()
                 
             else:
+                print(f"❌ Map konnte nicht geladen werden: {map_path}")
                 self.map_loader = None
                 self.use_map = False
-                # Fallback: Standard-Position (nur wenn keine Map)
+                # Fallback
                 self.game_logic.player.rect.bottom = self.screen.get_height() - 200
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
+                self.game_logic.player.update_hitbox()
                 
         except Exception as e:
-            if self.map_loader and self.map_loader.tmx_data:
-                self.use_map = True
-            else:
-                self.map_loader = None
-                self.use_map = False
-                # Fallback: Standard-Position (nur wenn Map fehlschlägt)
-                self.game_logic.player.rect.bottom = self.screen.get_height() - 200
-                self.game_logic.player.rect.centerx = self.screen.get_width() // 2
-                self.game_logic.player.update_hitbox()  # Hitbox nach Positionsänderung aktualisieren
-    
+            print(f"❌ Fehler beim Laden der Map: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            self.map_loader = None
+            self.use_map = False
+            # Fallback: Standard-Position
+            self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+            self.game_logic.player.rect.centerx = self.screen.get_width() // 2
+            self.game_logic.player.update_hitbox()
+            print("⚠️ Fallback auf Standard-Position")
+
     def spawn_entities_from_map(self):
-        """Lädt Entities aus der Map oder verwendet Fallback"""
+        """Lädt Entities aus der Map oder verwendet Fallback - mit Object Group Support"""
         if not self.map_loader or not self.map_loader.tmx_data:
             return
 
         player_spawned = False
-        spawn_offset_x = -300
 
-        # Durchsuche alle Objekt-Layer nach Spawn-Punkten
+        # 1. Durchsuche alle Tile-Layer nach Spawn-Punkten (bestehende Methode)
         for layer in self.map_loader.tmx_data.visible_layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
+                print(f"🔍 Prüfe Objekt-Layer: {layer.name or 'None'}")
                 for obj in layer.objects:
                     # Player Spawn-Punkt
                     if obj.name and obj.name.lower() in ['player', 'spawn', 'player_spawn']:
-                        self.game_logic.player.rect.centerx = obj.x + spawn_offset_x
+                        self.game_logic.player.rect.centerx = obj.x
                         self.game_logic.player.rect.centery = obj.y
                         self.game_logic.player.update_hitbox()
                         player_spawned = True
-                        print(f"✅ Player gespawnt bei ({obj.x + spawn_offset_x}, {obj.y}) [Offset {spawn_offset_x} px]")
+                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
 
-        # Fallback falls kein Player-Spawn in der Map definiert ist
-        if not player_spawned:
-            # Setze eine feste Startposition
-            # Berechne Map-Mitte für bessere Spawn-Position
+        # Wenn Map_Town.tmx geladen wird und kein Spawn gefunden wurde, setze unten rechts
+        if not player_spawned and hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
+            map_name = getattr(self.map_loader.tmx_data, 'filename', None)
+            # Alternativ: prüfe auf Map_Town.tmx im Pfad
+            if self.map_loader.tmx_data and 'Map_Town.tmx' in str(self.map_loader.tmx_data.filename):
+                self.game_logic.player.rect.centerx = self.map_loader.width - 100
+                self.game_logic.player.rect.centery = self.map_loader.height - 100
+                self.game_logic.player.update_hitbox()
+                print("✅ Player unten rechts auf Map_Town.tmx gespawnt")
+            else:
+                # Standard-Spawn für andere Maps
+                # Berechne Map-Mitte für bessere Spawn-Position
             if self.map_loader and self.map_loader.tmx_data:
                 map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
                 map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
@@ -733,8 +772,8 @@ class Level:
             else:
                 # Fallback für Standard-Maps
                 self.game_logic.player.rect.centerx = 800  # X-Position
-                self.game_logic.player.rect.centery = 400  # Y-Position
-                print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
+                    self.game_logic.player.rect.centery = 400  # Y-Position
+                        print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
             
             self.game_logic.player.update_hitbox()
 
@@ -846,17 +885,14 @@ class Level:
                 # Pause wird vom Main Game gehandhabt
                 pass
             elif action == 'ingredient_1':
-                # 1 = Wasser-Element für Magie - DEAKTIVIERT: Element Mixer handhabt das
-                # self.handle_magic_element('water')
-                pass
+                # 1 = Wasser-Element für Magie
+                self.handle_magic_element('water')
             elif action == 'ingredient_2':
-                # 2 = Feuer-Element für Magie - DEAKTIVIERT: Element Mixer handhabt das
-                # self.handle_magic_element('fire')  
-                pass
+                # 2 = Feuer-Element für Magie
+                self.handle_magic_element('fire')
             elif action == 'ingredient_3':
-                # 3 = Stein-Element für Magie - DEAKTIVIERT: Element Mixer handhabt das
-                # self.handle_magic_element('stone')
-                pass
+                # 3 = Stein-Element für Magie
+                self.handle_magic_element('stone')
             # Magie-System Actions
             elif action == 'cast_magic':
                 self.handle_cast_magic()
@@ -1051,34 +1087,18 @@ class Level:
 
             if distance <= zone['radius']:
                 zone['active'] = True
-
-                # Debounce/State tracking for logs to avoid spamming every frame
-                now_ms = pygame.time.get_ticks()
-                zone.setdefault('was_inside', False)
-                zone.setdefault('last_items_state', None)
-                zone.setdefault('last_info_time', 0)
-                zone.setdefault('info_cooldown_ms', 2000)
-
-                entering = not zone['was_inside']
-                zone['was_inside'] = True
+                
+                # Debug-Ausgabe um zu sehen welche Items wir haben
+                print(f"Aktuelle Quest-Items: {self.quest_items}")
+                print(f"Benötigte Items: {zone.get('required_items', [])}")
                 
                 # Prüfe ob dies ein Checkpoint ist
                 if zone.get('is_checkpoint', False) and not zone.get('completed', False):
                     required_items = set(zone.get('required_items', []))
                     collected_items = set(self.quest_items)
-
-                    # Build state signature for change detection
-                    items_state = (tuple(sorted(required_items)), tuple(sorted(collected_items)))
-                    state_changed = items_state != zone.get('last_items_state')
-                    time_ok = (now_ms - zone.get('last_info_time', 0)) >= zone.get('info_cooldown_ms', 2000)
-
-                    # Debug-Ausgabe nur bei Eintritt, Zustandsänderung oder nach Cooldown
-                    if entering or state_changed or time_ok:
-                        print(f"Aktuelle Quest-Items: {self.quest_items}")
-                        print(f"Benötigte Items: {zone.get('required_items', [])}")
-                        print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
-                        zone['last_items_state'] = items_state
-                        zone['last_info_time'] = now_ms
+                    
+                    # Debug-Ausgabe für Item-Überprüfung
+                    print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
                     
                     if required_items.issubset(collected_items):
                         print("Alle benötigten Items gefunden!")
@@ -1094,8 +1114,7 @@ class Level:
                         # Nicht alle Items vorhanden - zeige normalen Dialog
                         self.show_interaction_text = True
                         self.interaction_text = zone['text']
-                        if entering or state_changed or time_ok:
-                            print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
+                        print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
                 else:
                     # Normale Interaktionszone oder bereits abgeschlossen
                     self.show_interaction_text = True
@@ -1103,8 +1122,6 @@ class Level:
                 break
             else:
                 zone['active'] = False
-                # Reset inside flag when leaving zone
-                zone['was_inside'] = False
 
     def update(self, dt):
         """Update-Schleife mit Delta Time"""
@@ -1168,27 +1185,37 @@ class Level:
             self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
     
     def trigger_level_completion(self):
-        """Behandelt den Abschluss des Levels"""
+        """Behandelt den Abschluss des Levels und Map-Wechsel"""
         print("Level-Abschluss wird ausgeführt...")
-        
-        # Speichere das Spiel automatisch
-        if hasattr(self, '_save_callback') and self._save_callback:
-            print("Speichere Spielstand...")
-            self._save_callback(1)  # Speichere in Slot 1
-        
-        # Warte kurz, damit der Spieler die Nachricht lesen kann
+
+        # Zeige Schriftzug für 2 Sekunden
+        self.collection_message = "Level 1 abgeschlossen"
+        self.collection_message_timer = pygame.time.get_ticks() + 2000
+
+        # Rendering erzwingen, damit die Nachricht sichtbar ist
+        self.render()
+        pygame.display.flip()
         pygame.time.wait(2000)
-        
-        # Setze einen Flag im main_game, um zum Hauptmenü zurückzukehren
-        if self.main_game:
-            print("Setze Flag für Rückkehr zum Hauptmenü...")
-            self.main_game.return_to_menu = True
-            # Zusätzlich direkt den Spielzustand ändern
-            if hasattr(self.main_game, 'set_state'):
-                self.main_game.set_state('MAIN_MENU')
-        else:
-            print("Warnung: main_game Referenz nicht gefunden!")
-    
+
+        # Lade die nächste Map (Level 2)
+        self.load_next_map("Map_Town.tmx")
+
+    def load_next_map(self, map_name):
+        """Lädt die nächste Map und setzt den Spieler neu"""
+        try:
+            map_path = path.join(MAP_DIR, map_name)
+            self.map_loader = MapLoader(map_path)
+            if self.map_loader and self.map_loader.tmx_data:
+                self.use_map = True
+                self.spawn_entities_from_map()
+                # Optional: Quest-Items für das nächste Level zurücksetzen
+                self.quest_items.clear()
+                print(f"✅ Neue Map geladen: {map_name}")
+            else:
+                print(f"❌ Fehler beim Laden der Map: {map_name}")
+        except Exception as e:
+            print(f"❌ Fehler beim Map-Wechsel: {e}")
+
     def render(self):
         """Rendering mit Foreground-Layer"""
         # 1. Hintergrund (immer zuerst)
@@ -1203,8 +1230,8 @@ class Level:
         
         # 3. 🎭 ENTITIES + FOREGROUND-LAYER
         enemies = list(self.enemy_manager.enemies) if self.enemy_manager else []
-        depth_objects = self.map_loader.depth_objects if self.map_loader else []
-        
+        depth_objects = getattr(self.map_loader, "depth_objects", []) if self.map_loader and hasattr(self.map_loader, "depth_objects") else []
+
         # Nutze das Foreground-Layer System
         self.renderer.render_with_foreground_layer(
             player=self.game_logic.player,
@@ -1447,49 +1474,12 @@ class Level:
             magic_system.add_element(ElementType.STEIN)
     
     def handle_cast_magic(self):
-        """Behandelt Magie-Zauber-Eingabe - kombiniert Element Mixer mit Player Magic System"""
+        """Behandelt Magie-Zauber-Eingabe"""
         if not self.game_logic or not self.game_logic.player:
             return
         
-        # Prüfe Element Mixer (neues System)
-        spell_data = None
-        
-        if hasattr(self.main_game, 'element_mixer'):
-            spell_data = self.main_game.element_mixer.handle_cast_spell()
-            if spell_data and spell_data.get("success"):
-                print("✨ Element Mixer spell cast successful - triggering magic effects")
-            else:
-                print("🚫 Element Mixer: No spell ready or on cooldown")
-        
-        # Wenn Element Mixer erfolgreich, führe echte Magie-Effekte aus
-        if spell_data and spell_data.get("success"):
-            magic_system = self.game_logic.player.magic_system
-            spell_elements = spell_data.get("elements", [])
-            
-            # Konvertiere Element Mixer Elemente zu Magic System Format
-            from systems.magic_system import ElementType
-            element_map = {
-                "water": ElementType.WASSER,
-                "fire": ElementType.FEUER, 
-                "stone": ElementType.STEIN
-            }
-            
-            # Setze Elemente im Magic System
-            magic_system.clear_elements()
-            for element_name in spell_elements:
-                if element_name in element_map:
-                    magic_system.add_element(element_map[element_name])
-                    print(f"🔥 Added {element_name} to magic system")
-            
-            # Führe echte Magie aus
-            magic_system.cast_magic(self.game_logic.player)
-            print("⚡ Player Magic System executed with Element Mixer data")
-            
-        else:
-            # Fallback zu altem Player Magic System
-            magic_system = self.game_logic.player.magic_system
-            magic_system.cast_magic(self.game_logic.player)
-            print("⚡ Player Magic System fallback cast attempted")
+        magic_system = self.game_logic.player.magic_system
+        magic_system.cast_magic(self.game_logic.player)
     
     def handle_clear_magic(self):
         """Behandelt Magie-Elemente-Löschen"""
