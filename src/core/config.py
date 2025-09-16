@@ -438,6 +438,8 @@ class GameConfig:
     SHOW_FPS = True
     SHOW_COLLISION_BOXES = False
     SHOW_SPAWN_INFO = True
+    # Anzeige von Item-Namen über Sammelobjekten
+    SHOW_ITEM_NAMES = True
     
     @property
     def GROUND_Y_POSITION(self):

@@ -395,7 +395,10 @@ class GameRenderer:
     
     def render_with_foreground_layer(self, player, enemies, depth_objects, camera, map_loader):
         """🎮 Rendert mit separatem Foreground-Layer"""
-        
+        # 0. Hintergrund/Map zuerst rendern, um alte Frames zu überschreiben
+        #    Damit bleiben keine Menu-Überreste sichtbar, wenn der State wechselt.
+        self.draw_background(map_loader, camera)
+
         # 1. Normale Depth-Sorting (Player + Enemies + Depth-Objects)
         entities = []
         
@@ -433,6 +436,13 @@ class GameRenderer:
         # 2. Alle sortierten Entities rendern
         for entity_data in entities:
             entity_data['render_func']()
+
+        # 2.5. Magie-Projektile und Effekte rendern (über Entities, unter Foreground)
+        try:
+            if player and hasattr(player, 'magic_system') and player.magic_system:
+                player.magic_system.draw_projectiles(self.screen, camera)
+        except Exception:
+            pass
         
         # 3. Foreground-Layer rendern (ÜBER ALLEM!)
         if map_loader and hasattr(map_loader, 'render_foreground'):
@@ -557,7 +567,7 @@ class GameRenderer:
         else:
             # Fallback
             pygame.draw.rect(self.screen, (255, 0, 0), enemy_pos)
-    
+
 class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
     
@@ -569,6 +579,17 @@ class Level:
         # Debug-Attribute für Koordinatenanzeige (nur Initialisierung)
         self.show_coordinates = True
         self.debug_font = pygame.font.Font(None, 24)  # Dies ist okay, da Font keine Video-Initialisierung benötigt
+
+        # ✅ NEU: Map-Progression System - STARTET IN MAP3
+        self.current_map_index = 0  # Index 0 = Map3.tmx (START MAP)
+        self.map_progression = [
+            "Map3.tmx",        # 0. Map: Map3 (START MAP)
+            "Map_Village.tmx"  # 1. Map: Map_Village (nach Abschluss von Map3)
+        ]
+        self.map_completed = False
+
+        # Depth-Objekte für 3D-ähnliche Darstellung
+        self.depth_objects = []
 
         # Referenz für UI-Status-Anzeige
         self.game_logic._level_ref = self
@@ -622,6 +643,8 @@ class Level:
         self.show_interaction_text = False
         self.interaction_text = ""
         self.interaction_font = pygame.font.Font(None, 32)  # Schriftgröße angepasst für bessere Lesbarkeit
+        # Schrift für Item-Namen über Sammelobjekten
+        self.item_name_font = pygame.font.Font(None, 22)
 
         # Neues System für Questgegenstände/Sammelitems
         self.quest_items = []  # Liste der gesammelten Questgegenstände
@@ -686,7 +709,7 @@ class Level:
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
-            # ✅ BEHALTEN: Lade die aktuelle Map aus der Progression
+            # ✅ Lade die aktuelle Map aus der Progression
             current_map = self.map_progression[self.current_map_index]
             map_path = path.join(MAP_DIR, current_map)
             
@@ -704,17 +727,30 @@ class Level:
                     layer_name = getattr(layer, 'name', 'None')
                     print(f"  - {layer_name} ({layer_type}) - {object_count} Objekte")
                 
-                # Debug: Zeige Object Groups separat
+                # Debug: Zeige Object Groups separat (robustere Fehlerbehandlung)
                 if hasattr(self.map_loader.tmx_data, 'objectgroups'):
                     print("🗂️ Object Groups:")
                     for obj_group in self.map_loader.tmx_data.objectgroups:
-                        print(f"  - {obj_group.name} - {len(obj_group.objects)} Objekte")
-                        for obj in obj_group.objects:
-                            obj_name = getattr(obj, 'name', 'unnamed')
-                            print(f"    * '{obj_name}' bei ({obj.x}, {obj.y})")
+                        group_name = getattr(obj_group, 'name', 'Unnamed')
+                        try:
+                            objects_list = obj_group.objects if hasattr(obj_group, 'objects') else []
+                            print(f"  - {group_name} - {len(objects_list)} Objekte")
+                            for obj in objects_list:
+                                obj_name = getattr(obj, 'name', 'unnamed')
+                                obj_x = getattr(obj, 'x', 0)
+                                obj_y = getattr(obj, 'y', 0)
+                                print(f"    * '{obj_name}' bei ({obj_x}, {obj_y})")
+                        except AttributeError as e:
+                            print(f"  - {group_name} - Fehler beim Lesen der Objekte: {e}")
+                else:
+                    print("🗂️ Keine Object Groups gefunden")
             
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
                 self.spawn_entities_from_map()
+
+                # Gegner aus der Map spawnen (ObjectGroup "Enemy" etc.)
+                # und direkt Health-Bars für die gespawnten Gegner hinzufügen
+                self.respawn_enemies_only()
                 
             else:
                 print(f"❌ Map konnte nicht geladen werden: {map_path}")
@@ -725,6 +761,19 @@ class Level:
                 self.game_logic.player.rect.centerx = self.screen.get_width() // 2
                 self.game_logic.player.update_hitbox()
                 
+        except Exception as e:
+            print(f"❌ Fehler beim Laden der Map: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            self.map_loader = None
+            self.use_map = False
+            # Fallback: Standard-Position
+            self.game_logic.player.rect.bottom = self.screen.get_height() - 200
+            self.game_logic.player.rect.centerx = self.screen.get_width() // 2
+            self.game_logic.player.update_hitbox()
+            print("⚠️ Fallback auf Standard-Position")
+    
     def spawn_entities_from_map(self):
         """Lädt Entities aus der Map oder verwendet Fallback - mit Object Group Support"""
         if not self.map_loader or not self.map_loader.tmx_data:
@@ -732,8 +781,8 @@ class Level:
 
         player_spawned = False
 
-        # 1. Durchsuche alle Tile-Layer nach Spawn-Punkten (bestehende Methode)
-        for layer in self.map_loader.tmx_data.visible_layers:
+        # 1. Durchsuche alle Layer (auch unsichtbare) nach Spawn-Objekten
+        for layer in self.map_loader.tmx_data.layers:
             if hasattr(layer, 'objects'):  # Objekt-Layer
                 # ✅ BEHALTEN: Sichere Layer-Name Behandlung
                 print(f"🔍 Prüfe Objekt-Layer: {getattr(layer, 'name', 'None')}")
@@ -761,45 +810,17 @@ class Level:
                         self.game_logic.player.rect.centery = spawn_y
                         self.game_logic.player.update_hitbox()
                         player_spawned = True
-                        print(f"✅ Player gespawnt bei ({obj.x}, {obj.y})")
-
-        # Wenn Map_Town.tmx geladen wird und kein Spawn gefunden wurde, setze unten rechts
-        if not player_spawned and hasattr(self.map_loader, 'tmx_data') and self.map_loader.tmx_data:
-            map_name = getattr(self.map_loader.tmx_data, 'filename', None)
-            # Alternativ: prüfe auf Map_Town.tmx im Pfad
-            if self.map_loader.tmx_data and 'Map_Town.tmx' in str(self.map_loader.tmx_data.filename):
-                self.game_logic.player.rect.centerx = self.map_loader.width - 100
-                self.game_logic.player.rect.centery = self.map_loader.height - 100
-                self.game_logic.player.update_hitbox()
-                print("✅ Player unten rechts auf Map_Town.tmx gespawnt")
-            else:
-                # Standard-Spawn für andere Maps
-                # Berechne Map-Mitte für bessere Spawn-Position
-                if self.map_loader and self.map_loader.tmx_data:
-                    map_center_x = (self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth) // 2
-                    map_center_y = (self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight) // 2
-                self.game_logic.player.rect.centerx = map_center_x + spawn_offset_x
-                self.game_logic.player.rect.centery = map_center_y
-                print(f"🎮 Spieler in Map-Mitte positioniert: ({map_center_x + spawn_offset_x}, {map_center_y}) [Offset {spawn_offset_x} px]")
-            else:
-                # Fallback für Standard-Maps
-                self.game_logic.player.rect.centerx = 800  # X-Position
-                    self.game_logic.player.rect.centery = 400  # Y-Position
-                        print("⚠️ Kein Player-Spawn in Map gefunden - verwende Standard-Position")
-            
-            self.game_logic.player.update_hitbox()
                         print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Objekt '{obj.name}'")
                         break
                     
-                    # Enemy Spawns
                     elif obj.name and 'enemy' in obj.name.lower():
                         print(f"🎯 Enemy-Spawn gefunden: {obj.name} bei ({obj.x}, {obj.y})")
                         # Enemy-Spawning wird vom EnemyManager gehandhabt
             
-                if player_spawned:
-                    break  # Stoppe die Suche nach dem ersten gefundenen Player-Spawn
+            if player_spawned:
+                break  # Stoppe die Suche nach dem ersten gefundenen Player-Spawn
 
-        # 2. NEU: Durchsuche Object Groups nach Spawn-Objekten
+        # 2. NEU: Durchsuche Object Groups nach Spawn-Objekten (per Name-Lookup)
         if not player_spawned and hasattr(self.map_loader.tmx_data, 'objectgroups'):
             print("🔍 Prüfe Object Groups...")
             try:
@@ -828,10 +849,10 @@ class Level:
                                     player_spawned = True
                                     print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Spawn Group '{group_name}'")
                                     break
+                        
+                        if player_spawned:
+                            break
                             
-                            if player_spawned:
-                                break
-                                
                     except ValueError:
                         # Gruppe existiert nicht
                         continue
@@ -842,7 +863,87 @@ class Level:
             except Exception as e:
                 print(f"⚠️ Fehler bei Object Group Suche: {e}")
 
-        # 3. Fallback falls kein Spawn-Punkt gefunden
+        # 3. NEU: Finde Spawn über Tile-Layer namens "Spawn" (erstes nicht-leeres Tile)
+        if not player_spawned:
+            try:
+                spawn_layer_names = ['spawn', 'Spawn', 'SPAWN']
+                for layer in self.map_loader.tmx_data.layers:
+                    layer_name = getattr(layer, 'name', None)
+                    if layer_name in spawn_layer_names and not hasattr(layer, 'objects'):
+                        print(f"🔍 Prüfe Tile-Layer '{layer_name}' für Spawn-Tiles...")
+                        # layer.tiles() liefert (x, y, gid) für nicht-leere Tiles
+                        found_tile = None
+                        if hasattr(layer, 'tiles'):
+                            for (tx, ty, gid) in layer.tiles():
+                                if gid:  # erstes belegtes Tile genügt als Marker
+                                    found_tile = (tx, ty)
+                                    break
+                        # Alternative Iteration (pytmx >= 3) falls tiles() fehlt
+                        if not found_tile and hasattr(layer, 'width') and hasattr(layer, 'height'):
+                            for ty in range(layer.height):
+                                for tx in range(layer.width):
+                                    gid = self.map_loader.tmx_data.get_tile_gid(tx, ty, self.map_loader.tmx_data.layers.index(layer)) if hasattr(self.map_loader.tmx_data, 'get_tile_gid') else 0
+                                    if gid:
+                                        found_tile = (tx, ty)
+                                        break
+                                if found_tile:
+                                    break
+
+                        if found_tile:
+                            tile_w = self.map_loader.tmx_data.tilewidth
+                            tile_h = self.map_loader.tmx_data.tileheight
+                            spawn_x = int(found_tile[0] * tile_w + tile_w / 2)
+                            spawn_y = int(found_tile[1] * tile_h + tile_h / 2)
+
+                            # Begrenze auf Kartenbereich
+                            spawn_x = max(0, min(spawn_x, self.map_loader.width))
+                            spawn_y = max(0, min(spawn_y, self.map_loader.height))
+
+                            self.game_logic.player.rect.centerx = spawn_x
+                            self.game_logic.player.rect.centery = spawn_y
+                            self.game_logic.player.update_hitbox()
+                            player_spawned = True
+                            print(f"✅ Player aus Tile-Layer '{layer_name}' bei ({spawn_x}, {spawn_y}) gespawnt")
+                            break
+            except Exception as e:
+                print(f"⚠️ Fehler beim Spawn aus Tile-Layer: {e}")
+
+        # 3b. XML-Fallback: Lese direkt aus TMX die ObjectGroup "Spawn" und das Objekt "spawn"
+        if not player_spawned:
+            try:
+                import xml.etree.ElementTree as ET
+                # Pfad zur aktuellen Map ermitteln
+                map_path = getattr(self.map_loader.tmx_data, 'filename', None)
+                if not map_path and hasattr(self.map_loader, 'map_path'):
+                    map_path = getattr(self.map_loader, 'map_path')
+
+                if map_path:
+                    tree = ET.parse(map_path)
+                    root = tree.getroot()
+                    spawn_found = False
+                    for objectgroup in root.findall('objectgroup'):
+                        group_name = (objectgroup.get('name') or '').lower()
+                        if group_name == 'spawn':
+                            for obj in objectgroup.findall('object'):
+                                obj_name = (obj.get('name') or '').lower()
+                                if obj_name == 'spawn':
+                                    x = float(obj.get('x', '0'))
+                                    y = float(obj.get('y', '0'))
+                                    spawn_x = int(max(0, min(x, self.map_loader.width)))
+                                    spawn_y = int(max(0, min(y, self.map_loader.height)))
+                                    self.game_logic.player.rect.centerx = spawn_x
+                                    self.game_logic.player.rect.centery = spawn_y
+                                    self.game_logic.player.update_hitbox()
+                                    player_spawned = True
+                                    spawn_found = True
+                                    print(f"✅ Player via XML-Fallback bei ({spawn_x}, {spawn_y}) aus ObjectGroup 'Spawn'/'spawn' gespawnt")
+                                    break
+                        if spawn_found:
+                            break
+            except Exception as e:
+                print(f"⚠️ XML-Fallback für Spawn fehlgeschlagen: {e}")
+
+        # 4. Fallback falls kein Spawn-Punkt gefunden
         if not player_spawned:
             print("⚠️ Kein Player-Spawn in Map gefunden - verwende mapspezifische Standard-Position")
             
@@ -888,10 +989,17 @@ class Level:
         # Demons aus der Map spawnen
         self.enemy_manager.add_enemies_from_map(self.map_loader)
         
-        # FALLBACK: Falls keine Gegner aus Map geladen wurden
+        # Kein generischer Fallback mehr: Maps ohne Gegner bleiben gegnerfrei
         if len(self.enemy_manager.enemies) == 0:
-            print("⚠️ Keine Gegner aus Map geladen - verwende Test-Gegner")
-            self.enemy_manager.respawn_default_enemies()
+            print("ℹ️ Keine Gegner-Objekte in dieser Map gefunden – keine Gegner gespawnt.")
+
+        # Health-Bars für alle (neuen) Gegner hinzufügen, die noch keine haben
+        try:
+            for enemy in list(self.enemy_manager.enemies):
+                if self.health_bar_manager.get_health_bar(enemy) is None:
+                    self.add_enemy_health_bar(enemy)
+        except Exception as e:
+            print(f"⚠️ Fehler beim Zuweisen der Enemy Health-Bars: {e}")
     
     def setup_collision_objects(self):
         """Setzt die Kollisionsobjekte für den Player (einmalig)"""
@@ -977,7 +1085,19 @@ class Level:
         if action:
             # Action-Mapping
             if action == 'brew':
-                self.game_logic.brew()
+                # Primary action: cast spell if combo ready, else brew potion
+                try:
+                    mixer = getattr(self.main_game, 'element_mixer', None)
+                    has_combo = False
+                    if mixer and hasattr(mixer, 'get_current_spell_elements'):
+                        elements = mixer.get_current_spell_elements()
+                        has_combo = bool(elements)
+                    if has_combo:
+                        self.handle_cast_magic()
+                    else:
+                        self.game_logic.brew()
+                except Exception:
+                    self.game_logic.brew()
             elif action == 'remove_ingredient':
                 self.game_logic.remove_last_zutat()
             elif action == 'reset':
@@ -1119,24 +1239,36 @@ class Level:
         """Aktualisiert das Level und alle Entities"""
         if not self.game_logic:
             return
-        
-        # Game Logic Update
+
+        # Bewegungs-Input anwenden (Keyboard/Gamepad via UniversalInputSystem)
+        try:
+            if self.input_system and hasattr(self.game_logic, 'player') and self.game_logic.player:
+                move_vec = self.input_system.get_movement_vector()
+                self.game_logic.player.set_direction(move_vec)
+                self.game_logic.player.move(dt)
+        except Exception as e:
+            print(f"⚠️ Bewegungs-Update Fehler: {e}")
+
+        # Game Logic Update (Animationen, Magie, etc.)
         self.game_logic.update(dt)
-        
+
         # Feinde aktualisieren
         self.enemy_manager.update(dt, self.game_logic.player)
-        
+
         # Kamera aktualisieren
         if hasattr(self.game_logic, 'player'):
             self.camera.update(self.game_logic.player)
-        
+
         # Health-Bars aktualisieren
         self.health_bar_manager.update(dt)
-        
+
         # Interaktionszonen prüfen
         self.check_interaction_zones()
-        
-        # ✅ NEU: Level-Abschluss prüfen
+
+        # Sammelobjekte prüfen (Quest-Gegenstände einsammeln)
+        self.check_collectibles()
+
+        # Level-Abschluss prüfen
         self.check_level_completion()
     
     def check_interaction_zones(self):
@@ -1188,66 +1320,85 @@ class Level:
             else:
                 zone['active'] = False
 
-    def update(self, dt):
-        """Update-Schleife mit Delta Time"""
-        # Universal Input System updaten
-        self.input_system.update()
-        
-        # Bewegung verarbeiten
-        if self.game_logic and self.game_logic.player:
-            # Hole Bewegungsvektor vom Input System
-            direction = pygame.math.Vector2(0, 0)
-            
-            # Tastatur-Input verarbeiten
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                direction.x = -1
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                direction.x = 1
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                direction.y = -1
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                direction.y = 1
-                
-            # Normalisiere den Vektor für diagonale Bewegung
-            if direction.length() > 0:
-                direction = direction.normalize()
-            
-            # Setze die Bewegungsrichtung im Player
-            self.game_logic.player.direction = direction
-            
-            # Führe die Bewegung aus
-            self.game_logic.player.move(dt)
-    
-        # Rest des Update-Codes...
-        game_result = self.game_logic.update(dt, enemies=list(self.enemy_manager.enemies) if self.enemy_manager else [])
-        
-        if game_result == "game_over":
-            return "game_over"
-        
-        # Magic System updaten
-        if self.game_logic and self.game_logic.player and hasattr(self.game_logic.player, 'magic_system'):
-            enemies_list = list(self.enemy_manager.enemies) if self.enemy_manager else []
-            self.game_logic.player.magic_system.update(dt, enemies_list)
-        
-        # Demons updaten
-        self.enemy_manager.update(dt, self.game_logic.player)
-        
-        # Health-Bar System updaten
-        self.health_bar_manager.update(dt)
-        
-        # Kamera updaten
-        self.camera.update(self.game_logic.player)
-        
-        # Prüfe Interaktionszonen
-        self.check_interaction_zones()
-        
-        # Sammelbare Gegenstände überprüfen
-        self.check_collectibles()
-        
         # Update die Collection Message Timer
         if self.collection_message_timer > 0:
             self.collection_message_timer = max(0, self.collection_message_timer - pygame.time.get_ticks())
+    
+    def check_collectibles(self):
+        """Überprüft Kollision (Nähe) mit vordefinierten Sammelobjekten und sammelt sie ein."""
+        if not self.game_logic or not self.game_logic.player:
+            return
+
+        player_center = pygame.math.Vector2(self.game_logic.player.rect.center)
+
+        # Durch gehe alle definierten Sammelobjekte
+        for key, item in self.collectible_items.items():
+            if not item.get('available', True):
+                continue
+            if item.get('collected', False):
+                continue
+
+            pos: pygame.math.Vector2 = item['pos']
+            radius: int = item.get('radius', 40)
+            if player_center.distance_to(pos) <= radius:
+                # Markiere als gesammelt
+                item['collected'] = True
+                item['available'] = False
+
+                # Trage in Questliste ein
+                item_name = key.lower()
+                if item_name not in self.quest_items:
+                    self.quest_items.append(item_name)
+
+                # Füge auch der Alchemie/Inventar-Liste hinzu (Kompatibilität)
+                try:
+                    self.game_logic.add_zutat(item_name)
+                except Exception:
+                    pass
+
+                # Anzeige-Meldung
+                self.collection_message = f"🎒 {item.get('name', key)} eingesammelt!"
+                self.collection_message_timer = pygame.time.get_ticks() + self.collection_message_duration
+                print(self.collection_message)
+
+    def _draw_collectibles(self):
+        """Zeichnet sichtbare Sammelobjekte in die Welt."""
+        if not self.collectible_items:
+            return
+        for key, item in self.collectible_items.items():
+            if item.get('available', True) and not item.get('collected', False):
+                world_pos: pygame.math.Vector2 = item['pos']
+                color = item.get('color', (200, 200, 200))
+                # Erzeuge ein kleines Rechteck um die Position, damit wir die Kamera anwenden können
+                size = 24
+                rect = pygame.Rect(int(world_pos.x - size/2), int(world_pos.y - size/2), size, size)
+                screen_rect = self.camera.apply_rect(rect)
+                # Zeichnen (gefüllter Kreis + Rand)
+                center = (screen_rect.centerx, screen_rect.centery)
+                pygame.draw.circle(self.screen, color, center, max(6, screen_rect.width // 3))
+                pygame.draw.circle(self.screen, (255, 255, 255), center, max(7, screen_rect.width // 3), 2)
+
+                # Name über dem Item anzeigen (konfigurierbar)
+                try:
+                    if SHOW_ITEM_NAMES:
+                        name_text = item.get('name', key)
+                        font = getattr(self, 'item_name_font', None)
+                        if font is None:
+                            font = pygame.font.Font(None, 22)
+                        text_surf = font.render(str(name_text), True, (255, 255, 255))
+                        # Einfacher Outline für Lesbarkeit
+                        outline_color = (0, 0, 0)
+                        text_rect = text_surf.get_rect()
+                        text_rect.midbottom = (center[0], screen_rect.top - 4)
+
+                        # Outline zeichnen
+                        for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
+                            shadow = font.render(str(name_text), True, outline_color)
+                            self.screen.blit(shadow, (text_rect.x + dx, text_rect.y + dy))
+                        # Haupttext
+                        self.screen.blit(text_surf, text_rect)
+                except Exception:
+                    pass
     
     def trigger_level_completion(self):
         """Wird aufgerufen wenn ein Level abgeschlossen ist - lädt nächste Map"""
@@ -1255,6 +1406,12 @@ class Level:
         
         # Markiere aktuelles Level als abgeschlossen
         self.map_completed = True
+
+        # Gegner und zugehörige Health-Bars bereinigen, bevor wir wechseln
+        try:
+            self.clear_enemies()
+        except Exception as e:
+            print(f"⚠️ Fehler beim Aufräumen der Gegner vor Map-Wechsel: {e}")
         
         # Prüfe ob es eine nächste Map gibt
         if self.current_map_index + 1 < len(self.map_progression):
@@ -1263,35 +1420,39 @@ class Level:
             
             print(f"🗺️ Lade nächste Map: {next_map_name}")
             
-            # Level-Status zurücksetzen
-            self.map_completed = False
+            # Level-Abschluss Nachricht anzeigen
+            if hasattr(self, 'main_game') and self.main_game:
+                if next_map_index == 1:  # Map_Village
+                    self.main_game.show_message("🏆 Map3 abgeschlossen! Willkommen im Dorf!")
+                else:
+                    self.main_game.show_message(f"🏆 Level abgeschlossen! Nächste Map: {next_map_name}")
             
-            # Spieler-Position für neue Map setzen
-            self.spawn_entities_from_map()
-            
-            # Enemies neu spawnen
-            self.enemy_manager.clear_enemies()  # Alte Gegner entfernen
-            
-            print(f"✅ Neue Map geladen: {map_name}")
-            print("🔄 Inventar und Quest-Items zurückgesetzt")
-            
-            # Interaktionszonen zurücksetzen für neue Map
-            self.interaction_zones = {}
-            
-            # Sammelbare Gegenstände zurücksetzen
-            self.collectible_items = {}
-            
-            # Map laden
+            # Wechsle zur nächsten Map
             self.load_next_map(next_map_name, next_map_index)
             
         else:
             print("🎊 Alle Maps abgeschlossen! Spiel beendet!")
             if hasattr(self, 'main_game') and self.main_game:
                 self.main_game.show_message("🎊 Herzlichen Glückwunsch! Alle Maps abgeschlossen!")
-            
-            # Hier könntest du zum Hauptmenü zurückkehren oder Credits anzeigen
-            # self.main_game.return_to_menu()
-    
+
+    def clear_enemies(self):
+        """Entfernt alle Gegner und deren Health-Bars (z.B. beim Map-Wechsel)."""
+        try:
+            # Entferne Health-Bars der Gegner
+            for enemy in list(self.enemy_manager.enemies):
+                try:
+                    self.health_bar_manager.remove_entity(enemy)
+                except Exception:
+                    pass
+            # Leere die Gegnerliste/-gruppe
+            if hasattr(self.enemy_manager, 'reset_enemies'):
+                self.enemy_manager.reset_enemies()
+            else:
+                self.enemy_manager.enemies.empty()
+            print("🧹 Gegner und Health-Bars entfernt")
+        except Exception as e:
+            print(f"⚠️ clear_enemies Fehler: {e}")
+
     def load_next_map(self, map_name, map_index=None):
         """Lädt die nächste Map in der Progression"""
         try:
@@ -1312,7 +1473,7 @@ class Level:
                 # Level-Status zurücksetzen
                 self.map_completed = False
                 
-                # Spieler-Position für neue Map setzen
+                # Spieler-Position für neue Map setzen (nutzt die neue Spawn-Erkennung!)
                 self.spawn_entities_from_map()
                 
                 # Enemies für neue Map laden
@@ -1336,343 +1497,6 @@ class Level:
         except Exception as e:
             print(f"❌ Fehler beim Map-Wechsel zu {map_name}: {e}")
 
-    def render(self):
-        """Rendering mit Foreground-Layer"""
-        # 1. Hintergrund (immer zuerst)
-        if self.use_map:
-            self.renderer.draw_background(self.map_loader, self.camera)
-        else:
-            self.renderer.draw_background()
-            self.renderer.draw_ground_stones(self.camera)
-        
-        # 2. Sammelbare Gegenstände (Boden-Layer)
-        self.render_collectibles()
-        
-        # 3. 🎭 ENTITIES + FOREGROUND-LAYER
-        enemies = list(self.enemy_manager.enemies) if self.enemy_manager else []
-        depth_objects = getattr(self.map_loader, "depth_objects", []) if self.map_loader and hasattr(self.map_loader, "depth_objects") else []
-
-        # Nutze das Foreground-Layer System
-        self.renderer.render_with_foreground_layer(
-            player=self.game_logic.player,
-            enemies=enemies,
-            depth_objects=depth_objects,
-            camera=self.camera,
-            map_loader=self.map_loader
-        )
-        
-        # 4. Collection Message anzeigen
-        if self.collection_message_timer > pygame.time.get_ticks():
-            message_surface = self.debug_font.render(self.collection_message, True, (255, 255, 255))
-            message_rect = message_surface.get_rect()
-            message_rect.centerx = self.screen.get_width() // 2
-            message_rect.centery = self.screen.get_height() // 2 - 50
-            
-            bg_rect = message_rect.inflate(20, 10)
-            bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
-            pygame.draw.rect(bg_surface, (0, 0, 0, 128), bg_surface.get_rect())
-            self.screen.blit(bg_surface, bg_rect)
-            self.screen.blit(message_surface, message_rect)
-        
-        # 5. Magie-Projektile (über Foreground!)
-        if self.game_logic and self.game_logic.player:
-            self.game_logic.player.magic_system.draw_projectiles(self.screen, self.camera)
-        
-        # 6. Health-Bars (über allem)
-        camera_offset = (self.camera.camera_rect.x, self.camera.camera_rect.y)
-        self.health_bar_manager.draw_all(self.screen, camera_offset)
-        
-        # 7. UI und Debug (immer oben)
-        if hasattr(self, 'show_collision_debug') and self.show_collision_debug:
-            self.renderer.draw_collision_debug(self.game_logic.player, self.camera, 
-                                             self.map_loader.collision_objects if self.map_loader else [])
-            self.enemy_manager.draw_debug(self.screen, self.camera)
-        
-        self.renderer.draw_ui(self.game_logic)
-        if self.show_coordinates:
-            self.render_coordinates()
-        self.renderer.draw_controls()
-        
-        if self.show_interaction_text:
-            self.render_interaction_text()
-    
-    def check_collectibles(self):
-        """Überprüft ob der Spieler sammelbare Gegenstände einsammelt"""
-        if not self.game_logic or not self.game_logic.player:
-            return
-
-        player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
-        
-        for item_id, item_data in self.collectible_items.items():
-            # Prüfe nur Items die verfügbar und noch nicht gesammelt sind
-            if not item_data.get('available', True) or item_data.get('collected', False):
-                continue
-            
-            # Prüfe ob der Spieler nah genug ist
-            if 'pos' in item_data:
-                item_pos = item_data['pos']
-                distance = player_pos.distance_to(item_pos)
-                
-                if distance <= item_data.get('radius', 50):
-                    # Item einsammeln
-                    item_data['collected'] = True
-                    item_name = item_data.get('name', item_id)
-                    
-                    # Zur Quest-Items-Liste hinzufügen
-                    if item_id not in self.quest_items:
-                        self.quest_items.append(item_id)
-                    
-                    # Zur Spiel-Logik-Inventar hinzufügen (für UI-Anzeige)
-                    if item_id not in self.game_logic.aktive_zutaten:
-                        self.game_logic.aktive_zutaten.append(item_id)
-                    
-                    # Sammel-Nachricht anzeigen
-                    self.collection_message = f"✅ {item_name} eingesammelt!"
-                    self.collection_message_timer = pygame.time.get_ticks() + self.collection_message_duration
-                    
-                    print(f"✅ Item gesammelt: {item_name} ({item_id})")
-                    print(f"Quest-Items: {self.quest_items}")
-                    
-                    # Sound-Effekt (optional)
-                    try:
-                        # Hier könntest du einen Sammel-Sound abspielen
-                        pass
-                    except:
-                        pass
-    
-    def render_collectibles(self):
-        """Rendert sammelbare Gegenstände auf der Map"""
-        if not self.camera:
-            return
-        
-        for item_id, item_data in self.collectible_items.items():
-            # Nur verfügbare und noch nicht gesammelte Items rendern
-            if not item_data.get('available', True) or item_data.get('collected', False):
-                continue
-            
-            if 'pos' not in item_data:
-                continue
-            
-            # Item-Position in Screen-Koordinaten umrechnen
-            item_world_rect = pygame.Rect(
-                item_data['pos'].x - 25,  # Hälfte der Item-Größe
-                item_data['pos'].y - 25,
-                50, 50
-            )
-            item_screen_rect = self.camera.apply_rect(item_world_rect)
-            
-            # Prüfe ob Item im sichtbaren Bereich ist
-            if (item_screen_rect.right < 0 or item_screen_rect.left > self.screen.get_width() or
-                item_screen_rect.bottom < 0 or item_screen_rect.top > self.screen.get_height()):
-                continue
-            
-            # Item zeichnen
-            item_color = item_data.get('color', (255, 255, 255))
-            
-            # Hauptkreis (Item)
-            pygame.draw.circle(self.screen, item_color, item_screen_rect.center, 20)
-            
-            # Glanz-Effekt
-            highlight_center = (item_screen_rect.centerx - 5, item_screen_rect.centery - 5)
-            pygame.draw.circle(self.screen, (255, 255, 255), highlight_center, 8)
-            
-            # Rahmen
-            pygame.draw.circle(self.screen, (0, 0, 0), item_screen_rect.center, 20, 2)
-            
-            # Pulsierender Effekt (optional)
-            current_time = pygame.time.get_ticks()
-            pulse = abs(math.sin(current_time * 0.005)) * 5 + 2
-            pygame.draw.circle(self.screen, item_color, item_screen_rect.center, int(20 + pulse), 2)
-            
-            # Item-Name (falls nah genug am Spieler)
-            if self.game_logic and self.game_logic.player:
-                player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
-                distance = player_pos.distance_to(item_data['pos'])
-                
-                if distance <= item_data.get('radius', 50) + 30:  # Etwas größerer Radius für Text
-                    item_name = item_data.get('name', item_id)
-                    name_surface = self.debug_font.render(item_name, True, (255, 255, 255))
-                    name_rect = name_surface.get_rect(center=(item_screen_rect.centerx, item_screen_rect.top - 15))
-                    
-                    # Hintergrund für bessere Lesbarkeit
-                    bg_rect = name_rect.inflate(10, 5)
-                    bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
-                    pygame.draw.rect(bg_surface, (0, 0, 0, 128), bg_surface.get_rect())
-                    self.screen.blit(bg_surface, bg_rect)
-                    self.screen.blit(name_surface, name_rect)
-    
-    def render_coordinates(self):
-        """Rendert Debug-Koordinaten des Spielers"""
-        if not self.game_logic or not self.game_logic.player:
-            return
-        
-        player = self.game_logic.player
-        coords_text = f"Player: ({int(player.rect.centerx)}, {int(player.rect.centery)})"
-        
-        # Kamera-Position
-        camera_text = f"Camera: ({int(self.camera.camera_rect.x)}, {int(self.camera.camera_rect.y)})"
-        
-        # Mausposition (falls verfügbar)
-        mouse_pos = pygame.mouse.get_pos()
-        world_mouse_x = mouse_pos[0] + self.camera.camera_rect.x
-        world_mouse_y = mouse_pos[1] + self.camera.camera_rect.y
-        mouse_text = f"Mouse: ({world_mouse_x}, {world_mouse_y})"
-        
-        # Texte rendern
-        coord_surface = self.debug_font.render(coords_text, True, (255, 255, 0))
-        camera_surface = self.debug_font.render(camera_text, True, (255, 255, 0))
-        mouse_surface = self.debug_font.render(mouse_text, True, (255, 255, 0))
-        
-        # Position (oben rechts)
-        screen_width = self.screen.get_width()
-        
-        self.screen.blit(coord_surface, (screen_width - 250, 10))
-        self.screen.blit(camera_surface, (screen_width - 250, 35))
-        self.screen.blit(mouse_surface, (screen_width - 250, 60))
-    
-    def render_interaction_text(self):
-        """Rendert Interaktionstext wenn der Spieler in einer Interaktionszone ist"""
-        if not self.show_interaction_text or not self.interaction_text:
-            return
-        
-        # Mehrzeiligen Text aufteilen
-        lines = []
-        words = self.interaction_text.split(' ')
-        current_line = ""
-        max_width = self.screen.get_width() - 100  # Margin
-        
-        for word in words:
-            test_line = current_line + (" " if current_line else "") + word
-            test_surface = self.interaction_font.render(test_line, True, (255, 255, 255))
-            
-            if test_surface.get_width() <= max_width:
-                current_line = test_line
-            else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = word
-        
-        if current_line:
-            lines.append(current_line)
-        
-        # Hintergrund berechnen
-        line_height = 35
-        total_height = len(lines) * line_height + 20  # Padding
-        max_line_width = max(self.interaction_font.render(line, True, (255, 255, 255)).get_width() for line in lines)
-        bg_width = max_line_width + 40  # Padding
-        
-        # Position (mittig unten)
-        bg_x = (self.screen.get_width() - bg_width) // 2
-        bg_y = self.screen.get_height() - total_height - 50
-        
-        # Hintergrund zeichnen
-        bg_surface = pygame.Surface((bg_width, total_height), pygame.SRCALPHA)
-        pygame.draw.rect(bg_surface, (0, 0, 0, 200), bg_surface.get_rect())
-        pygame.draw.rect(bg_surface, (255, 255, 255), bg_surface.get_rect(), 2)
-        self.screen.blit(bg_surface, (bg_x, bg_y))
-        
-        # Text zeichnen
-        for i, line in enumerate(lines):
-            line_surface = self.interaction_font.render(line, True, (255, 255, 255))
-            line_x = bg_x + (bg_width - line_surface.get_width()) // 2
-            line_y = bg_y + 10 + i * line_height
-            self.screen.blit(line_surface, (line_x, line_y))
-    
-    def handle_magic_element(self, element_name):
-        """Behandelt Magie-Element-Eingabe"""
-        if not self.game_logic or not self.game_logic.player:
-            return
-        
-        from systems.magic_system import ElementType
-        magic_system = self.game_logic.player.magic_system
-        
-        if element_name == 'water':
-            magic_system.add_element(ElementType.WASSER)
-        elif element_name == 'fire':
-            magic_system.add_element(ElementType.FEUER)
-        elif element_name == 'stone':
-            magic_system.add_element(ElementType.STEIN)
-    
-    def handle_cast_magic(self):
-        """Behandelt Magie-Zauber-Eingabe"""
-        if not self.game_logic or not self.game_logic.player:
-            return
-        
-        magic_system = self.game_logic.player.magic_system
-        magic_system.cast_magic(self.game_logic.player)
-    
-    def handle_clear_magic(self):
-        """Behandelt Magie-Elemente-Löschen"""
-        if not self.game_logic or not self.game_logic.player:
-            return
-        
-        magic_system = self.game_logic.player.magic_system
-        magic_system.clear_elements()
-    
-    def add_enemies_from_map(self, map_loader):
-        """Spawnt ALLE Gegner aus Tiled-Objekten auf allen passenden Ebenen."""
-        if not map_loader or not map_loader.tmx_data:
-            return
-        
-        pytmx_success = False
-        
-        # Versuche zuerst mit pytmx zu laden
-        try:
-            import pytmx
-            # Dynamischer Pfad basierend auf map_loader
-            map_path = getattr(map_loader, 'map_path', None)
-            if not map_path:
-                # Fallback für Map_Village
-                map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map_Village.tmx"  # ✅ Geändert
-            
-            tmx_data = pytmx.load_pygame(map_path, pixelalpha=True)
-            pytmx_success = True
-            
-            # Durchlaufe alle Objekt-Layer in der Reihenfolge
-            for layer in tmx_data.visible_layers:
-                if isinstance(layer, pytmx.TiledObjectGroup):
-                    for obj in layer:
-                        # Spawne den Gegner an der Objekt-Position
-                        enemy_type = obj.name.lower() if obj.name else "default_enemy"
-                        print(f"Spawne {enemy_type} bei ({obj.x}, {obj.y})")
-                        
-                        # Nutze die EnemyManager Methode zum Spawnen
-                        self.enemy_manager.spawn_enemy(enemy_type, obj.x, obj.y)
-        
-        except Exception as e:
-            print(f"⚠️ Fehler beim Laden der Map mit pytmx: {e}")
-        
-        # Fallback: XML-Parsing nur wenn pytmx versagt
-        if not pytmx_success:
-            print("⚠️ pytmx failed, using XML fallback...")
-            try:
-                import xml.etree.ElementTree as ET
-                # Dynamischer Pfad basierend auf map_loader
-                map_path = getattr(map_loader, 'map_path', None)
-                if not map_path:
-                    # Fallback für Map_Village
-                    map_path = r"d:\Jonas\Alchemist_SUI\assets\maps\Map_Village.tmx"  # ✅ Geändert
-                
-                tree = ET.parse(map_path)
-                root = tree.getroot()
-                
-                # Durchlaufe alle Objekte in der XML
-                for elem in root.iter('object'):
-                    obj_name = elem.get('name')
-                    obj_type = elem.get('type')
-                    x = float(elem.get('x', 0))
-                    y = float(elem.get('y', 0))
-                    
-                    # Spawne den Gegner an der Objekt-Position
-                    enemy_type = obj_name.lower() if obj_name else "default_enemy"
-                    print(f"Spawne {enemy_type} bei ({x}, {y})")
-                    
-                    # Nutze die EnemyManager Methode zum Spawnen
-                    self.enemy_manager.spawn_enemy(enemy_type, x, y)
-            
-            except Exception as e:
-                print(f"❌ Fehler beim XML-Parsing der Map: {e}")
-    
     def check_level_completion(self):
         """Prüft ob die aktuellen Level-Ziele erreicht wurden"""
         if self.map_completed:
@@ -1708,3 +1532,134 @@ class Level:
             if enemies_defeated and village_task_completed:
                 print("🎯 Map_Village Abschluss-Bedingungen erfüllt!")
                 self.trigger_level_completion()
+
+    def render(self):
+        """Hauptrender-Methode für das Level"""
+        if not self.renderer:
+            return
+        
+        # Delegiere das Rendering an den GameRenderer
+        self.renderer.render_with_foreground_layer(
+            self.game_logic.player if self.game_logic else None,
+            list(self.enemy_manager.enemies) if self.enemy_manager else [],
+            self.depth_objects,
+            self.camera,
+            self.map_loader
+        )
+
+        # Sammelobjekte über der Map aber unter UI rendern
+        self._draw_collectibles()
+
+        # Health-Bars über der Welt rendern
+        try:
+            cam_off = (self.camera.camera_rect.x, self.camera.camera_rect.y)
+            self.health_bar_manager.draw_all(self.screen, camera_offset=cam_off)
+        except Exception:
+            pass
+
+        # Linkes UI (Score, Inventar, Magie, Map-Status) rendern
+        try:
+            self.renderer.draw_ui(self.game_logic)
+        except Exception:
+            pass
+
+        # Einfache Meldungsanzeige beim Einsammeln
+        if self.collection_message and pygame.time.get_ticks() < self.collection_message_timer:
+            try:
+                font = pygame.font.Font(None, 28)
+                text = font.render(self.collection_message, True, (255, 255, 255))
+                bg = text.get_rect()
+                bg.centerx = self.screen.get_width() // 2
+                bg.y = 80
+                pygame.draw.rect(self.screen, (0, 0, 0), bg.inflate(16, 10))
+                pygame.draw.rect(self.screen, (180, 180, 220), bg.inflate(16, 10), 2)
+                self.screen.blit(text, (bg.x, bg.y))
+            except Exception:
+                pass
+
+    # --- Magic handlers (called from input/action system) ---
+    def handle_magic_element(self, element_name: str):
+        try:
+            if self.game_logic and hasattr(self.game_logic, 'player') and self.game_logic.player:
+                from systems.magic_system import ElementType
+                mapping = {
+                    'fire': ElementType.FEUER,
+                    'wasser': ElementType.WASSER,
+                    'water': ElementType.WASSER,
+                    'stone': ElementType.STEIN,
+                    'stein': ElementType.STEIN,
+                }
+                element = mapping.get(element_name.lower())
+                if element:
+                    # Update core magic system (for joystick/hardware paths)
+                    self.game_logic.player.magic_system.add_element(element)
+                    # Mirror selection to ElementMixer UI if present
+                    if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
+                        # Normalize to UI ids: 'fire' | 'water' | 'stone'
+                        ui_map = {
+                            'fire': 'fire', 'wasser': 'water', 'water': 'water',
+                            'stone': 'stone', 'stein': 'stone'
+                        }
+                        ui_id = ui_map.get(element_name.lower())
+                        if ui_id:
+                            try:
+                                self.main_game.element_mixer.handle_element_press(ui_id)
+                            except Exception:
+                                pass
+        except Exception as e:
+            print(f"⚠️ handle_magic_element error: {e}")
+
+    def handle_cast_magic(self):
+        try:
+            if self.game_logic and hasattr(self.game_logic, 'player') and self.game_logic.player:
+                player = self.game_logic.player
+                if hasattr(player, 'magic_system'):
+                    # If ElementMixer has a ready combo, use it as source of truth
+                    used_element_mixer = False
+                    if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
+                        mixer = self.main_game.element_mixer
+                        try:
+                            elements = mixer.get_current_spell_elements()
+                        except Exception:
+                            elements = None
+                        if elements:
+                            try:
+                                # Map UI element ids (de: feuer/wasser/stein) to ElementType
+                                from systems.magic_system import ElementType
+                                map_ui_to_enum = {
+                                    'feuer': ElementType.FEUER,
+                                    'wasser': ElementType.WASSER,
+                                    'stein': ElementType.STEIN,
+                                }
+                                player.magic_system.clear_elements()
+                                for eid in elements:
+                                    et = map_ui_to_enum.get(eid.lower())
+                                    if et:
+                                        player.magic_system.add_element(et)
+                                # Start cooldown and reset UI selection
+                                try:
+                                    mixer.handle_cast_spell()
+                                except Exception:
+                                    pass
+                                used_element_mixer = True
+                            except Exception:
+                                used_element_mixer = False
+                    # Cast via MagicSystem (works whether elements came from mixer or direct input)
+                    player.magic_system.cast_magic(caster=player)
+        except Exception as e:
+            print(f"⚠️ handle_cast_magic error: {e}")
+
+    def handle_clear_magic(self):
+        try:
+            if self.game_logic and hasattr(self.game_logic, 'player') and self.game_logic.player:
+                player = self.game_logic.player
+                if hasattr(player, 'magic_system'):
+                    player.magic_system.clear_elements()
+                # Also clear ElementMixer UI selection if present
+                if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
+                    try:
+                        self.main_game.element_mixer.reset_combination()
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"⚠️ handle_clear_magic error: {e}")

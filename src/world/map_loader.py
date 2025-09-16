@@ -67,6 +67,8 @@ class MapLoader:
             
             # Lade TMX-Datei mit absolutem Pfad
             self.tmx_data = pytmx.load_pygame(tmx_filename, pixelalpha=True)
+            # Merke den absoluten Pfad für Downstream-Systeme
+            self.map_path = tmx_filename
             print("✅ TMX-Datei geladen: {}".format(tmx_filename))
             
             # **CRITICAL FIX**: PyTMX lädt externe TSX falsch - manuelle Lösung

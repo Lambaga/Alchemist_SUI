@@ -93,3 +93,50 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+class Level:
+def __init__(self, screen, main_game=None):
+    self.screen = screen  # Verwende die übergebene Surface
+    self.main_game = main_game  # Reference to main game for spell bar access
+    self.game_logic = GameLogic()
+    
+    # Debug-Attribute für Koordinatenanzeige (nur Initialisierung)
+    self.show_coordinates = True
+    self.debug_font = pygame.font.Font(None, 24)
+
+    # ✅ HINZUFÜGEN: Map-Progression System
+    self.current_map_index = 0
+    self.map_progression = [
+        "Map3.tmx",        # 1. Map: Map3 
+        "Map_Village.tmx"  # 2. Map: Map_Village nach Abschluss
+    ]
+    self.map_completed = False
+
+    # Referenz für UI-Status-Anzeige
+    self.game_logic._level_ref = self
+    # FIX: Verwende die Surface-Dimensionen für die Kamera, nicht SCREEN_-Konstanten
+    surface_width = screen.get_width()
+    surface_height = screen.get_height()
+    self.camera = Camera(surface_width, surface_height)  # Kein Zoom-Parameter mehr nötig
+    self.renderer = GameRenderer(self.screen)
+    
+    # Health-Bar Manager initialisieren
+    self.health_bar_manager = HealthBarManager()
+    
+    # Enemy Manager initialisieren (BEFORE map loading!)
+    self.enemy_manager = EnemyManager()
+    
+    # Map laden
+    self.load_map()
+    
+    # Kollisionsobjekte einmalig setzen (nicht bei jeder Bewegung!)
+    self.setup_collision_objects()
+    
+    # Health-Bars für alle Entitäten hinzufügen
+    self.setup_health_bars()
+    
+    # Input-System initialisieren
+    self.input_system = get_input_system()
+    
+    # Input-Status (wird jetzt vom Universal Input System verwaltet)
+    # ... rest of existing init code ...

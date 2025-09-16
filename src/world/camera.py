@@ -59,6 +59,12 @@ class Camera:
 
         self.camera_rect = pygame.Rect(x, y, self.camera_width, self.camera_height)
     
+    def center_on_target(self, target):
+        """Kompatibilitäts-Methode: zentriert die Kamera auf das Ziel.
+        Alias für `update(target)`.
+        """
+        self.update(target)
+    
     def get_viewport_rect(self):
         """
         Gibt das Sichtfeld der Kamera zurück (für Frustum Culling)
