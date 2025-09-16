@@ -106,8 +106,13 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         self.image = self.get_current_frames()[0] if self.get_current_frames() else self.create_placeholder()
         self.rect = self.image.get_rect(center=(pos_x, pos_y))
         
-        # Collision box (smaller for closer combat)
-        self.hitbox = self.rect.inflate(-60, -40)
+        # Collision box (smaller for closer combat) — shrink a bit more to avoid snagging
+        # Previously: inflate(-60, -40). Increase shrink slightly for smoother navigation.
+        self.hitbox = self.rect.inflate(-70, -50)
+        self.hitbox.center = self.rect.center
+        
+        # Obstacles for collision + vision checks (set by manager)
+        self.obstacle_sprites = None
         
     def load_animations(self, asset_path: str) -> None:
         """
@@ -346,3 +351,72 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
     def get_interaction_rect(self):
         """Get the area where player can interact with this enemy"""
         return self.hitbox.inflate(40, 40)
+
+    # --- Obstacle/vision helpers shared by enemies ---
+    def set_obstacle_sprites(self, obstacle_sprites):
+        """Assign obstacle sprites/group used for collisions and line-of-sight"""
+        self.obstacle_sprites = obstacle_sprites
+
+    def _iter_obstacle_rects(self):
+        """Yield pygame.Rect for each obstacle sprite or rect"""
+        if not self.obstacle_sprites:
+            return
+        try:
+            iterable = self.obstacle_sprites.sprites() if hasattr(self.obstacle_sprites, 'sprites') else self.obstacle_sprites
+            for o in iterable:
+                if hasattr(o, 'hitbox') and isinstance(o.hitbox, pygame.Rect):
+                    yield o.hitbox
+                elif hasattr(o, 'rect') and isinstance(o.rect, pygame.Rect):
+                    yield o.rect
+                elif isinstance(o, pygame.Rect):
+                    yield o
+        except Exception:
+            # Fallback: treat as generic iterable
+            for o in self.obstacle_sprites:
+                if hasattr(o, 'hitbox') and isinstance(o.hitbox, pygame.Rect):
+                    yield o.hitbox
+                elif hasattr(o, 'rect') and isinstance(o.rect, pygame.Rect):
+                    yield o.rect
+                elif isinstance(o, pygame.Rect):
+                    yield o
+
+    def check_collision_with_obstacles(self, rect: Optional[pygame.Rect] = None) -> bool:
+        """Return True if given rect (or self.hitbox) collides with any obstacle"""
+        if not self.obstacle_sprites:
+            return False
+        r = rect if rect is not None else self.hitbox
+        for orect in self._iter_obstacle_rects():
+            if r.colliderect(orect):
+                return True
+        return False
+
+    def can_see_player(self, player, step: int = 16) -> bool:
+        """Check line-of-sight to player using simple ray sampling through obstacles.
+        Returns True if no obstacle blocks the line from enemy center to player center.
+        """
+        if player is None:
+            return False
+        if not self.obstacle_sprites:
+            # No obstacles registered -> assume visible
+            return True
+
+        sx, sy = self.hitbox.center
+        if hasattr(player, 'hitbox') and isinstance(player.hitbox, pygame.Rect):
+            tx, ty = player.hitbox.center
+        else:
+            tx, ty = player.rect.center
+
+        dx = tx - sx
+        dy = ty - sy
+        dist = max(1, int(pygame.math.Vector2(dx, dy).length()))
+        steps = max(1, dist // step)
+
+        # Sample along the line; use a tiny rect to test collisions
+        for i in range(1, steps + 1):
+            px = sx + (dx * i) / steps
+            py = sy + (dy * i) / steps
+            probe = pygame.Rect(int(px) - 1, int(py) - 1, 2, 2)
+            for orect in self._iter_obstacle_rects():
+                if probe.colliderect(orect):
+                    return False
+        return True

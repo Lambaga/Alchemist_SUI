@@ -764,52 +764,99 @@ class MapLoader:
 
     def build_map(self):
         """
-        Erstellt Kollisionsobjekte aus einer speziellen Ebene namens 'Collision' oder 'Walls'.
-        Unterstützt sowohl Objektebenen als auch Tile-Ebenen.
+        Baut die Kollisionsobjekte-Liste aus allen relevanten Ebenen:
+        - Objekt-Ebenen: Namen enthalten 'Walls', 'Collision', 'Obstacles' (case-insensitive) oder Property collidable=true
+        - Tile-Ebenen: Namen enthalten 'hitbox', 'collision', 'solid', 'wall' (case-insensitive) oder Property collidable=true
+
+        Diese erweiterten Kollisionen werden für Bewegung, LOS und Pathfinding genutzt,
+        damit Gegner um Bäume/Steine herum navigieren und nicht hindurch laufen.
         """
         if not self.tmx_data:
             return
 
         print("Baue Kollisionsobjekte aus der Karte...")
         try:
-            # Suche nach einer Ebene mit dem Namen 'Walls' oder 'Collision'
-            collision_layer = None
-            for layer_name in ['Walls', 'Collision', 'walls', 'collision', 'Enemy', 'enemy']:
+            # Reset, then gather ONLY from Tiled Object Layers that represent colliders
+            self.collision_objects = []
+            added_from_layers = []
+
+            try:
+                import pytmx  # ensure type checks
+            except Exception:
+                pytmx = None  # type: ignore
+
+            def object_layer_is_collidable(layer) -> bool:
+                # Only object groups by explicit property or trusted names
                 try:
-                    collision_layer = self.tmx_data.get_layer_by_name(layer_name)
-                    print(f"✅ Layer '{layer_name}' gefunden")
-                    break
-                except ValueError:
-                    continue
-            
-            if not collision_layer:
-                print("WARNUNG: Keine Ebene namens 'Walls' oder 'Collision' gefunden.")
+                    if hasattr(layer, 'properties'):
+                        props = dict(layer.properties)
+                        if str(props.get('collidable', '')).lower() in ('1', 'true', 'yes'):
+                            return True
+                except Exception:
+                    pass
+                name = (getattr(layer, 'name', '') or '').lower()
+                return name in ('walls', 'collision')
+
+            layers = list(getattr(self.tmx_data, 'visible_layers', [])) or list(getattr(self.tmx_data, 'layers', []))
+            if not layers:
+                print("WARNUNG: Keine Layer in TMX-Daten gefunden.")
                 return
-            
-            if isinstance(collision_layer, pytmx.TiledObjectGroup):
-                # Objektebene: Gehe durch alle Objekte (Rechtecke)
-                for obj in collision_layer:
-                    wall_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
-                    self.collision_objects.append(wall_rect)
-                print("✅ {} Kollisionsobjekte aus Objektebene '{}' geladen.".format(
-                    len(self.collision_objects), collision_layer.name))
-                
-            elif isinstance(collision_layer, pytmx.TiledTileLayer):
-                # Tile-Ebene: Gehe durch alle Tiles und erstelle Kollisionen für nicht-leere Tiles
-                for x, y, gid in collision_layer:
-                    if gid != 0:  # 0 = leere Kachel
-                        # Berechne die Pixel-Position der Kachel
-                        tile_x = x * self.tmx_data.tilewidth
-                        tile_y = y * self.tmx_data.tileheight
-                        wall_rect = pygame.Rect(tile_x, tile_y, 
-                                              self.tmx_data.tilewidth, 
-                                              self.tmx_data.tileheight)
-                        self.collision_objects.append(wall_rect)
-                print("✅ {} Kollisionsobjekte aus Tile-Ebene '{}' geladen.".format(
-                    len(self.collision_objects), collision_layer.name))
+
+            for layer in layers:
+                # Only consider object groups
+                if not (pytmx and isinstance(layer, pytmx.TiledObjectGroup)):
+                    continue
+                if not object_layer_is_collidable(layer):
+                    continue
+
+                count_before = len(self.collision_objects)
+                for obj in layer:
+                    try:
+                        rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
+                        self.collision_objects.append(rect)
+                    except Exception:
+                        continue
+                added = len(self.collision_objects) - count_before
+                if added:
+                    added_from_layers.append((layer.name, added, 'objects'))
+
+            # Fallback: try to get specific well-known object groups if not included by filter
+            if not added_from_layers:
+                for name in ('Walls', 'Collision'):
+                    try:
+                        lyr = self.tmx_data.get_layer_by_name(name)
+                    except Exception:
+                        lyr = None
+                    if not lyr or not (pytmx and isinstance(lyr, pytmx.TiledObjectGroup)):
+                        continue
+                    count_before = len(self.collision_objects)
+                    for obj in lyr:
+                        self.collision_objects.append(pygame.Rect(obj.x, obj.y, obj.width, obj.height))
+                    added = len(self.collision_objects) - count_before
+                    if added:
+                        added_from_layers.append((name, added, 'objects'))
+
+            # Deduplicate
+            try:
+                seen = set()
+                unique = []
+                for r in self.collision_objects:
+                    key = (r.x, r.y, r.width, r.height)
+                    if key not in seen:
+                        unique.append(r)
+                        seen.add(key)
+                if len(unique) != len(self.collision_objects):
+                    print(f"ℹ️ {len(self.collision_objects) - len(unique)} doppelte Kollisions-Rechtecke entfernt")
+                self.collision_objects = unique
+            except Exception:
+                pass
+
+            total = len(self.collision_objects)
+            if added_from_layers:
+                summary = ", ".join([f"{name}:+{cnt} ({kind})" for name, cnt, kind in added_from_layers])
+                print(f"✅ {total} Kollisionsobjekte aus Objektebenen: {summary}")
             else:
-                print("WARNUNG: Ebene '{}' ist weder eine Objekt- noch eine Tile-Ebene.".format(
-                    collision_layer.name))
+                print("WARNUNG: Keine kollidierbaren Objektebenen gefunden – keine Kollisionsobjekte erstellt")
 
         except Exception as e:
             print("FEHLER beim Laden der Kollisionsobjekte: {}".format(e))

@@ -14,6 +14,7 @@ class EnemyManager:
         self.enemies = pygame.sprite.Group()
         self.demon_asset_path = os.path.join(ASSETS_DIR, "Demon Pack")
         self.fireworm_asset_path = os.path.join(ASSETS_DIR, "fireWorm")
+        self.pathfinder = None
         
         print(f"🔧 ENEMY MANAGER DEBUG:")
         print(f"   Demon path: {self.demon_asset_path} (exists: {os.path.exists(self.demon_asset_path)})")
@@ -175,6 +176,10 @@ class EnemyManager:
         for enemy in self.enemies:
             if hasattr(enemy, 'set_obstacle_sprites'):
                 enemy.set_obstacle_sprites(obstacle_sprites)
+
+    def set_pathfinder(self, pathfinder):
+        """Expose a shared pathfinder for enemies."""
+        self.pathfinder = pathfinder
     
     def reset_enemies(self):
         """Setzt alle Feinde zurück (für Game Over / Neustart)"""

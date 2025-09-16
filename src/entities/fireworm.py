@@ -40,6 +40,10 @@ class FireWorm(Enemy):
         self.obstacle_sprites = None
         
         print("🐍 FireWorm created at ({}, {})".format(pos_x, pos_y))
+        # Path following state
+        self._path: list[tuple[int, int]] = []
+        self._path_idx: int = 0
+        self._blocked_frames: int = 0
         
     def load_animations(self, asset_path):
         """Load FireWorm animation frames using AssetManager with configuration"""
@@ -87,7 +91,7 @@ class FireWorm(Enemy):
     
     def update_ai(self, dt, player, other_enemies):
         """FireWorm AI logic"""
-        if not self.is_alive or not player:
+        if not self.is_alive() or not player:
             return
             
         current_time = pygame.time.get_ticks()
@@ -111,7 +115,7 @@ class FireWorm(Enemy):
         # State machine
         if distance_to_player <= self.detection_range:
             # Player detected
-            if distance_to_player <= self.attack_range and self.can_attack():
+            if distance_to_player <= self.attack_range and self.can_attack() and self.can_see_player(player):
                 # In attack range - shoot fireball
                 self.start_attack(current_time)
                 self.shoot_fireball(player)
@@ -122,61 +126,125 @@ class FireWorm(Enemy):
                     player.rect.centerx - self.rect.centerx,
                     player.rect.centery - self.rect.centery
                 )
-                
-                if direction_to_player.length() > 0:
-                    self.direction = direction_to_player.normalize()
-                    
-                    # Update facing direction
-                    if self.direction.x > 0:
-                        self.facing_right = True
-                    elif self.direction.x < 0:
-                        self.facing_right = False
-                    
-                    # Move with collision detection
-                    if dt:
-                        movement = self.direction * self.speed * dt
-                        
-                        # Try horizontal movement first
-                        old_x = self.rect.centerx
-                        new_x = self.rect.centerx + movement.x
-                        self.rect.centerx = new_x
-                        self.hitbox.center = self.rect.center
-                        
-                        # Check collision with obstacles (walls)
-                        if self.obstacle_sprites and self.check_collision_with_obstacles():
-                            # Collision detected - revert horizontal movement
-                            self.rect.centerx = old_x
+                has_los = self.can_see_player(player)
+                # Prefer following active path if available
+                if dt and getattr(self, '_path', None) and self._path_idx < len(self._path):
+                    wx, wy = self._path[self._path_idx]
+                    to_wp = pygame.math.Vector2(wx - self.rect.centerx, wy - self.rect.centery)
+                    if to_wp.length() < 12:
+                        self._path_idx += 1
+                    else:
+                        step_dir = to_wp.normalize()
+                        if step_dir.x > 0:
+                            self.facing_right = True
+                        elif step_dir.x < 0:
+                            self.facing_right = False
+                        move = step_dir * self.speed * dt
+                        npos = pygame.math.Vector2(self.rect.centerx + move.x, self.rect.centery + move.y)
+                        trect = self.hitbox.copy(); trect.center = npos
+                        if not self.check_collision_with_obstacles(trect):
+                            self.rect.centerx = round(npos.x)
+                            self.rect.centery = round(npos.y)
                             self.hitbox.center = self.rect.center
+                        else:
+                            self._path = []
+                            self._path_idx = 0
+
+                # If no path, move directly with wall avoid and possibly compute path
+                if (not getattr(self, '_path', None)) or self._path_idx >= len(self._path):
+                    if direction_to_player.length() > 0:
+                        self.direction = direction_to_player.normalize()
                         
-                        # Try vertical movement
-                        old_y = self.rect.centery
-                        new_y = self.rect.centery + movement.y
-                        self.rect.centery = new_y
-                        self.hitbox.center = self.rect.center
+                        # Update facing direction
+                        if self.direction.x > 0:
+                            self.facing_right = True
+                        elif self.direction.x < 0:
+                            self.facing_right = False
                         
-                        # Check collision with obstacles (walls)
-                        if self.obstacle_sprites and self.check_collision_with_obstacles():
-                            # Collision detected - revert vertical movement
-                            self.rect.centery = old_y
-                            self.hitbox.center = self.rect.center
+                        # Move with collision detection (walls + enemies)
+                        if dt:
+                            movement = self.direction * self.speed * dt
                         
-                        # Check collision with other enemies
-                        collision_detected = False
-                        if other_enemies:
+                        # Full move attempt
+                        new_center = pygame.math.Vector2(self.rect.centerx + movement.x,
+                                                         self.rect.centery + movement.y)
+                        trial_rect = self.hitbox.copy(); trial_rect.center = new_center
+                        blocked = self.check_collision_with_obstacles(trial_rect)
+                        if other_enemies and not blocked:
                             for other_enemy in other_enemies:
-                                if other_enemy != self and self.rect.colliderect(other_enemy.rect):
-                                    collision_detected = True
-                                    # Push away from other enemy
-                                    if self.rect.centerx < other_enemy.rect.centerx:
-                                        self.rect.centerx -= 5
-                                    else:
-                                        self.rect.centerx += 5
-                                    if self.rect.centery < other_enemy.rect.centery:
-                                        self.rect.centery -= 5
-                                    else:
-                                        self.rect.centery += 5
-                                    self.hitbox.center = self.rect.center
+                                if other_enemy != self and trial_rect.colliderect(other_enemy.hitbox):
+                                    blocked = True
                                     break
+                        if not blocked:
+                            self.rect.centerx = round(new_center.x)
+                            self.rect.centery = round(new_center.y)
+                            self.hitbox.center = self.rect.center
+                            self._blocked_frames = 0
+                        else:
+                            self._blocked_frames += 1
+                            # Try axis-separated sliding
+                            hx = pygame.math.Vector2(self.rect.centerx + movement.x, self.rect.centery)
+                            hrect = self.hitbox.copy(); hrect.center = hx
+                            h_blocked = self.check_collision_with_obstacles(hrect)
+                            if other_enemies and not h_blocked:
+                                for other_enemy in other_enemies:
+                                    if other_enemy != self and hrect.colliderect(other_enemy.hitbox):
+                                        h_blocked = True
+                                        break
+                            vy = pygame.math.Vector2(self.rect.centerx, self.rect.centery + movement.y)
+                            vrect = self.hitbox.copy(); vrect.center = vy
+                            v_blocked = self.check_collision_with_obstacles(vrect)
+                            if other_enemies and not v_blocked:
+                                for other_enemy in other_enemies:
+                                    if other_enemy != self and vrect.colliderect(other_enemy.hitbox):
+                                        v_blocked = True
+                                        break
+                            if not h_blocked:
+                                self.rect.centerx = round(hx.x)
+                                self.hitbox.centerx = self.rect.centerx
+                            if not v_blocked:
+                                self.rect.centery = round(vy.y)
+                                self.hitbox.centery = self.rect.centery
+                            # If blocked repeatedly or LOS blocked, try pathfinding
+                            pathfinder = None
+                            try:
+                                level_ref = getattr(player, '_level_ref', None)
+                                if level_ref and hasattr(level_ref, 'pathfinder'):
+                                    pathfinder = level_ref.pathfinder
+                            except Exception:
+                                pathfinder = None
+                            if pathfinder and (self._blocked_frames >= 4 or not has_los):
+                                sx, sy = self.rect.centerx, self.rect.centery
+                                tx, ty = player.rect.centerx, player.rect.centery
+                                path = pathfinder.find_path((sx, sy), (tx, ty), max_closed=4000)
+                                if len(path) >= 2:
+                                    self._path = path[1:]
+                                    self._path_idx = 0
+                                    self._blocked_frames = 0
+
+                    # Follow path waypoints if present
+                    if dt and getattr(self, '_path', None):
+                        if self._path_idx < len(self._path):
+                            wx, wy = self._path[self._path_idx]
+                            to_wp = pygame.math.Vector2(wx - self.rect.centerx, wy - self.rect.centery)
+                            if to_wp.length() < 12:
+                                self._path_idx += 1
+                            else:
+                                step_dir = to_wp.normalize()
+                                move = step_dir * self.speed * dt
+                                npos = pygame.math.Vector2(self.rect.centerx + move.x, self.rect.centery + move.y)
+                                trect = self.hitbox.copy(); trect.center = npos
+                                if not self.check_collision_with_obstacles(trect):
+                                    self.rect.centerx = round(npos.x)
+                                    self.rect.centery = round(npos.y)
+                                    self.hitbox.center = self.rect.center
+                                else:
+                                    self._path = []
+                                    self._path_idx = 0
+                # Clear path if LOS regained and close
+                if has_los and distance_to_player < 160:
+                    self._path = []
+                    self._path_idx = 0
         else:
             # Player not detected - idle
             if self.state != "attacking":
@@ -221,19 +289,19 @@ class FireWorm(Enemy):
         """Set the obstacle sprites for collision detection"""
         self.obstacle_sprites = obstacle_sprites
     
-    def check_collision_with_obstacles(self):
-        """Check if FireWorm collides with any obstacle"""
+    def check_collision_with_obstacles(self, rect: pygame.Rect = None):
+        """Check if FireWorm collides with any obstacle (uses given rect or self.hitbox)"""
         if not self.obstacle_sprites:
             return False
-            
+        r = rect if rect is not None else self.hitbox
         for obstacle in self.obstacle_sprites:
             if hasattr(obstacle, 'hitbox'):
-                if self.hitbox.colliderect(obstacle.hitbox):
+                if r.colliderect(obstacle.hitbox):
                     return True
             elif hasattr(obstacle, 'rect'):
-                if self.hitbox.colliderect(obstacle.rect):
+                if r.colliderect(obstacle.rect):
                     return True
             elif isinstance(obstacle, pygame.Rect):
-                if self.hitbox.colliderect(obstacle):
+                if r.colliderect(obstacle):
                     return True
         return False

@@ -10,14 +10,16 @@ from map_loader import MapLoader
 from enemy_manager import EnemyManager
 from health_bar_py27 import HealthBarManager, create_player_health_bar, create_enemy_health_bar
 from input_system import get_input_system
+from systems.pathfinding import GridPathfinder
 
 class GameRenderer:
     """🚀 Task 6: Rendering-System mit Alpha/Transparenz-Optimierung"""
     
     def __init__(self, screen):
         self.screen = screen
-        self.font = pygame.font.Font(None, 50)
-        self.small_font = pygame.font.Font(None, 28)  # Kleinere Schrift für Inventar-Items
+        # Kompaktere Fonts für kleineres Overlay
+        self.font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 22)  # Kleinere Schrift für Inventar-Items
         self.generate_ground_stones()
         
         # Performance-Optimierung: Asset Manager für gecachte Sprite-Skalierung
@@ -182,29 +184,41 @@ class GameRenderer:
     
     def draw_ui(self, game_logic):
         """Zeichnet die Benutzeroberfläche"""
-        # UI-Hintergrund
-        ui_rect = pygame.Rect(20, 20, 600, 320)  # Größer für Magie-Anzeige
+        # UI-Hintergrund (kompakter)
+        ui_rect = pygame.Rect(16, 16, 520, 260)
         pygame.draw.rect(self.screen, UI_BACKGROUND, ui_rect)
         pygame.draw.rect(self.screen, TEXT_COLOR, ui_rect, 3)
         
-        y_offset = 40
+        # Innenabstände für Layout-Berechnung
+        inner_left = ui_rect.x + 20
+        inner_right = ui_rect.right - 20
+        y_offset = ui_rect.y + 20
+
+        # Helfer: Abstand für eine Reihe Slots berechnen, sodass bis zu N Elemente passen
+        def compute_spacing(n_items: int, slot_size: int) -> int:
+            n = max(1, n_items)
+            total_slots = n * slot_size
+            max_width = max(0, inner_right - inner_left)
+            gaps = max(1, n - 1)
+            # Mindestens 10px, höchstens 80px Abstand, restliche Breite gleichmäßig verteilen
+            return max(10, min(80, (max_width - total_slots) // gaps if max_width > total_slots else 10))
         
         # Titel
         title = self.font.render(GAME_TITLE, True, TEXT_COLOR)
-        self.screen.blit(title, (40, y_offset))
-        y_offset += 50
+        self.screen.blit(title, (inner_left, y_offset))
+        y_offset += 38
         
         # Punkte
         score_text = "Punkte: {}".format(game_logic.score)
         score_surface = self.font.render(score_text, True, TEXT_COLOR)
-        self.screen.blit(score_surface, (40, y_offset))
-        y_offset += 40
+        self.screen.blit(score_surface, (inner_left, y_offset))
+        y_offset += 30
         
         # Aktive Zutaten
         zutaten_text = "Inventar ({}/5):".format(len(game_logic.aktive_zutaten))
         zutaten_surface = self.font.render(zutaten_text, True, TEXT_COLOR)
-        self.screen.blit(zutaten_surface, (40, y_offset))
-        y_offset += 35
+        self.screen.blit(zutaten_surface, (inner_left, y_offset))
+        y_offset += 28
         
         # Zutaten-Symbole und Namen
         zutaten_farben = {
@@ -218,25 +232,86 @@ class GameRenderer:
             "goldreif": (255, 215, 0)  # Gold für Goldreif
         }
         
-        start_x = 50
-        item_spacing = 100  # Noch größerer Abstand zwischen Items (vorher 90)
-        for i, zutat in enumerate(game_logic.aktive_zutaten):
+        slot_size_main = 40
+        # Bis zu 5 Items in einer Reihe sinnvoll einpassen
+        n_main = max(1, min(5, len(game_logic.aktive_zutaten)))
+        item_spacing = compute_spacing(n_main, slot_size_main)
+        start_x = inner_left
+        for i, zutat in enumerate(game_logic.aktive_zutaten[:5]):
             color = zutaten_farben.get(zutat, (200, 200, 200))
-            rect_x = start_x + i * item_spacing
+            rect_x = start_x + i * (slot_size_main + item_spacing)
             # Zeichne Gegenstand-Symbol
-            pygame.draw.rect(self.screen, color, (rect_x, y_offset, 50, 50))
+            pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size_main, slot_size_main))
             
             # Zeichne Namen darunter
             item_name = zutat.capitalize()
             name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
-            name_rect = name_surface.get_rect(centerx=rect_x + 25, top=y_offset + 55)
+            name_rect = name_surface.get_rect(centerx=rect_x + slot_size_main // 2, top=y_offset + slot_size_main + 6)
             self.screen.blit(name_surface, name_rect)
         
-        y_offset += 70
+        y_offset += slot_size_main + 30
+
+        # Gesammelte Items (aus Level.quest_items / collectible_items)
+        try:
+            level_instance = getattr(game_logic, '_level_ref', None)
+            collected_ids = []
+            seen = set()
+            if level_instance is not None:
+                # Quest-Items Liste
+                if hasattr(level_instance, 'quest_items') and isinstance(level_instance.quest_items, list):
+                    for name in level_instance.quest_items:
+                        nid = str(name).lower()
+                        if nid not in seen:
+                            collected_ids.append(nid)
+                            seen.add(nid)
+                # Collectibles mit collected=True
+                if hasattr(level_instance, 'collectible_items') and isinstance(level_instance.collectible_items, dict):
+                    for nid, meta in level_instance.collectible_items.items():
+                        try:
+                            if isinstance(meta, dict) and meta.get('collected'):
+                                nid_l = str(nid).lower()
+                                if nid_l not in seen:
+                                    collected_ids.append(nid_l)
+                                    seen.add(nid_l)
+                        except Exception:
+                            continue
+            if collected_ids:
+                header = self.small_font.render("Gesammelte Items:", True, TEXT_COLOR)
+                self.screen.blit(header, (inner_left, y_offset))
+                y_offset += 24
+
+                # Bis zu 5 gesammelte Items kompakt einpassen
+                slot_size_col = 40
+                n_col = max(1, min(5, len(collected_ids)))
+                item_spacing_items = compute_spacing(n_col, slot_size_col)
+                start_x_items = inner_left
+                for i, item_id in enumerate(collected_ids[:5]):
+                    color = zutaten_farben.get(item_id, (200, 200, 200))
+                    rect_x = start_x_items + i * (slot_size_col + item_spacing_items)
+                    pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size_col, slot_size_col))
+                    # Anzeigename: falls schöner Name vorhanden
+                    display_name = item_id.capitalize()
+                    try:
+                        if (hasattr(level_instance, 'collectible_items') and 
+                            item_id in level_instance.collectible_items and 
+                            isinstance(level_instance.collectible_items[item_id], dict)):
+                            dn = level_instance.collectible_items[item_id].get('name')
+                            if dn:
+                                display_name = str(dn)
+                    except Exception:
+                        pass
+                    name_surface = self.small_font.render(display_name, True, TEXT_COLOR)
+                    name_rect = name_surface.get_rect(centerx=rect_x + slot_size_col // 2, top=y_offset + slot_size_col + 6)
+                    self.screen.blit(name_surface, name_rect)
+
+                y_offset += slot_size_col + 28
+        except Exception:
+            # UI sollte robust gegen Fehler bleiben
+            pass
         
         # Magie-System UI (falls Player verfügbar)
         if hasattr(game_logic, 'player') and game_logic.player:
-            self.draw_magic_ui(game_logic.player, 40, y_offset)
+            self.draw_magic_ui(game_logic.player, inner_left, y_offset)
             y_offset += 80
         
         # Letztes Brau-Ergebnis
@@ -244,7 +319,7 @@ class GameRenderer:
         for line in result_lines:
             if line.strip():
                 result_surface = self.small_font.render(line, True, TEXT_COLOR)
-                self.screen.blit(result_surface, (40, y_offset))
+                self.screen.blit(result_surface, (inner_left, y_offset))
                 y_offset += 30
         
         # Map-Status anzeigen
@@ -258,7 +333,7 @@ class GameRenderer:
         except:
             pass
         map_surface = self.small_font.render(map_status, True, (150, 255, 150))
-        self.screen.blit(map_surface, (40, y_offset))
+        self.screen.blit(map_surface, (inner_left, y_offset))
     
     def draw_controls(self):
         """🚀 Task 5: Zeichnet die Steuerungshinweise - Multi-Resolution-optimiert"""
@@ -598,6 +673,14 @@ class Level:
         surface_height = screen.get_height()
         self.camera = Camera(surface_width, surface_height)  # Kein Zoom-Parameter mehr nötig
         self.renderer = GameRenderer(self.screen)
+        # Pathfinding grid (built from map collisions)
+        self.pathfinder = None
+        # Attach back-reference to level on player for enemy helpers
+        try:
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                setattr(self.game_logic.player, '_level_ref', self)
+        except Exception:
+            pass
         
         # Health-Bar Manager initialisieren
         self.health_bar_manager = HealthBarManager()
@@ -706,6 +789,22 @@ class Level:
         ]
         self.map_completed = False
 
+    def _configure_collectibles_for_map(self, map_filename: str):
+        """Enable/disable collectibles depending on the active map."""
+        try:
+            if not hasattr(self, 'collectible_items') or not isinstance(self.collectible_items, dict):
+                return
+            for it in self.collectible_items.values():
+                if isinstance(it, dict):
+                    it['collected'] = False
+                    it['available'] = False
+            if 'Map3.tmx' in map_filename:
+                for it in self.collectible_items.values():
+                    if isinstance(it, dict):
+                        it['available'] = True
+        except Exception:
+            pass
+
     def load_map(self):
         """Lädt die Spielkarte und extrahiert Spawn-Punkte"""
         try:
@@ -746,6 +845,7 @@ class Level:
                     print("🗂️ Keine Object Groups gefunden")
             
                 # Datengesteuertes Spawning: Spieler-Position aus Tiled-Map extrahieren
+                self._configure_collectibles_for_map(current_map)
                 self.spawn_entities_from_map()
 
                 # Gegner aus der Map spawnen (ObjectGroup "Enemy" etc.)
@@ -1016,6 +1116,19 @@ class Level:
             
             # Set obstacle sprites for all enemies through enemy manager
             self.enemy_manager.set_obstacle_sprites(collision_sprites)
+
+            # Build pathfinding grid once
+            try:
+                tmx = self.map_loader.tmx_data
+                mw, mh = getattr(tmx, 'width', 100), getattr(tmx, 'height', 100)
+                tw, th = getattr(tmx, 'tilewidth', 32), getattr(tmx, 'tileheight', 32)
+                self.pathfinder = GridPathfinder(mw, mh, tw, th)
+                self.pathfinder.build_from_collision_rects(self.map_loader.collision_objects)
+                # Provide to enemy manager so enemies can request paths
+                if hasattr(self.enemy_manager, 'set_pathfinder'):
+                    self.enemy_manager.set_pathfinder(self.pathfinder)
+            except Exception as e:
+                print(f"⚠️ Pfadfinder-Initialisierung fehlgeschlagen: {e}")
     
     def setup_health_bars(self):
         """Erstellt Health-Bars für alle Entitäten im Level"""
@@ -1153,6 +1266,8 @@ class Level:
             # Debug-Toggle
             elif event.key == pygame.K_F1:
                 self.show_collision_debug = not self.show_collision_debug
+                status = "AN" if self.show_collision_debug else "AUS"
+                print(f"🧪 Kollisions-/Range-Debug: {status}")
             elif event.key == pygame.K_F2:
                 # Toggle Health-Bars ein/aus
                 self.toggle_health_bars()
@@ -1484,6 +1599,9 @@ class Level:
                 # Level-Status zurücksetzen
                 self.map_completed = False
                 
+                # Konfiguriere Sammelobjekte für diese Map
+                self._configure_collectibles_for_map(map_name)
+                
                 # Spieler-Position für neue Map setzen (nutzt die neue Spawn-Erkennung!)
                 self.spawn_entities_from_map()
                 
@@ -1528,7 +1646,6 @@ class Level:
                     for it in self.collectible_items.values():
                         if isinstance(it, dict):
                             it['collected'] = False
-                            it['available'] = True
                 if hasattr(self, 'quest_items'):
                     self.quest_items = []
             except Exception:
@@ -1671,6 +1788,18 @@ class Level:
                 self.screen.blit(text, (bg.x, bg.y))
             except Exception:
                 pass
+
+        # F1: Kollisions- und Range-Debug einblenden (nach Welt, vor UI/Overlay reicht)
+        try:
+            if getattr(self, 'show_collision_debug', False):
+                # Kollisionsobjekte zeichnen
+                if self.map_loader and getattr(self.map_loader, 'collision_objects', None):
+                    self.renderer.draw_collision_debug(self.game_logic.player, self.camera, self.map_loader.collision_objects)
+                # Enemy Debug (Hitbox + Ranges + Aggro-Line)
+                if self.enemy_manager:
+                    self.enemy_manager.draw_debug(self.screen, self.camera)
+        except Exception as e:
+            print(f"⚠️ Debug-Overlay Fehler: {e}")
 
     # --- Magic handlers (called from input/action system) ---
     def handle_magic_element(self, element_name: str):
