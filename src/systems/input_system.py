@@ -136,9 +136,6 @@ class UniversalInputSystem:
                 'reset': pygame.K_r,
                 'music_toggle': pygame.K_m,
                 'pause': pygame.K_ESCAPE,
-                'ingredient_1': pygame.K_1,
-                'ingredient_2': pygame.K_2,
-                'ingredient_3': pygame.K_3,
                 'cast_magic': pygame.K_c,
                 'clear_magic': pygame.K_x,
                 
@@ -157,9 +154,6 @@ class UniversalInputSystem:
                 'reset': GamepadButton.Y.value,          # Y/Triangle Button
                 'music_toggle': GamepadButton.X.value,   # X/Square Button
                 'pause': GamepadButton.START.value,      # Start/Options Button
-                'ingredient_1': GamepadButton.L1.value,  # Left Bumper
-                'ingredient_2': GamepadButton.R1.value,  # Right Bumper
-                'ingredient_3': GamepadButton.BACK.value, # Back/Share Button
                 
                 # Magie-Elemente (Zusätzliche Buttons)
                 'magic_fire': GamepadButton.L1.value,    # Left Bumper = Fire
@@ -311,7 +305,8 @@ class UniversalInputSystem:
                     # Action System Integration
                     if self.use_action_system:
                         self._dispatch_action(action_name, False, "gamepad")
-                    return action_name
+                    # Legacy path: don't trigger actions on release
+                    return None
         
         # Joystick-Verbindung/Trennung
         elif event.type == pygame.JOYDEVICEADDED:
@@ -342,7 +337,8 @@ class UniversalInputSystem:
                     # Action System Integration
                     if self.use_action_system:
                         self._dispatch_action(action_name, False, "keyboard")
-                    return action_name
+                    # Legacy path: don't trigger actions on release
+                    return None
         
         return None
     
@@ -419,7 +415,7 @@ class UniversalInputSystem:
         print("   Reset: R")
         print("   Musik: M")
         print("   Pause: ESC")
-        print("   Zutaten: 1, 2, 3")
+        print("   Magie: 1=Wasser, 2=Feuer, 3=Stein")
         
         if self.active_joystick:
             print(f"\n🎮 GAMEPAD ({self.active_joystick.get_name()}):")
@@ -430,7 +426,7 @@ class UniversalInputSystem:
             print("   Reset: Y/Triangle Button") 
             print("   Musik: X/Square Button")
             print("   Pause: Start/Options Button")
-            print("   Zutaten: L1, R1, Back/Share")
+            print("   Magie: L1=Feuer, R1=Wasser, Back/Share=Stein")
         else:
             print("\n🎮 GAMEPAD: Nicht verbunden")
         

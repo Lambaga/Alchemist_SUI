@@ -1107,13 +1107,13 @@ class Level:
             elif action == 'pause':
                 # Pause wird vom Main Game gehandhabt
                 pass
-            elif action == 'ingredient_1':
+            elif action in ('ingredient_1', 'magic_water'):
                 # 1 = Wasser-Element für Magie
                 self.handle_magic_element('water')
-            elif action == 'ingredient_2':
+            elif action in ('ingredient_2', 'magic_fire'):
                 # 2 = Feuer-Element für Magie
                 self.handle_magic_element('fire')
-            elif action == 'ingredient_3':
+            elif action in ('ingredient_3', 'magic_stone'):
                 # 3 = Stein-Element für Magie
                 self.handle_magic_element('stone')
             # Magie-System Actions
@@ -1250,7 +1250,18 @@ class Level:
             print(f"⚠️ Bewegungs-Update Fehler: {e}")
 
         # Game Logic Update (Animationen, Magie, etc.)
-        self.game_logic.update(dt)
+        result = self.game_logic.update(dt)
+        # Propagate game over when player dies
+        try:
+            player_dead = False
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                p = self.game_logic.player
+                player_dead = (getattr(p, 'current_health', 1) <= 0) or \
+                              (hasattr(p, 'is_dead') and p.is_dead())
+            if result == "game_over" or player_dead:
+                return "game_over"
+        except Exception:
+            pass
 
         # Feinde aktualisieren
         self.enemy_manager.update(dt, self.game_logic.player)
@@ -1497,6 +1508,90 @@ class Level:
         except Exception as e:
             print(f"❌ Fehler beim Map-Wechsel zu {map_name}: {e}")
 
+    def restart_level(self):
+        """Setzt das aktuelle Level zurück und lädt die aktuelle Map neu."""
+        try:
+            print("🔁 Level-Neustart wird ausgeführt…")
+
+            # UI/Magic: Auswahl zurücksetzen
+            if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
+                try:
+                    self.main_game.element_mixer.reset_combination()
+                except Exception:
+                    pass
+
+            # Sammel-Status und Meldungen zurücksetzen
+            try:
+                self.collection_message = ""
+                self.collection_message_timer = 0
+                if hasattr(self, 'collectible_items') and isinstance(self.collectible_items, dict):
+                    for it in self.collectible_items.values():
+                        if isinstance(it, dict):
+                            it['collected'] = False
+                            it['available'] = True
+                if hasattr(self, 'quest_items'):
+                    self.quest_items = []
+            except Exception:
+                pass
+
+            # Interaktionszonen zurücksetzen
+            try:
+                if hasattr(self, 'interaction_zones') and isinstance(self.interaction_zones, dict):
+                    for z in self.interaction_zones.values():
+                        if isinstance(z, dict):
+                            if 'active' in z:
+                                z['active'] = False
+                            if 'completed' in z:
+                                z['completed'] = False
+            except Exception:
+                pass
+
+            # Map-Status zurücksetzen
+            self.map_completed = False
+
+            # Health-Bars und Gegner bereinigen
+            if hasattr(self, 'health_bar_manager') and self.health_bar_manager:
+                try:
+                    self.health_bar_manager.reset()
+                except Exception:
+                    pass
+            try:
+                self.clear_enemies()
+            except Exception:
+                pass
+
+            # Spiellogik zurücksetzen (HP/Position/Alchemy etc.)
+            if hasattr(self, 'game_logic') and self.game_logic and hasattr(self.game_logic, 'reset_game'):
+                self.game_logic.reset_game()
+
+            # Aktuelle Map neu laden (nutzt Spawn-Erkennung, Kollisionsaufbau und Health-Bars)
+            current_name = None
+            try:
+                if hasattr(self, 'map_progression'):
+                    current_name = self.map_progression[self.current_map_index]
+            except Exception:
+                current_name = None
+
+            if current_name:
+                self.load_next_map(current_name, self.current_map_index)
+            else:
+                # Fallback falls Progression nicht gesetzt ist
+                self.load_map()
+                self.setup_collision_objects()
+                self.setup_health_bars()
+                self.respawn_enemies_only()
+
+            # Kamera auf Spieler zentrieren
+            try:
+                if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                    self.camera.center_on_target(self.game_logic.player)
+            except Exception:
+                pass
+
+            print("✅ Level erfolgreich neu gestartet")
+        except Exception as e:
+            print(f"⚠️ restart_level Fehler: {e}")
+
     def check_level_completion(self):
         """Prüft ob die aktuellen Level-Ziele erreicht wurden"""
         if self.map_completed:
@@ -1580,32 +1675,32 @@ class Level:
     # --- Magic handlers (called from input/action system) ---
     def handle_magic_element(self, element_name: str):
         try:
-            if self.game_logic and hasattr(self.game_logic, 'player') and self.game_logic.player:
-                from systems.magic_system import ElementType
-                mapping = {
-                    'fire': ElementType.FEUER,
-                    'wasser': ElementType.WASSER,
-                    'water': ElementType.WASSER,
-                    'stone': ElementType.STEIN,
-                    'stein': ElementType.STEIN,
+            # Prefer routing through ElementMixer to keep a single source of truth
+            if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
+                ui_map = {
+                    'fire': 'fire', 'wasser': 'water', 'water': 'water',
+                    'stone': 'stone', 'stein': 'stone'
                 }
-                element = mapping.get(element_name.lower())
-                if element:
-                    # Update core magic system (for joystick/hardware paths)
-                    self.game_logic.player.magic_system.add_element(element)
-                    # Mirror selection to ElementMixer UI if present
-                    if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
-                        # Normalize to UI ids: 'fire' | 'water' | 'stone'
-                        ui_map = {
-                            'fire': 'fire', 'wasser': 'water', 'water': 'water',
-                            'stone': 'stone', 'stein': 'stone'
-                        }
-                        ui_id = ui_map.get(element_name.lower())
-                        if ui_id:
-                            try:
-                                self.main_game.element_mixer.handle_element_press(ui_id)
-                            except Exception:
-                                pass
+                ui_id = ui_map.get(element_name.lower())
+                if ui_id:
+                    try:
+                        self.main_game.element_mixer.handle_element_press(ui_id)
+                    except Exception:
+                        pass
+            else:
+                # Fallback: update core magic system directly if mixer not available
+                if self.game_logic and hasattr(self.game_logic, 'player') and self.game_logic.player:
+                    from systems.magic_system import ElementType
+                    mapping = {
+                        'fire': ElementType.FEUER,
+                        'wasser': ElementType.WASSER,
+                        'water': ElementType.WASSER,
+                        'stone': ElementType.STEIN,
+                        'stein': ElementType.STEIN,
+                    }
+                    element = mapping.get(element_name.lower())
+                    if element:
+                        self.game_logic.player.magic_system.add_element(element)
         except Exception as e:
             print(f"⚠️ handle_magic_element error: {e}")
 
@@ -1623,6 +1718,7 @@ class Level:
                         except Exception:
                             elements = None
                         if elements:
+                            print(f"🧪 Casting via ElementMixer elements: {elements}")
                             try:
                                 # Map UI element ids (de: feuer/wasser/stein) to ElementType
                                 from systems.magic_system import ElementType
@@ -1645,6 +1741,11 @@ class Level:
                             except Exception:
                                 used_element_mixer = False
                     # Cast via MagicSystem (works whether elements came from mixer or direct input)
+                    try:
+                        dbg_elems = [e.value for e in player.magic_system.selected_elements]
+                        print(f"✨ Casting with core elements: {dbg_elems}")
+                    except Exception:
+                        pass
                     player.magic_system.cast_magic(caster=player)
         except Exception as e:
             print(f"⚠️ handle_cast_magic error: {e}")
