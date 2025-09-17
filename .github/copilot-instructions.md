@@ -2,23 +2,75 @@
 
 ## Project Overview
 - **Alchemist_SUI** is a Python-based 2D adventure game using Pygame, with hardware integration (ESP32, Raspberry Pi), modular architecture, and multi-platform launcher scripts.
-- Main gameplay logic is in `src/`, with subfolders for core systems, entities, managers, UI, and world/map handling.
-- Asset management (sprites, sounds, maps) is in `assets/`.
-- Hardware and platform-specific scripts are in the project root and `scripts/`.
+- Core gameplay logic in `src/`, organized into subfolders:
+  - `core/`: Main game loop, level management, config
+  - `entities/`: Player, enemies, game objects
+  - `managers/`: Asset, save, enemy management
+  - `systems/`: Magic, combat, pathfinding
+  - `ui/`: Menu system, HUD elements
+  - `world/`: Map loading, camera, collision
+- Asset management (sprites, sounds, maps) in `assets/`, including character packs and map files
+- Hardware and platform-specific scripts in project root and `scripts/`
 
 ## Key Components & Data Flow
-- **Game Loop:** Entry point is typically in `src/core/main.py`, which initializes game logic, rendering (`GameRenderer`), input, and map loading.
-- **Level System:** `src/core/level.py` manages level state, player/NPC interactions, collectibles, and map transitions. Map files are loaded via `MapLoader`.
-- **Rendering:** `GameRenderer` in `level.py` handles layered rendering, alpha/transparency caching, and performance optimizations.
-- **Input:** Unified input system (`input_system.py`) supports keyboard, gamepad, and hardware (ESP32) with priority and fallback logic.
-- **Assets:** Sprites, sounds, and maps are loaded from `assets/`, with asset scaling/caching via `asset_manager.py`.
-- **Save System:** Multiple save slots, quick save/load via F9-F12, managed in `level.py` and related modules.
+- **Game Loop:** (`src/core/main.py`)
+  - Initializes core systems: display, audio, input
+  - Manages game states: menu, gameplay, pause, game over
+  - Handles hardware integration and performance monitoring
+
+- **Level System:** (`src/core/level.py`)
+  - Controls gameplay state and map transitions
+  - Manages entities: player, enemies, collectibles
+  - Integrates pathfinding and collision systems
+  - Processes save/load requests (F9-F12 slots)
+
+- **Input Architecture:**
+  - Priority system: Hardware > Gamepad > Keyboard
+  - JSON protocol for ESP32 communication
+  - Action abstraction layer for device-agnostic input
+  - Automatic fallback on hardware disconnect
+
+- **Rendering Pipeline:**
+  - Layered rendering with depth sorting
+  - Alpha/transparency caching for performance
+  - Camera system with zoom controls
+  - HUD elements and status displays
+
+- **State Management:**
+  - Menu system for game flow control
+  - Save/load system with multiple slots
+  - Console debugging output
+  - Performance monitoring (FPS tracking)
 
 ## Developer Workflows
-- **Run Game:** Use launcher scripts (`run_game.bat`, `run_game.sh`, etc.) for automatic venv setup and dependency install.
-- **Test Hardware:** Use `test_hardware_input.py` after activating venv.
-- **Map Editing:** TMX/TSX files in `assets/maps/` must have correct relative paths; all referenced tilesets/images must exist locally.
-- **Debugging:** Console output provides detailed error/warning info for map loading, asset issues, and hardware integration.
+- **Run Game:** Use platform-specific launchers for automatic venv and dependency setup:
+  ```
+  # Windows
+  run_game.bat         # Standard display
+  run_game_7inch.bat   # 7-inch display optimization
+  
+  # Linux/Raspberry Pi
+  ./run_game.sh
+  ./run_game_7inch.sh
+  ```
+
+- **Test Hardware:**
+  ```
+  # Enable hardware mode
+  set ALCHEMIST_HW=1  # Windows
+  export ALCHEMIST_HW=1  # Linux/Pi
+
+  # Test controller
+  python test_hardware_input.py
+  ```
+
+- **Debug Tools:**
+  - F1: Toggle collision visualization
+  - F3: Toggle FPS display
+  - F4: Switch between simple/detailed FPS view
+  - Console for detailed error/warning output
+
+- **Map Editing:** TMX/TSX files must use relative paths; verify all referenced tilesets/images exist
 
 ## Project-Specific Patterns
 - **Map Transitions:** Level completion triggers (`trigger_level_completion`) show a message and load the next map. Always check for missing tilesets/images in TMX/TSX.

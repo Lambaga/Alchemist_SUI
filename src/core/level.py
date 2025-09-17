@@ -713,7 +713,7 @@ class Level:
             'elara_dialog': {
                 'pos': pygame.math.Vector2(1580, 188),
                 'radius': 150,
-                'text': 'Elara (Nachbarin): "Lumo ist ins Dorf gerannt - aber die Brücke ist eingestürzt! Repariere sie, sonst kommst du nicht hinüber!"',
+                'text': 'Elara (Nachbarin):\n"Lumo ist ins Dorf gerannt - aber die Brücke ist eingestürzt!\nRepariere sie, sonst kommst du nicht hinüber!"',
                 'active': False,
                 'is_checkpoint': True,  # Markiere als Checkpoint
                 'required_items': ['stahlerz', 'holzstab'],  # Benötigte Gegenstände
@@ -1192,6 +1192,10 @@ class Level:
     
     def handle_event(self, event):
         """Behandelt Input-Events - Erweitert für Joystick-Support"""
+        # Timer für styled message
+        if event.type == pygame.USEREVENT + 1:
+            self.show_interaction_text = False
+            pygame.time.set_timer(pygame.USEREVENT + 1, 0)  # Timer deaktivieren
         # Universal Input System für Actions verwenden
         action = self.input_system.handle_event(event)
         
@@ -1397,6 +1401,13 @@ class Level:
         # Level-Abschluss prüfen
         self.check_level_completion()
     
+    def show_styled_message(self, message: str):
+        """Zeigt eine Nachricht im gleichen Stil wie der Elara-Dialog an"""
+        self.show_interaction_text = True
+        self.interaction_text = message
+        # Zeitverzögerte Ausblendung nach 3 Sekunden
+        pygame.time.set_timer(pygame.USEREVENT + 1, 3000)  # Event in 3 Sekunden
+        
     def check_interaction_zones(self):
         """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist"""
         if not self.game_logic or not self.game_logic.player:
@@ -1538,6 +1549,9 @@ class Level:
             self.clear_enemies()
         except Exception as e:
             print(f"⚠️ Fehler beim Aufräumen der Gegner vor Map-Wechsel: {e}")
+
+        # Zeige immer die gleiche Level-Abschluss Nachricht an
+        self.show_styled_message("Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!")
         
         # Prüfe ob es eine nächste Map gibt
         if self.current_map_index + 1 < len(self.map_progression):
@@ -1546,20 +1560,13 @@ class Level:
             
             print(f"🗺️ Lade nächste Map: {next_map_name}")
             
-            # Level-Abschluss Nachricht anzeigen
-            if hasattr(self, 'main_game') and self.main_game:
-                if next_map_index == 1:  # Map_Village
-                    self.main_game.show_message("🏆 Map3 abgeschlossen! Willkommen im Dorf!")
-                else:
-                    self.main_game.show_message(f"🏆 Level abgeschlossen! Nächste Map: {next_map_name}")
-            
             # Wechsle zur nächsten Map
             self.load_next_map(next_map_name, next_map_index)
             
         else:
-            print("🎊 Alle Maps abgeschlossen! Spiel beendet!")
+            self.show_styled_message("Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!")
             if hasattr(self, 'main_game') and self.main_game:
-                self.main_game.show_message("🎊 Herzlichen Glückwunsch! Alle Maps abgeschlossen!")
+                self.main_game.show_message("Herzlichen Glückwunsch! Level erfolgreich abgeschlossen!")
 
     def clear_enemies(self):
         """Entfernt alle Gegner und deren Health-Bars (z.B. beim Map-Wechsel)."""
@@ -1774,6 +1781,43 @@ class Level:
             self.renderer.draw_ui(self.game_logic)
         except Exception:
             pass
+
+        # Interaktionstext anzeigen
+        if self.show_interaction_text and self.interaction_text:
+            try:
+                # Text in Zeilen aufteilen
+                lines = self.interaction_text.split('\n')
+                
+                # Größe des Textfelds berechnen
+                line_surfaces = [self.interaction_font.render(line, True, (255, 255, 255)) for line in lines]
+                line_heights = [surface.get_height() for surface in line_surfaces]
+                max_width = max(surface.get_width() for surface in line_surfaces)
+                total_height = sum(line_heights) + (len(lines) - 1) * 5  # 5 Pixel Abstand zwischen Zeilen
+                
+                # Hintergrundfeld erstellen
+                padding = 20  # Polsterung um den Text
+                bg_rect = pygame.Rect(
+                    self.screen.get_width() // 2 - (max_width + padding) // 2,
+                    self.screen.get_height() - 120 - total_height // 2,
+                    max_width + padding,
+                    total_height + padding
+                )
+                
+                # Hintergrund zeichnen (Dunkelblau mit Transparenz)
+                s = pygame.Surface((bg_rect.width, bg_rect.height))
+                s.set_alpha(200)  # Transparenz (0-255)
+                s.fill((0, 0, 50))  # Dunkelblau RGB
+                self.screen.blit(s, bg_rect)
+                
+                # Text zeichnen
+                current_y = bg_rect.top + padding // 2
+                for surface in line_surfaces:
+                    text_rect = surface.get_rect(centerx=self.screen.get_width() // 2, top=current_y)
+                    self.screen.blit(surface, text_rect)
+                    current_y += surface.get_height() + 5  # 5 Pixel Abstand
+                    
+            except Exception as e:
+                print(f"Fehler beim Rendern des Interaktionstextes: {e}")
 
         # Einfache Meldungsanzeige beim Einsammeln
         if self.collection_message and pygame.time.get_ticks() < self.collection_message_timer:
