@@ -1246,6 +1246,17 @@ class Level:
         if event.type == pygame.USEREVENT + 1:
             self.show_interaction_text = False
             pygame.time.set_timer(pygame.USEREVENT + 1, 0)  # Timer deaktivieren
+        # Timer für Rückkehr zum Hauptmenü nach Spielende
+        elif event.type == pygame.USEREVENT + 2:
+            pygame.time.set_timer(pygame.USEREVENT + 2, 0)  # Timer deaktivieren
+            # Prüfe ob Meister Brann's Quest wirklich abgeschlossen wurde
+            brann_quest = self.interaction_zones.get('brann_dialog', {})
+            if self.current_map_index == 1 and brann_quest.get('completed', False):
+                # Spiel speichern
+                self.trigger_save_game(1)  # In Slot 1 speichern
+                # Zum Hauptmenü zurückkehren
+                if hasattr(self, 'main_game') and self.main_game:
+                    self.main_game.return_to_menu()
         # Universal Input System für Actions verwenden
         action = self.input_system.handle_event(event)
         
@@ -1612,8 +1623,20 @@ class Level:
         except Exception as e:
             print(f"⚠️ Fehler beim Aufräumen der Gegner vor Map-Wechsel: {e}")
 
-        # Zeige immer die gleiche Level-Abschluss Nachricht an
-        self.show_styled_message("Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!")
+        # Prüfe ob Meister Brann's Quest abgeschlossen wurde
+        is_final_completion = False
+        if self.current_map_index == 1:  # Map_Village.tmx
+            brann_quest = self.interaction_zones.get('brann_dialog', {})
+            if brann_quest.get('completed', False):
+                is_final_completion = True
+
+        # Zeige entsprechende Level-Abschluss Nachricht an
+        if is_final_completion:
+            self.show_styled_message("Herzlichen Glückwunsch! Du hast das Spiel erfolgreich abgeschlossen!")
+            # Timer für Rückkehr zum Hauptmenü starten
+            pygame.time.set_timer(pygame.USEREVENT + 2, 3000)  # 3 Sekunden warten
+        else:
+            self.show_styled_message("Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!")
         
         # Prüfe ob es eine nächste Map gibt
         if self.current_map_index + 1 < len(self.map_progression):
