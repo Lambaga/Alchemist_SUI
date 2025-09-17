@@ -131,7 +131,7 @@ class UniversalInputSystem:
         return {
             InputDevice.KEYBOARD: {
                 # Legacy actions
-                'brew': pygame.K_SPACE,
+                'brew': [pygame.K_SPACE, pygame.K_i],  # Leertaste oder I
                 'remove_ingredient': pygame.K_BACKSPACE,
                 'reset': pygame.K_r,
                 'music_toggle': pygame.K_m,
@@ -140,10 +140,10 @@ class UniversalInputSystem:
                 'clear_magic': pygame.K_x,
                 
                 # New Action System mappings
-                'magic_fire': pygame.K_2,      # Key 2 = Fire
-                'magic_water': pygame.K_1,     # Key 1 = Water  
-                'magic_stone': pygame.K_3,     # Key 3 = Stone
-                'attack': pygame.K_SPACE,
+                'magic_fire': [pygame.K_2, pygame.K_z],      # 2 oder Z = Fire
+                'magic_water': [pygame.K_1, pygame.K_t],     # 1 oder T = Water  
+                'magic_stone': [pygame.K_3, pygame.K_u],     # 3 oder U = Stone
+                'attack': [pygame.K_SPACE, pygame.K_i],      # Leertaste oder I
                 'toggle_debug': pygame.K_F1,
                 'toggle_fps': pygame.K_F3
             },
@@ -323,8 +323,15 @@ class UniversalInputSystem:
         # Tastatur-Events
         elif event.type == pygame.KEYDOWN:
             keyboard_actions = self.action_mapping[InputDevice.KEYBOARD]
-            for action_name, key in keyboard_actions.items():
-                if event.key == key:
+            for action_name, key_binding in keyboard_actions.items():
+                # Unterstützt einzelne Taste oder Liste von Tasten
+                if isinstance(key_binding, list):
+                    if event.key in key_binding:
+                        # Action System Integration
+                        if self.use_action_system:
+                            self._dispatch_action(action_name, True, "keyboard")
+                        return action_name
+                elif event.key == key_binding:
                     # Action System Integration
                     if self.use_action_system:
                         self._dispatch_action(action_name, True, "keyboard")
@@ -332,8 +339,19 @@ class UniversalInputSystem:
         
         elif event.type == pygame.KEYUP:
             keyboard_actions = self.action_mapping[InputDevice.KEYBOARD]
-            for action_name, key in keyboard_actions.items():
-                if event.key == key:
+            for action_name, key_binding in keyboard_actions.items():
+                # Unterstützt einzelne Taste oder Liste von Tasten
+                if isinstance(key_binding, list):
+                    if event.key in key_binding:
+                        # Action System Integration
+                        if self.use_action_system:
+                            self._dispatch_action(action_name, False, "keyboard")
+                        return None
+                elif event.key == key_binding:
+                    # Action System Integration
+                    if self.use_action_system:
+                        self._dispatch_action(action_name, False, "keyboard")
+                    return None
                     # Action System Integration
                     if self.use_action_system:
                         self._dispatch_action(action_name, False, "keyboard")
