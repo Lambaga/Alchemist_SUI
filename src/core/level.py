@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # src/level.py
 import pygame
+import os
 from os import path
 import math  # Füge den math import hinzu
 from settings import *
@@ -719,6 +720,18 @@ class Level:
                 'required_items': ['stahlerz', 'holzstab'],  # Benötigte Gegenstände
                 'completion_text': 'Du hast alle Gegenstände gefunden und die Brücke repariert!',
                 'completed': False
+            },
+            'brann_dialog': {
+                'pos': pygame.math.Vector2(902, 603),
+                'radius': 150,
+                'text': 'Meister Brann (Kräuterkundler):\n"Der Weg zur Mühle ist voller Sporennebel.\nNur ein starkes Elixier kann ihn vertreiben!"',
+                'active': False,
+                'is_checkpoint': True,  # Dies ist ein Checkpoint wie Elara
+                'required_items': ['mondstein', 'kristall'],  # Benötigte Gegenstände
+                'completion_text': 'Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!',
+                'completed': False,
+                'map_specific': True,  # Kennzeichnet, dass dieser NPC nur in Map 2 erscheint
+                'allowed_map': 'Map_Village.tmx'
             }
         }
         print(f"Interaktionszone erstellt bei Position: {self.interaction_zones['elara_dialog']['pos']}")
@@ -1456,16 +1469,24 @@ class Level:
 
         player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
         self.show_interaction_text = False
-
+        
+        # Aktuelle Map ermitteln
+        current_map = ""
+        if self.map_loader and hasattr(self.map_loader, 'tmx_data'):
+            map_path = str(getattr(self.map_loader.tmx_data, 'filename', ''))
+            current_map = os.path.basename(map_path) if map_path else ""
+            
         for zone_id, zone in self.interaction_zones.items():
+            # Prüfen ob die Zone map-spezifisch ist und zur aktuellen Map passt
+            if zone.get('map_specific', False):
+                allowed_map = zone.get('allowed_map', '')
+                if allowed_map != current_map:
+                    continue
+                
             distance = player_pos.distance_to(zone['pos'])
 
             if distance <= zone['radius']:
                 zone['active'] = True
-                
-                # Debug-Ausgabe um zu sehen welche Items wir haben
-                print(f"Aktuelle Quest-Items: {self.quest_items}")
-                print(f"Benötigte Items: {zone.get('required_items', [])}")
                 
                 # Prüfe ob dies ein Checkpoint ist
                 if zone.get('is_checkpoint', False) and not zone.get('completed', False):
