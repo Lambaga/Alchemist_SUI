@@ -790,8 +790,45 @@ class Level:
         self.map_completed = False
 
     def _configure_collectibles_for_map(self, map_filename: str):
-        """Enable/disable collectibles depending on the active map."""
+        """Enable/disable collectibles and set their positions based on the current map."""
+        # Definiere die Map-spezifischen Positionen
+        positions = {
+            'Map3.tmx': {  # Level 1 Positionen
+                'holzstab': pygame.math.Vector2(27, 59),
+                'stahlerz': pygame.math.Vector2(3056, 39),
+                'mondstein': pygame.math.Vector2(2296, 913),
+                'kristall': pygame.math.Vector2(24, 885),
+                'goldreif': pygame.math.Vector2(2453, 33)
+            },
+            'Map_Village.tmx': {  # Level 2 Positionen
+                'holzstab': pygame.math.Vector2(1205, 380),
+                'stahlerz': pygame.math.Vector2(38, 165),
+                'mondstein': pygame.math.Vector2(2073, 760),
+                'kristall': pygame.math.Vector2(337, 1081),
+                'goldreif': pygame.math.Vector2(2421, 356)
+            }
+        }
+        
         try:
+            # Setze die Positionen für die aktuelle Map
+            if map_filename in positions:
+                map_positions = positions[map_filename]
+                for item_name, pos in map_positions.items():
+                    if item_name in self.collectible_items:
+                        self.collectible_items[item_name]['pos'] = pos
+                        self.collectible_items[item_name]['collected'] = False
+                        self.collectible_items[item_name]['available'] = True
+                print(f"✅ Sammelobjekte für {map_filename} konfiguriert")
+            
+            # Objekte für nicht-definierte Maps deaktivieren
+            else:
+                for item in self.collectible_items.values():
+                    item['available'] = False
+                print(f"⚠️ Keine Sammelobjekte für {map_filename} definiert")
+                    
+        except Exception as e:
+            print(f"❌ Fehler beim Konfigurieren der Sammelobjekte: {str(e)}")
+            
             if not hasattr(self, 'collectible_items') or not isinstance(self.collectible_items, dict):
                 return
             for it in self.collectible_items.values():
@@ -1275,6 +1312,10 @@ class Level:
             elif event.key == pygame.K_F2:
                 # Toggle Health-Bars ein/aus
                 self.toggle_health_bars()
+            elif event.key == pygame.K_k and "Map_Village.tmx" in self.map_progression[self.current_map_index]:
+                # Koordinatenanzeige nur in Map_Village
+                self.show_coordinates = not self.show_coordinates
+                print(f"🎯 Koordinatenanzeige: {'An' if self.show_coordinates else 'Aus'}")
             # DIREKTER MAGIC-TEST
             elif event.key == pygame.K_h:  # H für direkten Heilungstest
                 if self.game_logic and self.game_logic.player:
@@ -1595,6 +1636,35 @@ class Level:
             if map_index is not None:
                 self.current_map_index = map_index
             
+            # Wenn wir zu Map_Village wechseln (Level 2), setzen wir alles zurück
+            if "Map_Village.tmx" in map_name:
+                print("🔄 Wechsel zu Level 2 - Setze Spielzustand zurück...")
+                
+                # Inventar zurücksetzen
+                if hasattr(self.game_logic, 'inventory'):
+                    self.game_logic.inventory = []
+                if hasattr(self.game_logic, 'quest_items'):
+                    self.game_logic.quest_items = []
+                
+                # Sammelobjekte zurücksetzen
+                for item in self.collectible_items.values():
+                    item['collected'] = False
+                    item['available'] = True
+                
+                # Quest-Items zurücksetzen
+                self.quest_items = []
+                
+                # Interaktionszonen zurücksetzen
+                for zone in self.interaction_zones.values():
+                    zone['active'] = False
+                    zone['completed'] = False
+                
+                # UI/Magic-System zurücksetzen
+                if hasattr(self.game_logic, 'reset_magic_system'):
+                    self.game_logic.reset_magic_system()
+                
+                print("✅ Spielzustand erfolgreich zurückgesetzt")
+
             # Neue Map laden
             map_path = path.join(MAP_DIR, map_name)
             self.map_loader = MapLoader(map_path)
@@ -1781,6 +1851,25 @@ class Level:
             self.renderer.draw_ui(self.game_logic)
         except Exception:
             pass
+
+        # Koordinaten anzeigen (nur in Map_Village wenn aktiviert)
+        if self.show_coordinates and "Map_Village.tmx" in self.map_progression[self.current_map_index]:
+            try:
+                if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                    player = self.game_logic.player
+                    pos_text = f"Position: ({int(player.rect.centerx)}, {int(player.rect.centery)})"
+                    coord_surface = self.interaction_font.render(pos_text, True, (255, 255, 255))
+                    coord_rect = coord_surface.get_rect(topleft=(10, 10))
+                    
+                    # Hintergrund für bessere Lesbarkeit
+                    bg_rect = coord_rect.inflate(20, 10)
+                    s = pygame.Surface((bg_rect.width, bg_rect.height))
+                    s.set_alpha(200)
+                    s.fill((0, 0, 50))
+                    self.screen.blit(s, bg_rect)
+                    self.screen.blit(coord_surface, coord_rect)
+            except Exception as e:
+                print(f"Fehler beim Anzeigen der Koordinaten: {e}")
 
         # Interaktionstext anzeigen
         if self.show_interaction_text and self.interaction_text:
