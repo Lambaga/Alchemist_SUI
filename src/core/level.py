@@ -650,6 +650,8 @@ class Level:
     def __init__(self, screen, main_game=None):
         self.screen = screen  # Verwende die übergebene Surface
         self.main_game = main_game  # Reference to main game for spell bar access
+        self.countdown_timer = 5  # Countdown von 5 Sekunden
+        self.countdown_active = False  # Ob der Countdown aktiv ist
         self.game_logic = GameLogic()
         
         # Debug-Attribute für Koordinatenanzeige (nur Initialisierung)
@@ -1246,17 +1248,20 @@ class Level:
         if event.type == pygame.USEREVENT + 1:
             self.show_interaction_text = False
             pygame.time.set_timer(pygame.USEREVENT + 1, 0)  # Timer deaktivieren
-        # Timer für Rückkehr zum Hauptmenü nach Spielende
+        # Timer für Countdown und Rückkehr zum Hauptmenü
         elif event.type == pygame.USEREVENT + 2:
-            pygame.time.set_timer(pygame.USEREVENT + 2, 0)  # Timer deaktivieren
             # Prüfe ob Meister Brann's Quest wirklich abgeschlossen wurde
             brann_quest = self.interaction_zones.get('brann_dialog', {})
-            if self.current_map_index == 1 and brann_quest.get('completed', False):
-                # Spiel speichern
-                self.trigger_save_game(1)  # In Slot 1 speichern
-                # Zum Hauptmenü zurückkehren
-                if hasattr(self, 'main_game') and self.main_game:
-                    self.main_game.return_to_menu()
+            if self.current_map_index == 1 and brann_quest.get('completed', False) and self.countdown_active:
+                self.countdown_timer -= 1
+                if self.countdown_timer <= 0:
+                    pygame.time.set_timer(pygame.USEREVENT + 2, 0)  # Timer deaktivieren
+                    self.countdown_active = False
+                    # Spiel speichern
+                    self.trigger_save_game(1)  # In Slot 1 speichern
+                    # Zum Hauptmenü zurückkehren
+                    if hasattr(self, 'main_game') and self.main_game:
+                        self.main_game.return_to_menu()
         # Universal Input System für Actions verwenden
         action = self.input_system.handle_event(event)
         
@@ -1633,8 +1638,11 @@ class Level:
         # Zeige entsprechende Level-Abschluss Nachricht an
         if is_final_completion:
             self.show_styled_message("Herzlichen Glückwunsch! Du hast das Spiel erfolgreich abgeschlossen!")
-            # Timer für Rückkehr zum Hauptmenü starten
-            pygame.time.set_timer(pygame.USEREVENT + 2, 3000)  # 3 Sekunden warten
+            # Countdown starten
+            self.countdown_timer = 5
+            self.countdown_active = True
+            # Timer für Countdown-Updates starten (jede Sekunde)
+            pygame.time.set_timer(pygame.USEREVENT + 2, 1000)
         else:
             self.show_styled_message("Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!")
         
@@ -1965,6 +1973,24 @@ class Level:
                 self.screen.blit(text, (bg.x, bg.y))
             except Exception:
                 pass
+
+        # Countdown-Timer anzeigen wenn aktiv
+        if self.countdown_active and self.countdown_timer > 0:
+            try:
+                countdown_text = f"Rückkehr zum Hauptmenü in {self.countdown_timer}..."
+                text_surface = self.interaction_font.render(countdown_text, True, (255, 255, 0))  # Gelbe Farbe
+                text_rect = text_surface.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() // 2 + 50))
+                
+                # Hintergrund für bessere Lesbarkeit
+                bg_rect = text_rect.inflate(20, 10)
+                bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
+                bg_surface.set_alpha(200)
+                bg_surface.fill((0, 0, 50))  # Dunkelblauer Hintergrund
+                
+                self.screen.blit(bg_surface, bg_rect)
+                self.screen.blit(text_surface, text_rect)
+            except Exception as e:
+                print(f"⚠️ Fehler beim Rendern des Countdown-Timers: {e}")
 
         # F1: Kollisions- und Range-Debug einblenden (nach Welt, vor UI/Overlay reicht)
         try:
