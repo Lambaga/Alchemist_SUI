@@ -50,7 +50,7 @@ class FireWorm(Enemy):
         if not os.path.exists(asset_path):
             print(f"⚠️ FireWorm asset path not found: {asset_path}")
             return
-            
+
         try:
             # Lade alle Animationen über die Konfiguration
             self.idle_frames = self.asset_manager.load_entity_animation(
@@ -65,7 +65,7 @@ class FireWorm(Enemy):
             self.death_frames = self.asset_manager.load_entity_animation(
                 'fireworm', 'death', asset_path, self.scale_factor
             )
-            
+
             # Logging
             if self.idle_frames:
                 print("✅ FireWorm loaded {} idle frames".format(len(self.idle_frames)))
@@ -75,7 +75,7 @@ class FireWorm(Enemy):
                 print("✅ FireWorm loaded {} attack frames".format(len(self.attack_frames)))
             if self.death_frames:
                 print("✅ FireWorm loaded {} death frames".format(len(self.death_frames)))
-                
+
         except Exception as e:
             print("❌ Error loading FireWorm animations: {}".format(e))
             # Fallback zu Placeholdern

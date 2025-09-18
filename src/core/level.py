@@ -644,6 +644,13 @@ class GameRenderer:
             # Fallback
             pygame.draw.rect(self.screen, (255, 0, 0), enemy_pos)
 
+        # Draw FireWorm projectiles if present
+        if hasattr(enemy, 'draw_fireballs'):
+            try:
+                enemy.draw_fireballs(self.screen, camera)
+            except Exception:
+                pass
+
 class Level:
     """Hauptspiel-Level - Verwaltet Gameplay-Zustand"""
     
@@ -1439,7 +1446,12 @@ class Level:
             print(f"⚠️ Bewegungs-Update Fehler: {e}")
 
         # Game Logic Update (Animationen, Magie, etc.)
-        result = self.game_logic.update(dt)
+        # Provide enemies to game logic so magic projectiles can damage them
+        try:
+            enemies_list = self.enemy_manager.enemies.sprites() if hasattr(self.enemy_manager, 'enemies') else None
+        except Exception:
+            enemies_list = None
+        result = self.game_logic.update(dt, enemies=enemies_list)
         # Propagate game over when player dies
         try:
             player_dead = False
@@ -1508,11 +1520,18 @@ class Level:
                 if zone.get('is_checkpoint', False) and not zone.get('completed', False):
                     required_items = set(zone.get('required_items', []))
                     collected_items = set(self.quest_items)
-                    
-                    # Debug-Ausgabe für Item-Überprüfung
-                    print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
-                    
-                    if required_items.issubset(collected_items):
+
+                    missing_items = required_items - collected_items
+
+                    # Nur bei Zustandsänderung (andere fehlende Items) loggen, um Spam zu vermeiden
+                    prev_missing = zone.get('last_missing_items', None)
+                    if prev_missing != missing_items:
+                        print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
+                        if missing_items:
+                            print(f"Noch nicht alle Items gefunden. Fehlende Items: {missing_items}")
+                        zone['last_missing_items'] = set(missing_items)
+
+                    if not missing_items:
                         print("Alle benötigten Items gefunden!")
                         # Alle Items vorhanden - zeige Abschlusstext
                         self.show_interaction_text = True
@@ -1526,14 +1545,17 @@ class Level:
                         # Nicht alle Items vorhanden - zeige normalen Dialog
                         self.show_interaction_text = True
                         self.interaction_text = zone['text']
-                        print(f"Noch nicht alle Items gefunden. Fehlende Items: {required_items - collected_items}")
                 else:
                     # Normale Interaktionszone oder bereits abgeschlossen
                     self.show_interaction_text = True
                     self.interaction_text = zone.get('text', '')
                 break
             else:
+                # Beim Verlassen der Zone Snapshot zurücksetzen, damit beim nächsten Betreten
+                # erneut sinnvoll geloggt werden kann (ohne Spam pro Frame)
                 zone['active'] = False
+                if 'last_missing_items' in zone:
+                    del zone['last_missing_items']
 
         # Update die Collection Message Timer
         if self.collection_message_timer > 0:
@@ -2041,44 +2063,80 @@ class Level:
             if self.game_logic and hasattr(self.game_logic, 'player') and self.game_logic.player:
                 player = self.game_logic.player
                 if hasattr(player, 'magic_system'):
-                    # If ElementMixer has a ready combo, use it as source of truth
-                    used_element_mixer = False
+                    # Collect current enemies for projectile/area-hit processing
+                    try:
+                        enemies_list = self.enemy_manager.enemies.sprites() if hasattr(self.enemy_manager, 'enemies') else None
+                    except Exception:
+                        enemies_list = None
+                    # Prefer ElementMixer as the single source of truth and enforce cooldown
                     if self.main_game and hasattr(self.main_game, 'element_mixer') and self.main_game.element_mixer:
                         mixer = self.main_game.element_mixer
+                        cooldown_mgr = getattr(self.main_game, 'spell_cooldown_manager', None)
+
+                        # Require a ready combination
+                        spell_id = None
+                        try:
+                            spell_id = mixer.get_current_spell_id()
+                        except Exception:
+                            spell_id = None
+
+                        if not spell_id:
+                            print("🚫 No spell combination ready")
+                            return
+
+                        # Enforce cooldown strictly
+                        if cooldown_mgr is not None and not cooldown_mgr.is_ready(spell_id):
+                            try:
+                                remaining = cooldown_mgr.time_remaining(spell_id)
+                            except Exception:
+                                remaining = 0.0
+                            print(f"🚫 Spell {spell_id} on cooldown: {remaining:.1f}s remaining")
+                            return
+
+                        # Map mixer elements into core magic system selection
                         try:
                             elements = mixer.get_current_spell_elements()
                         except Exception:
                             elements = None
-                        if elements:
-                            print(f"🧪 Casting via ElementMixer elements: {elements}")
-                            try:
-                                # Map UI element ids (de: feuer/wasser/stein) to ElementType
-                                from systems.magic_system import ElementType
-                                map_ui_to_enum = {
-                                    'feuer': ElementType.FEUER,
-                                    'wasser': ElementType.WASSER,
-                                    'stein': ElementType.STEIN,
-                                }
-                                player.magic_system.clear_elements()
-                                for eid in elements:
-                                    et = map_ui_to_enum.get(eid.lower())
-                                    if et:
-                                        player.magic_system.add_element(et)
-                                # Start cooldown and reset UI selection
-                                try:
-                                    mixer.handle_cast_spell()
-                                except Exception:
-                                    pass
-                                used_element_mixer = True
-                            except Exception:
-                                used_element_mixer = False
-                    # Cast via MagicSystem (works whether elements came from mixer or direct input)
+                        if not elements:
+                            print("🚫 No elements available for casting")
+                            return
+
+                        print(f"🧪 Casting via ElementMixer elements: {elements}")
+                        from systems.magic_system import ElementType
+                        map_ui_to_enum = {
+                            'feuer': ElementType.FEUER,
+                            'wasser': ElementType.WASSER,
+                            'stein': ElementType.STEIN,
+                        }
+                        player.magic_system.clear_elements()
+                        for eid in elements:
+                            et = map_ui_to_enum.get(eid.lower())
+                            if et:
+                                player.magic_system.add_element(et)
+
+                        # Start cooldown via mixer; only proceed if mixer confirms cast
+                        cast_info = mixer.handle_cast_spell()
+                        if not cast_info:
+                            # Mixer rejected (e.g., race condition or cooldown) -> do not cast
+                            return
+
+                        try:
+                            dbg_elems = [e.value for e in player.magic_system.selected_elements]
+                            print(f"✨ Casting with core elements: {dbg_elems}")
+                        except Exception:
+                            pass
+
+                        player.magic_system.cast_magic(caster=player, enemies=enemies_list)
+                        return
+
+                    # Fallback path (no ElementMixer available): cast with currently selected elements (no UI cooldown)
                     try:
                         dbg_elems = [e.value for e in player.magic_system.selected_elements]
-                        print(f"✨ Casting with core elements: {dbg_elems}")
+                        print(f"✨ Casting with core elements (fallback): {dbg_elems}")
                     except Exception:
                         pass
-                    player.magic_system.cast_magic(caster=player)
+                    player.magic_system.cast_magic(caster=player, enemies=enemies_list)
         except Exception as e:
             print(f"⚠️ handle_cast_magic error: {e}")
 

@@ -99,6 +99,11 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         self.attack_range = 3 * 64  # 3 tiles
         self.attack_cooldown = 2000  # 2 seconds in milliseconds
         self.last_attack_time = 0
+        self.attack_duration_ms = 400  # attack animation hold before resuming
+
+        # Death fade-out handling
+        self._death_time = None
+        self.fade_duration_ms = 3000
         
         self.load_animations(asset_path)
         
@@ -163,34 +168,33 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
     
     def update_animation(self, current_time):
         """Update animation frame based on current state"""
-        current_frames = self.get_current_frames()
-        if not current_frames:
+        frames = self.get_current_frames()
+        if not frames:
             return
-            
-        # Check if enough time has passed to update frame
+
+        # If the state (animation type) changed, reset frame and update image immediately
+        new_anim = self.state
+        if new_anim != self.current_animation:
+            self.current_animation = new_anim
+            self.current_frame_index = 0
+            self.last_update_time = current_time  # reset timer to avoid instant skip
+            # Set image immediately on switch
+            img = frames[self.current_frame_index]
+            self.image = pygame.transform.flip(img, True, False) if not self.facing_right else img
+            return
+
+        # Regular timed frame advance
         if current_time - self.last_update_time >= self.animation_speed_ms:
-            # Handle death animation (play once)
             if self.state == "death":
-                if self.current_frame_index < len(current_frames) - 1:
+                if self.current_frame_index < len(frames) - 1:
                     self.current_frame_index += 1
                     self.last_update_time = current_time
             else:
-                # Normal looping animations
-                self.current_frame_index = (self.current_frame_index + 1) % len(current_frames)
+                self.current_frame_index = (self.current_frame_index + 1) % len(frames)
                 self.last_update_time = current_time
-            
-            # Update current animation type
-            new_animation = self.state
-            if new_animation != self.current_animation:
-                self.current_animation = new_animation
-                self.current_frame_index = 0  # Reset frame when switching animations
-            
-            # Update the image
-            self.image = current_frames[self.current_frame_index]
-            
-            # Handle facing direction
-            if not self.facing_right:
-                self.image = pygame.transform.flip(self.image, True, False)
+
+            img = frames[self.current_frame_index]
+            self.image = pygame.transform.flip(img, True, False) if not self.facing_right else img
     
     def take_damage(self, damage: int, damage_type: DamageType = DamageType.PHYSICAL, 
                    source: Optional['CombatEntity'] = None) -> bool:
@@ -329,11 +333,46 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         """
         if not self.alive_status:
             current_time = pygame.time.get_ticks()
+            # Initialize death timestamp once
+            if self._death_time is None:
+                self._death_time = current_time
+
+            # Continue any death animation
             self.update_animation(current_time)
+
+            # Compute fade-out alpha and assign to image
+            elapsed = current_time - self._death_time
+            if elapsed >= self.fade_duration_ms:
+                # Remove from all groups after fade completes
+                try:
+                    self.kill()
+                except Exception:
+                    pass
+                return
+            else:
+                try:
+                    alpha = max(0, min(255, int(255 * (1.0 - (elapsed / self.fade_duration_ms)))))
+                    if self.image:
+                        # Create a faded copy to avoid mutating shared surfaces
+                        base = self.get_current_frames()
+                        frame = base[self.current_frame_index] if base else self.image
+                        faded = frame.copy()
+                        faded.set_alpha(alpha)
+                        if not self.facing_right:
+                            faded = pygame.transform.flip(faded, True, False)
+                        self.image = faded
+                except Exception:
+                    pass
             return
             
         current_time = pygame.time.get_ticks()
         
+        # Recover from short attack state into movement state after duration
+        if self.state == "attacking":
+            if current_time - self.last_attack_time >= self.attack_duration_ms:
+                # Resume chasing if we still have a target; otherwise idle
+                self.state = "chasing" if self.target_player is not None else "idle"
+
         # Basic AI logic - to be extended by subclasses
         self.update_ai(dt, player, other_enemies)
         

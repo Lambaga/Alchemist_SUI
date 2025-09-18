@@ -26,19 +26,22 @@ class Demon(Enemy):
         self.current_health = self.max_health  # Vollständige Health beim Start
         self.speed = 100  # Pixel per second
         self.detection_range = 8 * 64  # 8 tiles * 64 pixels per tile = 512 pixels (verkürzt von 15)
+        # Tighter melee settings for true close-range attacks
+        self.attack_range = 48  # unused for melee; kept for compatibility
+        self._melee_inflate = (10, 8)  # slight margin for touch detection
         
         # Animation specific to demon
         self.animation_speed_ms = 300  # Slower animation for demons
         
         # Additional demon frames (for run animation compatibility)
         self.run_frames = []
-        
+
         # Initialize after setting up the additional frames
         self.load_animations(asset_path)
         # Path following state
-        self._path: list[tuple[int, int]] = []
-        self._path_idx: int = 0
-        self._blocked_frames: int = 0
+        self._path = []
+        self._path_idx = 0
+        self._blocked_frames = 0
         
     def load_animations(self, asset_path):
         """Load demon animation frames using AssetManager with configuration"""
@@ -134,6 +137,24 @@ class Demon(Enemy):
                 print(f"👹 Demon stoppt Verfolgung - zu weit: {direction_to_player.length():.0f}")
             else:
                 has_los = self.can_see_player(self.target_player)
+                # If in melee contact or very close and off cooldown, attack the player
+                player_rect = getattr(self.target_player, 'hitbox', self.target_player.rect)
+                in_contact = self.hitbox.inflate(*getattr(self, '_melee_inflate', (10, 8))).colliderect(player_rect)
+                if in_contact:
+                    if self.can_attack():
+                        now = pygame.time.get_ticks()
+                        if self.start_attack(now):
+                            # Deal physical damage to player immediately (simple melee)
+                            try:
+                                dmg = int(getattr(self, 'attack_damage', 25))
+                                if hasattr(self.target_player, 'take_damage'):
+                                    survived = self.target_player.take_damage(dmg)
+                                    if survived:
+                                        print(f"👹 Demon trifft Spieler für {dmg} Schaden!")
+                                    else:
+                                        print("💀 Demon hat den Spieler getötet!")
+                            except Exception:
+                                pass
                 # If we already have a computed path, prefer following it
                 if dt and getattr(self, '_path', None) and self._path_idx < len(self._path):
                     wx, wy = self._path[self._path_idx]
