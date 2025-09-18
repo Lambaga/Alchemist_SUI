@@ -4,6 +4,7 @@
 # Core-Abhängigkeiten
 pygame>=2.5.2      # Neueste Version mit besserer ARM-Unterstützung
 pytmx>=3.31        # TMX-Map-Loader
+pyserial>=3.5      # Serial-Kommunikation mit ESP32
 
 # Raspberry Pi spezifische Optimierungen
 RPi.GPIO>=0.7.1    # GPIO-Zugriff für zusätzliche Hardware (optional)

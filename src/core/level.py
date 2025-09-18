@@ -184,44 +184,45 @@ class GameRenderer:
             pygame.draw.rect(self.screen, (0, 255, 255), collision_transformed, 2)  # Cyan für Kollisionsobjekte
     
     def draw_ui(self, game_logic):
-        """Zeichnet die Benutzeroberfläche"""
-        # UI-Hintergrund (kompakter)
-        ui_rect = pygame.Rect(16, 16, 520, 260)
+        """Zeichnet das kompakte Inventar mit optionaler zweiter Zeile für gesammelte Items."""
+        # Ermittele zusätzliche gesammelte Items (aus Level-Referenz)
+        level_ref = getattr(game_logic, '_level_ref', None)
+        collected_extra = []
+        try:
+            if level_ref and hasattr(level_ref, 'quest_items'):
+                # Nutze Questliste als persistente Sammlung
+                collected_extra = list(level_ref.quest_items)
+                # Entferne Duplikate, die bereits in aktiven Zutaten sind
+                collected_extra = [it for it in collected_extra if it not in game_logic.aktive_zutaten]
+        except Exception:
+            collected_extra = []
+
+        # Kompakter UI-Hintergrund: Dynamische Höhe, falls zweite Reihe existiert
+        base_height = 140
+        extra_height = 96 if collected_extra else 0
+        ui_rect = pygame.Rect(16, 16, 520, base_height + extra_height)
         pygame.draw.rect(self.screen, UI_BACKGROUND, ui_rect)
         pygame.draw.rect(self.screen, TEXT_COLOR, ui_rect, 3)
-        
-        # Innenabstände für Layout-Berechnung
+
         inner_left = ui_rect.x + 20
         inner_right = ui_rect.right - 20
         y_offset = ui_rect.y + 20
 
-        # Helfer: Abstand für eine Reihe Slots berechnen, sodass bis zu N Elemente passen
+        # Helfer für Item-Abstand
         def compute_spacing(n_items: int, slot_size: int) -> int:
             n = max(1, n_items)
             total_slots = n * slot_size
             max_width = max(0, inner_right - inner_left)
             gaps = max(1, n - 1)
-            # Mindestens 10px, höchstens 80px Abstand, restliche Breite gleichmäßig verteilen
             return max(10, min(80, (max_width - total_slots) // gaps if max_width > total_slots else 10))
-        
-        # Titel
-        title = self.font.render(GAME_TITLE, True, TEXT_COLOR)
-        self.screen.blit(title, (inner_left, y_offset))
-        y_offset += 38
-        
-        # Punkte
-        score_text = "Punkte: {}".format(game_logic.score)
-        score_surface = self.font.render(score_text, True, TEXT_COLOR)
-        self.screen.blit(score_surface, (inner_left, y_offset))
-        y_offset += 30
-        
-        # Aktive Zutaten
+
+        # Überschrift: Inventar
         zutaten_text = "Inventar ({}/5):".format(len(game_logic.aktive_zutaten))
         zutaten_surface = self.font.render(zutaten_text, True, TEXT_COLOR)
         self.screen.blit(zutaten_surface, (inner_left, y_offset))
         y_offset += 28
-        
-        # Zutaten-Symbole und Namen
+
+        # Inventar-Items (Symbole + Namen)
         zutaten_farben = {
             "wasserkristall": (0, 150, 255),
             "feueressenz": (255, 100, 0),
@@ -229,112 +230,37 @@ class GameRenderer:
             "holzstab": (139, 69, 19),
             "stahlerz": (169, 169, 169),
             "mondstein": (200, 200, 255),
-            "kristall": (160, 32, 240),  # Lila für Kristall
-            "goldreif": (255, 215, 0)  # Gold für Goldreif
+            "kristall": (160, 32, 240),
+            "goldreif": (255, 215, 0)
         }
-        
-        slot_size_main = 40
-        # Bis zu 5 Items in einer Reihe sinnvoll einpassen
+
+        slot_size = 40
         n_main = max(1, min(5, len(game_logic.aktive_zutaten)))
-        item_spacing = compute_spacing(n_main, slot_size_main)
+        item_spacing = compute_spacing(n_main, slot_size)
         start_x = inner_left
         for i, zutat in enumerate(game_logic.aktive_zutaten[:5]):
             color = zutaten_farben.get(zutat, (200, 200, 200))
-            rect_x = start_x + i * (slot_size_main + item_spacing)
-            # Zeichne Gegenstand-Symbol
-            pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size_main, slot_size_main))
-            
-            # Zeichne Namen darunter
+            rect_x = start_x + i * (slot_size + item_spacing)
+            pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size, slot_size))
             item_name = zutat.capitalize()
             name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
-            name_rect = name_surface.get_rect(centerx=rect_x + slot_size_main // 2, top=y_offset + slot_size_main + 6)
+            name_rect = name_surface.get_rect(centerx=rect_x + slot_size // 2, top=y_offset + slot_size + 6)
             self.screen.blit(name_surface, name_rect)
-        
-        y_offset += slot_size_main + 30
 
-        # Gesammelte Items (aus Level.quest_items / collectible_items)
-        try:
-            level_instance = getattr(game_logic, '_level_ref', None)
-            collected_ids = []
-            seen = set()
-            if level_instance is not None:
-                # Quest-Items Liste
-                if hasattr(level_instance, 'quest_items') and isinstance(level_instance.quest_items, list):
-                    for name in level_instance.quest_items:
-                        nid = str(name).lower()
-                        if nid not in seen:
-                            collected_ids.append(nid)
-                            seen.add(nid)
-                # Collectibles mit collected=True
-                if hasattr(level_instance, 'collectible_items') and isinstance(level_instance.collectible_items, dict):
-                    for nid, meta in level_instance.collectible_items.items():
-                        try:
-                            if isinstance(meta, dict) and meta.get('collected'):
-                                nid_l = str(nid).lower()
-                                if nid_l not in seen:
-                                    collected_ids.append(nid_l)
-                                    seen.add(nid_l)
-                        except Exception:
-                            continue
-            if collected_ids:
-                header = self.small_font.render("Gesammelte Items:", True, TEXT_COLOR)
-                self.screen.blit(header, (inner_left, y_offset))
-                y_offset += 24
-
-                # Bis zu 5 gesammelte Items kompakt einpassen
-                slot_size_col = 40
-                n_col = max(1, min(5, len(collected_ids)))
-                item_spacing_items = compute_spacing(n_col, slot_size_col)
-                start_x_items = inner_left
-                for i, item_id in enumerate(collected_ids[:5]):
-                    color = zutaten_farben.get(item_id, (200, 200, 200))
-                    rect_x = start_x_items + i * (slot_size_col + item_spacing_items)
-                    pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size_col, slot_size_col))
-                    # Anzeigename: falls schöner Name vorhanden
-                    display_name = item_id.capitalize()
-                    try:
-                        if (hasattr(level_instance, 'collectible_items') and 
-                            item_id in level_instance.collectible_items and 
-                            isinstance(level_instance.collectible_items[item_id], dict)):
-                            dn = level_instance.collectible_items[item_id].get('name')
-                            if dn:
-                                display_name = str(dn)
-                    except Exception:
-                        pass
-                    name_surface = self.small_font.render(display_name, True, TEXT_COLOR)
-                    name_rect = name_surface.get_rect(centerx=rect_x + slot_size_col // 2, top=y_offset + slot_size_col + 6)
-                    self.screen.blit(name_surface, name_rect)
-
-                y_offset += slot_size_col + 28
-        except Exception:
-            # UI sollte robust gegen Fehler bleiben
-            pass
-        
-        # Magie-System UI (falls Player verfügbar)
-        if hasattr(game_logic, 'player') and game_logic.player:
-            self.draw_magic_ui(game_logic.player, inner_left, y_offset)
-            y_offset += 80
-        
-        # Letztes Brau-Ergebnis
-        result_lines = game_logic.last_brew_result.split('\n')
-        for line in result_lines:
-            if line.strip():
-                result_surface = self.small_font.render(line, True, TEXT_COLOR)
-                self.screen.blit(result_surface, (inner_left, y_offset))
-                y_offset += 30
-        
-        # Map-Status anzeigen
-        y_offset += 10
-        map_status = "🗺️ Map geladen" if hasattr(game_logic, 'level') and game_logic.level and game_logic.level.use_map else "⚠️ Standard-Grafik"
-        # Fallback für wenn game_logic keine level-Referenz hat
-        try:
-            level_instance = getattr(game_logic, '_level_ref', None)
-            if level_instance and hasattr(level_instance, 'use_map') and level_instance.use_map:
-                map_status = "🗺️ Map geladen"
-        except:
-            pass
-        map_surface = self.small_font.render(map_status, True, (150, 255, 150))
-        self.screen.blit(map_surface, (inner_left, y_offset))
+        # Zweite Reihe: Gesammelte Items (ohne Überschrift, minimal gehalten)
+        if collected_extra:
+            y_offset += slot_size + 34  # Abstand unter der ersten Reihe
+            n_extra = max(1, min(5, len(collected_extra)))
+            extra_spacing = compute_spacing(n_extra, slot_size)
+            start_x2 = inner_left
+            for i, item in enumerate(collected_extra[:5]):
+                color = zutaten_farben.get(item, (200, 200, 200))
+                rect_x = start_x2 + i * (slot_size + extra_spacing)
+                pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size, slot_size))
+                item_name = item.capitalize()
+                name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
+                name_rect = name_surface.get_rect(centerx=rect_x + slot_size // 2, top=y_offset + slot_size + 6)
+                self.screen.blit(name_surface, name_rect)
     
     def draw_controls(self):
         """🚀 Task 5: Zeichnet die Steuerungshinweise - Multi-Resolution-optimiert"""

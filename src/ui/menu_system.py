@@ -161,6 +161,9 @@ class BaseMenuState:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
         self.buttons: List[MenuButton] = []
+        self.selected_index: int = 0
+        self._last_axis_move_time: float = 0.0
+        self._axis_move_cooldown: float = 0.18  # seconds, to debounce joystick
         
         # Try to use system fonts that support emojis better
         try:
@@ -186,7 +189,7 @@ class BaseMenuState:
         self.background_color = (20, 20, 40)
         
     def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
-        """Handle events and return new state if needed"""
+        """Handle events and return new state if needed (mouse + keyboard + joystick)"""
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
@@ -196,6 +199,35 @@ class BaseMenuState:
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
                 button.update(mouse_pos, False)
+        elif event.type == pygame.KEYDOWN:
+            if not self.buttons:
+                return None
+            # Navigation: Up/Down arrows or W/S
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected_index = (self.selected_index - 1) % len(self.buttons)
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected_index = (self.selected_index + 1) % len(self.buttons)
+            # Confirm: Space, C, or Enter
+            elif event.key in (pygame.K_SPACE, pygame.K_c, pygame.K_RETURN):
+                return self.buttons[self.selected_index].action
+        elif event.type == pygame.JOYAXISMOTION:
+            # Basic joystick navigation on vertical axis (usually axis 1)
+            if not self.buttons:
+                return None
+            now = pygame.time.get_ticks() / 1000.0
+            if now - self._last_axis_move_time < self._axis_move_cooldown:
+                return None
+            if event.axis == 1:
+                if event.value <= -0.6:
+                    self.selected_index = (self.selected_index - 1) % len(self.buttons)
+                    self._last_axis_move_time = now
+                elif event.value >= 0.6:
+                    self.selected_index = (self.selected_index + 1) % len(self.buttons)
+                    self._last_axis_move_time = now
+        elif event.type == pygame.JOYBUTTONDOWN:
+            # Typical confirm buttons (A or X on many controllers) map variably; use any press as confirm
+            if self.buttons:
+                return self.buttons[self.selected_index].action
         
         return None
     
@@ -204,10 +236,18 @@ class BaseMenuState:
         pass
     
     def draw(self):
-        """Draw the menu"""
+        """Draw the menu with selection highlight"""
         self.screen.fill(self.background_color)
-        for button in self.buttons:
+        for i, button in enumerate(self.buttons):
             button.draw(self.screen)
+            if i == self.selected_index:
+                # Draw a subtle highlight border and left arrow
+                pygame.draw.rect(self.screen, (255, 215, 0), button.rect.inflate(8, 6), 2)
+                arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
+                arrow_rect = arrow_surface.get_rect()
+                arrow_rect.centery = button.rect.centery
+                arrow_rect.right = button.rect.left - 12
+                self.screen.blit(arrow_surface, arrow_rect)
 
 class MainMenuState(BaseMenuState):
     """Main menu state"""
@@ -270,20 +310,13 @@ class MainMenuState(BaseMenuState):
             self.buttons.append(button)
     
     def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
-        """Handle main menu events"""
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            mouse_pos = pygame.mouse.get_pos()
-            for button in self.buttons:
-                if button.update(mouse_pos, True):
-                    if button.action == "save_game":
-                        return "save_game"  # Special action for saving
-                    else:
-                        return button.action
-        elif event.type == pygame.MOUSEMOTION:
-            mouse_pos = pygame.mouse.get_pos()
-            for button in self.buttons:
-                button.update(mouse_pos, False)
-        
+        """Handle main menu events (mouse + keyboard/joystick)"""
+        result = super().handle_event(event)
+        if result is not None:
+            # Map special action
+            if result == "save_game":
+                return "save_game"
+            return result
         return None
     
     def update(self, dt: float):
@@ -503,7 +536,14 @@ class LoadGameMenuState(BaseMenuState):
     
     
     def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
-        """Handle events for load game menu"""
+        """Handle events for load game menu (mouse + keyboard/joystick)"""
+        # First try base navigation
+        base_result = super().handle_event(event)
+        if base_result is not None:
+            # Map base_result (could be tuple actions)
+            if isinstance(base_result, tuple):
+                return base_result
+            return base_result
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
@@ -701,7 +741,23 @@ class PauseMenuState(BaseMenuState):
         pass
     
     def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
-        """Handle pause menu events"""
+        """Handle pause menu events (mouse + keyboard/joystick)"""
+        # First try base navigation
+        base_result = super().handle_event(event)
+        if base_result is not None:
+            if base_result == "show_save_menu":
+                self.show_save_menu = True
+                self.setup_buttons()
+                return None
+            elif base_result == "back_to_pause":
+                self.show_save_menu = False
+                self.setup_buttons()
+                return None
+            elif base_result in ("save_slot_1", "save_slot_2", "save_slot_3", "save_slot_4"):
+                slot_map = {"save_slot_1": 1, "save_slot_2": 2, "save_slot_3": 3, "save_slot_4": 4}
+                return ("save_to_slot", slot_map[base_result])
+            else:
+                return base_result
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
@@ -973,6 +1029,10 @@ class MenuSystem:
             if new_state == GameState.LOAD_GAME:
                 self.states[GameState.LOAD_GAME].refresh_save_slots()
                 self.states[GameState.LOAD_GAME].setup_buttons()
+            # Reset selection so first item is focused by default
+            state_obj = self.states.get(new_state)
+            if hasattr(state_obj, 'selected_index'):
+                state_obj.selected_index = 0
     
     def show_save_confirmation(self):
         """Show save confirmation in main menu"""

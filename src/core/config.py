@@ -16,6 +16,8 @@ ASSETS_DIR = path.abspath(path.join(ROOT_DIR, 'assets'))
 
 class DisplayConfig:
     """Display- und Fenster-Konfiguration mit RPi4-Optimierung und 7-Zoll Monitor Support"""
+    # Drucke Profil-Hinweise höchstens einmal pro Lauf
+    _last_profile_printed = None
     # Standard-Einstellungen (PC)
     SCREEN_WIDTH = 1920
     SCREEN_HEIGHT = 1080
@@ -59,8 +61,14 @@ class DisplayConfig:
         is_rpi = DisplayConfig.is_raspberry_pi()
         is_small = DisplayConfig.is_small_screen()
         
+        def maybe_print(message: str, profile_id: str):
+            # Unterdrücke Spam: Nur drucken, wenn Profil sich geändert hat
+            if DisplayConfig._last_profile_printed != profile_id:
+                print(message)
+                DisplayConfig._last_profile_printed = profile_id
+        
         if is_small:
-            print("📱 7-Zoll Monitor (1024x600) erkannt - Anpassungen für kleinen Bildschirm!")
+            maybe_print("📱 7-Zoll Monitor (1024x600) erkannt - Anpassungen für kleinen Bildschirm!", "small")
             return {
                 'FPS': 45,              # 📱 Moderate FPS für 7-Zoll
                 'WINDOW_WIDTH': 1024,   # 📱 Exakte Bildschirmbreite
@@ -80,7 +88,7 @@ class DisplayConfig:
                 'HOTKEY_DISPLAY_COMPACT': True  # 📱 Kompakte Hotkey-Anzeige
             }
         elif is_rpi:
-            print("�🚀 Raspberry Pi erkannt - Performance-Optimierungen aktiviert!")
+            maybe_print("🚀 Raspberry Pi erkannt - Performance-Optimierungen aktiviert!", "rpi")
             return {
                 'FPS': 30,              # 🚀 Reduzierte FPS für RPi4
                 'WINDOW_WIDTH': 1024,   # 🚀 Kleinere Auflösung
@@ -100,7 +108,7 @@ class DisplayConfig:
                 'HOTKEY_DISPLAY_COMPACT': False
             }
         else:
-            print("🖥️ Desktop-System erkannt - Standard-Einstellungen")
+            maybe_print("🖥️ Desktop-System erkannt - Standard-Einstellungen", "desktop")
             return {
                 'FPS': 60,              # Standard FPS
                 'WINDOW_WIDTH': 1280,   # Standard Auflösung

@@ -1,16 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-M# Action System Integration
-try:
-    from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
-    from systems.hardware_input_adapter import create_hardware_input_adapter
-    ACTION_SYSTEM_AVAILABLE = True
-    print("✅ Action System verfügbar")
-except ImportError as e:
-    ACTION_SYSTEM_AVAILABLE = False
-    print("⚠️ Action System nicht verfügbar: {}".format(e)) File - Enhanced with FPS Monitoring and Menu System
-
-Hauptspiel-Datei mit erweitertem FPS-Tracking und vollständigem Menu-System.
+Hauptspiel-Datei mit erweitertem FPS-Tracking, Menu-System und optionaler
+Action-System/Hardware-Integration (ESP32 über Serial).
 """
 
 import pygame
@@ -37,17 +28,15 @@ from save_system import save_manager
 from hotkey_display import HotkeyDisplay
 from input_system import init_universal_input
 
-# Action System Integration (Auskommentiert wegen Unicode-Problemen)
-# try:
-#     from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
-#     from systems.hardware_input_adapter import create_hardware_input_adapter
-#     ACTION_SYSTEM_AVAILABLE = True
-# except ImportError as e:
-#     ACTION_SYSTEM_AVAILABLE = False
-#     print("Action System nicht verfuegbar: {}".format(e))
-
-# Temporär deaktiviert
-ACTION_SYSTEM_AVAILABLE = False
+# Action System Integration (aktiviert, wenn verfügbar)
+try:
+    from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
+    from systems.hardware_input_adapter import create_hardware_input_adapter
+    ACTION_SYSTEM_AVAILABLE = True
+    print("✅ Action System verfügbar")
+except ImportError as e:
+    ACTION_SYSTEM_AVAILABLE = False
+    print("⚠️ Action System nicht verfügbar: {}".format(e))
 
 import os
 
@@ -89,12 +78,40 @@ class Game:
             try:
                 from core.config import config
                 hardware_config = config.input.HARDWARE_CONFIG
+                # Umgebung erlaubt Override: ALCHEMIST_HW=1 aktiviert echte Hardware
+                enable_hw_env = os.environ.get('ALCHEMIST_HW', '0') == '1'
+                hw_port_env = os.environ.get('ALCHEMIST_HW_PORT')
+                if enable_hw_env:
+                    # Erzwinge echten Hardware-Modus ohne Mock
+                    hardware_config = dict(hardware_config)
+                    hardware_config['mock_mode'] = False
+                    if hw_port_env:
+                        hardware_config['port'] = hw_port_env
+
+                # Einfache Port-Auflösung für gängige RPi-Gerätenamen
+                def _resolve_serial_port(default_port: str) -> str:
+                    candidates = []
+                    if hw_port_env:
+                        candidates.append(hw_port_env)
+                    if default_port:
+                        candidates.append(default_port)
+                    # Häufige Standardgeräte
+                    candidates.extend(['/dev/ttyACM0', '/dev/ttyUSB0'])
+                    for p in candidates:
+                        try:
+                            if p and os.path.exists(p):
+                                return p
+                        except Exception:
+                            pass
+                    return default_port
+
+                resolved_port = _resolve_serial_port(hardware_config.get('port', '/dev/ttyUSB0'))
                 self.hardware_adapter = create_hardware_input_adapter(
-                    port=hardware_config['port'],
-                    mock_mode=hardware_config['mock_mode']
+                    port=resolved_port,
+                    mock_mode=hardware_config.get('mock_mode', True)
                 )
                 if self.hardware_adapter:
-                    print("✅ Hardware Input Adapter aktiviert")
+                    print(f"✅ Hardware Input Adapter aktiviert (Port: {resolved_port}, Mock: {hardware_config.get('mock_mode', True)})")
                 else:
                     print("⚠️ Hardware Input Adapter nicht verfügbar - Fallback auf Tastatur/Gamepad")
             except Exception as e:
@@ -137,6 +154,8 @@ class Game:
         
         # Hotkey display system
         self.hotkey_display = HotkeyDisplay(self.game_surface)
+        # Start hidden by default; toggle with H
+        self.hotkey_display.visible = False
         
         # FPS-Monitoring System
         self.fps_monitor = create_detailed_fps_display(position=(10, 10))
@@ -154,33 +173,10 @@ class Game:
         self.element_mixer = ElementMixer(self.spell_cooldown_manager)
         print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
         
-        # 🔌 Action System & Hardware Integration (Temporär deaktiviert)
-        # if ACTION_SYSTEM_AVAILABLE:
-        #     self.action_system = init_action_system()
-        #     self.hardware_adapter = None
-        #     
-        #     # Try to initialize hardware adapter
-        #     import os
-        #     enable_hardware = os.environ.get('ALCHEMIST_HW', '0') == '1'
-        #     
-        #     if enable_hardware:
-        #         print("🔌 Hardware-Modus aktiviert - versuche Hardware-Verbindung...")
-        #         self.hardware_adapter = create_hardware_input_adapter(
-        #             port='/dev/ttyUSB0', 
-        #             mock_mode=True  # Erstmal Mock-Mode für Tests
-        #         )
-        #         
-        #         if self.hardware_adapter:
-        #             print("✅ Hardware Input Adapter erfolgreich initialisiert")
-        #         else:
-        #             print("⚠️ Hardware Input Adapter konnte nicht initialisiert werden - Fallback zu Standard-Input")
-        #     else:
-        #         print("💡 Hardware-Modus deaktiviert (ALCHEMIST_HW=1 zum Aktivieren)")
-        #         
-        #     self.action_system.debug_enabled = False  # Debug-Ausgaben standardmäßig aus
-        # else:
-        self.action_system = None
-        self.hardware_adapter = None
+        # Falls ACTION_SYSTEM nicht verfügbar, bleibt nur Keyboard/Gamepad
+        if not ACTION_SYSTEM_AVAILABLE:
+            self.action_system = None
+            self.hardware_adapter = None
         
         # Magic System Adapter für Action System (falls verfügbar)
         self.magic_adapter = None
@@ -601,6 +597,25 @@ class Game:
             # ✨ Draw element mixer
             screen_height = self.game_surface.get_height()
             self.element_mixer.render(self.game_surface, screen_height)
+
+            # 🔵 Draw Mana bar above the element mixer
+            try:
+                player = self.level.game_logic.player if self.level and self.level.game_logic else None
+                if player:
+                    mix_x, mix_y = self.element_mixer.get_position(screen_height)
+                    bar_width, bar_height = 160, 10
+                    bar_x = mix_x
+                    bar_y = max(0, mix_y - 16)
+                    # Background
+                    pygame.draw.rect(self.game_surface, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+                    # Fill
+                    fill_w = int(bar_width * player.get_mana_percentage())
+                    if fill_w > 0:
+                        pygame.draw.rect(self.game_surface, (50, 150, 255), (bar_x, bar_y, fill_w, bar_height))
+                    # Border
+                    pygame.draw.rect(self.game_surface, (200, 200, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+            except Exception:
+                pass
             
             # FPS-Display zeichnen (falls aktiviert und im Gameplay)
             if self.show_fps:
@@ -616,6 +631,22 @@ class Game:
             # ✨ Draw element mixer (visible during pause for reference)
             screen_height = self.game_surface.get_height()
             self.element_mixer.render(self.game_surface, screen_height)
+
+            # 🔵 Draw Mana bar above the element mixer in pause
+            try:
+                player = self.level.game_logic.player if self.level and self.level.game_logic else None
+                if player:
+                    mix_x, mix_y = self.element_mixer.get_position(screen_height)
+                    bar_width, bar_height = 160, 10
+                    bar_x = mix_x
+                    bar_y = max(0, mix_y - 16)
+                    pygame.draw.rect(self.game_surface, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+                    fill_w = int(bar_width * player.get_mana_percentage())
+                    if fill_w > 0:
+                        pygame.draw.rect(self.game_surface, (50, 150, 255), (bar_x, bar_y, fill_w, bar_height))
+                    pygame.draw.rect(self.game_surface, (200, 200, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+            except Exception:
+                pass
             
             # Draw hotkey display even when paused (useful for reference)
             self.hotkey_display.draw()
