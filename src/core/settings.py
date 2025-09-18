@@ -32,6 +32,7 @@ GAME_TITLE = config.game.TITLE
 # === MUSIK ===
 BACKGROUND_MUSIC = config.paths.BACKGROUND_MUSIC
 MUSIC_VOLUME = config.game.MUSIC_VOLUME
+MENU_MUSIC = getattr(config.paths, 'MENU_MUSIC', BACKGROUND_MUSIC)
 
 # === FARBEN ===
 BACKGROUND_COLOR = config.colors.BACKGROUND

@@ -290,6 +290,11 @@ class Paths:
         return path.join(self.SOUNDS_DIR, "korol.mp3")
     
     @property
+    def MENU_MUSIC(self):
+        # Menü-Musikdatei im Projekt vorhanden
+        return path.join(self.SOUNDS_DIR, "plants vs zombies walnut mini game theme (trap remix).mp3")
+    
+    @property
     def DEFAULT_MAP(self):
         return path.join(self.MAPS_DIR, "Map2.tmx")
 

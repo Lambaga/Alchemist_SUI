@@ -188,7 +188,9 @@ class Game:
             # Magic Adapter wird erst nach Level-Erstellung gesetzt
             pass
         
-        self.load_background_music()
+        # Start with menu music on initial MAIN_MENU
+        self._current_music_path = None
+        self._apply_music_for_state(GameState.MAIN_MENU)
         
         print("Game started with Menu System!")
         print("Architecture: Central Game class with Menu System and Level system")
@@ -198,14 +200,32 @@ class Game:
         print("🎮 Verwende das Menu-System zum Navigieren!")
     
     def load_background_music(self):
-        """Lädt und startet die Hintergrundmusik."""
+        """Legacy helper: plays gameplay background music."""
+        self._play_music(BACKGROUND_MUSIC)
+
+    def _play_music(self, music_path: str):
+        """Load and loop music if path changed; respect volume."""
         try:
-            pygame.mixer.music.load(BACKGROUND_MUSIC)
-            pygame.mixer.music.set_volume(MUSIC_VOLUME)
-            pygame.mixer.music.play(-1)
-            print("Music started:", BACKGROUND_MUSIC)
+            if self._current_music_path != music_path:
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(music_path)
+                pygame.mixer.music.set_volume(MUSIC_VOLUME)
+                pygame.mixer.music.play(-1)
+                self._current_music_path = music_path
+                print("Music started:", music_path)
         except Exception as e:
             print("Music error:", e)
+
+    def _apply_music_for_state(self, state: 'GameState'):
+        """Switches music based on current high-level state."""
+        is_menu = state in [GameState.MAIN_MENU, GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME]
+        if is_menu:
+            # Fallback to BACKGROUND_MUSIC if menu track missing
+            music_path = MENU_MUSIC if os.path.exists(MENU_MUSIC) else BACKGROUND_MUSIC
+            self._play_music(music_path)
+        elif state in [GameState.GAMEPLAY, GameState.PAUSE, GameState.GAME_OVER]:
+            # Use gameplay music for gameplay, pause and game over
+            self._play_music(BACKGROUND_MUSIC)
     
     def handle_events(self):
         """Behandelt alle Pygame-Events inklusive Menu-System und FPS-Display Steuerung."""
@@ -321,6 +341,7 @@ class Game:
         print("🎮 Neues Spiel wird gestartet...")
         self.game_state = GameState.GAMEPLAY
         self.level = Level(self.game_surface, main_game=self)
+        self._apply_music_for_state(self.game_state)
         
         # Set save callback for the level
         self.level.set_save_callback(self.save_current_game)
@@ -344,6 +365,7 @@ class Game:
             self.level.set_save_callback(self.save_current_game)
         
         self.game_state = GameState.GAMEPLAY
+        self._apply_music_for_state(self.game_state)
         print("✅ Spiel neu gestartet!")
     
     def load_game(self, slot_number):
@@ -356,6 +378,7 @@ class Game:
             # Create new level first
             self.game_state = GameState.GAMEPLAY
             self.level = Level(self.game_surface, main_game=self)
+            self._apply_music_for_state(self.game_state)
             
             # Set save callback for the level
             self.level.set_save_callback(self.save_current_game)
@@ -464,6 +487,7 @@ class Game:
             self.previous_state = self.game_state
             self.game_state = GameState.PAUSE
             self.menu_system.change_state(GameState.PAUSE)
+            self._apply_music_for_state(self.game_state)
     
     def resume_game(self):
         """Setzt das Spiel fort"""
@@ -475,6 +499,7 @@ class Game:
                 self.level.clear_input_state()
             
             self.game_state = self.previous_state
+            self._apply_music_for_state(self.game_state)
     
     def return_to_menu(self):
         """Kehrt zum Hauptmenü zurück"""
@@ -489,6 +514,7 @@ class Game:
             # Clean up level resources if needed
             self.level = None
         print("✅ Im Hauptmenü")
+        self._apply_music_for_state(self.game_state)
     
     def _print_performance_summary(self):
         """Gibt eine detaillierte Performance-Zusammenfassung aus."""
@@ -551,6 +577,7 @@ class Game:
                 if result == "game_over":
                     print("💀 GAME OVER detected - switching to Game Over menu")
                     self.game_state = GameState.GAME_OVER
+                    self._apply_music_for_state(self.game_state)
                     self.menu_system.show_game_over()
             
             # ✨ Update element mixing system
