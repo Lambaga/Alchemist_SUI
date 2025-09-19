@@ -65,7 +65,12 @@ class ElementMixer:
         self.small_font = pygame.font.Font(None, 16)
         self.label_font = pygame.font.Font(None, 22)
         
-        # Load element icons (or create placeholders)
+        # Load element + combo icons
+        try:
+            from .spell_icons import SpellIcons
+        except ImportError:
+            from ui.spell_icons import SpellIcons  # fallback when run from different cwd
+        self.icons = SpellIcons(base_size=self.combination_size)
         self.element_icons = {}
         self.combination_icons = {}
         self.load_icons()
@@ -92,70 +97,23 @@ class ElementMixer:
     
     def load_icons(self):
         """Load element icons and combination spell icons"""
-        # Load element icons (or create simple placeholders)
+        # Element icons from assets/ui/spells/elements
         for element in self.elements:
-            self.element_icons[element["id"]] = self.create_element_icon(element)
-        
-        # Load combination spell icons
+            elem_id = element["id"]
+            size = self.element_size
+            self.element_icons[elem_id] = self.icons.get_element(elem_id, size)
+
+        # Combination icons from assets/ui/spells/combos
         for combination_key, spell_data in config.spells.MAGIC_COMBINATIONS.items():
-            icon_path = Path(config.paths.ASSETS_DIR) / "ui" / "spells" / Path(spell_data["icon_path"]).name
-            
-            try:
-                if icon_path.exists():
-                    icon = pygame.image.load(str(icon_path)).convert_alpha()
-                    icon = pygame.transform.scale(icon, (self.combination_size, self.combination_size))
-                    self.combination_icons[spell_data["id"]] = icon
-                    print("Loaded combination icon: {}".format(spell_data["id"]))
-                else:
-                    self.combination_icons[spell_data["id"]] = self.create_combination_placeholder(spell_data)
-                    print("Created placeholder for combination: {}".format(spell_data["id"]))
-            except Exception as e:
-                print("Error loading icon for {}: {}".format(spell_data["id"], e))
-                self.combination_icons[spell_data["id"]] = self.create_combination_placeholder(spell_data)
+            a, b = combination_key
+            self.combination_icons[spell_data["id"]] = self.icons.get_combo(a, b, self.combination_size)
     
     def create_element_icon(self, element: Dict) -> pygame.Surface:
-        """Create a simple element icon"""
-        surface = pygame.Surface((self.element_size, self.element_size), pygame.SRCALPHA)
-        surface.fill(element["color"])
-        
-        # Add border
-        pygame.draw.rect(surface, (255, 255, 255), surface.get_rect(), 2)
-        
-        # Add element symbol
-        text = element["name"][0]  # First letter
-        text_surface = self.font.render(text, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(center=(self.element_size // 2, self.element_size // 2))
-        surface.blit(text_surface, text_rect)
-        
-        return surface
+        """Deprecated: kept for compatibility, now uses SpellIcons"""
+        return self.icons.get_element(element["id"], self.element_size)
     
     def create_combination_placeholder(self, spell_data: Dict) -> pygame.Surface:
-        """Create a placeholder for spell combinations"""
-        surface = pygame.Surface((self.combination_size, self.combination_size), pygame.SRCALPHA)
-        
-        # Use a different color based on spell type
-        color_map = {
-            "fireball": (255, 100, 50),
-            "waterbolt": (50, 150, 255), 
-            "shield": (200, 200, 100),
-            "healing": (100, 255, 100),
-            "whirlwind": (255, 150, 50),
-            "invisibility": (150, 100, 255)
-        }
-        
-        color = color_map.get(spell_data["id"], (150, 150, 150))
-        surface.fill(color)
-        
-        # Add border
-        pygame.draw.rect(surface, (255, 255, 255), surface.get_rect(), 2)
-        
-        # Add spell initial
-        text = spell_data["display_name"][0]
-        text_surface = pygame.font.Font(None, 24).render(text, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(center=(self.combination_size // 2, self.combination_size // 2))
-        surface.blit(text_surface, text_rect)
-        
-        return surface
+        return self.icons.get_combo("?", "?", self.combination_size)
     
     def create_cooldown_overlays(self) -> List[pygame.Surface]:
         """Create cooldown overlay surfaces for smooth animation"""
@@ -308,6 +266,45 @@ class ElementMixer:
             print("✨ Cast spell: {} - cooldown started ({:.1f}s)".format(
                 self.current_combination["display_name"], cooldown_duration
             ))
+
+            # Play combo sound if available
+            try:
+                from managers.asset_manager import AssetManager
+                assets = AssetManager()
+                sounds_dir = Path(config.paths.SOUNDS_DIR)
+                # Prefer specific combo file naming; fuzzy match allowed
+                a, b = tuple(self.current_combination.get("elements", []))[:2] if self.current_combination.get("elements") else (None, None)
+                combo_dir = sounds_dir / "spells" / "combos"
+                sound_path = None
+                # Try fireball first if spell_id matches
+                if spell_id == "fireball":
+                    # common names: fireball.wav/mp3/ogg
+                    for ext in (".wav", ".ogg", ".mp3"):
+                        p = combo_dir / ("fireball" + ext)
+                        if p.exists():
+                            sound_path = str(p); break
+                    if sound_path is None:
+                        # fuzzy: any file containing "fireball"
+                        for f in combo_dir.iterdir():
+                            if f.is_file() and "fireball" in f.stem.lower() and f.suffix.lower() in (".wav", ".ogg", ".mp3"):
+                                sound_path = str(f); break
+                # fallback: use element pair keywords
+                if sound_path is None and a and b:
+                    keyparts = [a, b]
+                    for f in combo_dir.glob("*.*"):
+                        if f.suffix.lower() not in (".wav", ".ogg", ".mp3"):
+                            continue
+                        stem = f.stem.lower()
+                        if all(part in stem for part in keyparts):
+                            sound_path = str(f); break
+
+                if sound_path:
+                    snd = assets.load_sound(sound_path)
+                    if snd:
+                        snd.play()
+            except Exception as _e:
+                # Non-fatal; continue silently
+                pass
             
             # Erstelle Spell-Daten bevor Reset
             spell_data = {
@@ -377,38 +374,69 @@ class ElementMixer:
         combination_y = y + self.background_padding
         self.render_combination(screen, combination_x, combination_y)
 
-        # Draw selected elements label under the bar
-        self.render_selected_label(screen, x, y)
+        # Draw selected elements icons row under the bar
+        self.render_selected_icons(screen, x, y)
 
-    def get_selected_elements_text(self) -> str:
-        """Return human-readable text of currently selected elements"""
-        if not self.selected_elements:
-            return "Ausgewählt: —"
-        names = [self.element_name_map.get(eid, eid) for eid in self.selected_elements]
-        return "Ausgewählt: " + " + ".join(names)
-
-    def render_selected_label(self, screen: pygame.Surface, x: int, y: int):
-        """Render a compact label below the element bar indicating selection"""
-        text = self.get_selected_elements_text()
-        text_surface = self.label_font.render(text, True, (255, 255, 255))
-
-        # Center the label under the mixer background
+    def render_selected_icons(self, screen: pygame.Surface, x: int, y: int):
+        """Render the selected elements as icons with + and = visuals."""
         bg_width = self.background_surface.get_width()
         label_y = y + self.background_surface.get_height() + self.label_margin_top
-        label_x = x + (bg_width - text_surface.get_width()) // 2
 
-        # Background pill for readability
-        pill_surf = pygame.Surface(
-            (text_surface.get_width() + 2 * self.label_padding,
-             text_surface.get_height() + 2 * self.label_padding),
-            pygame.SRCALPHA,
-        )
+        size = int(self.element_size * 0.9)
+        spacing = 8
+        parts: List[pygame.Surface] = []
+
+        def text_chip(txt: str) -> pygame.Surface:
+            surf = pygame.Surface((size // 2, size // 2), pygame.SRCALPHA)
+            font = pygame.font.Font(None, max(18, size // 3))
+            t = font.render(txt, True, (255, 255, 255))
+            surf.blit(t, t.get_rect(center=surf.get_rect().center))
+            return surf
+
+        if len(self.selected_elements) >= 1:
+            parts.append(self.icons.get_element(self.selected_elements[0], size))
+        if len(self.selected_elements) >= 2:
+            parts.append(text_chip("+"))
+            parts.append(self.icons.get_element(self.selected_elements[1], size))
+
+        # If a valid combination exists, show = and result icon
+        if len(self.selected_elements) == 2:
+            key = tuple(self.selected_elements)
+            if key in config.spells.MAGIC_COMBINATIONS:
+                parts.append(text_chip("="))
+                a, b = key
+                parts.append(self.icons.get_combo(a, b, size))
+
+        if not parts:
+            # Draw neutral label pill "Ausgewählt: —"
+            text_surface = self.label_font.render("Ausgewählt: —", True, (255, 255, 255))
+            pill = pygame.Surface((text_surface.get_width() + 2 * self.label_padding,
+                                   text_surface.get_height() + 2 * self.label_padding), pygame.SRCALPHA)
+            bg_color = (*config.colors.UI_BACKGROUND, self.label_bg_alpha)
+            pill.fill(bg_color)
+            pygame.draw.rect(pill, bg_color, pill.get_rect(), border_radius=8)
+            label_x = x + (bg_width - pill.get_width()) // 2
+            screen.blit(pill, (label_x, label_y))
+            screen.blit(text_surface, (label_x + self.label_padding, label_y + self.label_padding))
+            return
+
+        total_w = sum(p.get_width() for p in parts) + spacing * (len(parts) - 1)
+        total_h = max(p.get_height() for p in parts)
+        label_x = x + (bg_width - total_w) // 2
+
+        # Background pill
+        pill = pygame.Surface((total_w + 2 * self.label_padding, total_h + 2 * self.label_padding), pygame.SRCALPHA)
         bg_color = (*config.colors.UI_BACKGROUND, self.label_bg_alpha)
-        pill_surf.fill(bg_color)
-        pygame.draw.rect(pill_surf, bg_color, pill_surf.get_rect(), border_radius=8)
+        pill.fill(bg_color)
+        pygame.draw.rect(pill, bg_color, pill.get_rect(), border_radius=8)
+        screen.blit(pill, (label_x - self.label_padding, label_y - self.label_padding))
 
-        screen.blit(pill_surf, (label_x - self.label_padding, label_y - self.label_padding))
-        screen.blit(text_surface, (label_x, label_y))
+        cx = label_x
+        for idx, part in enumerate(parts):
+            screen.blit(part, (cx, label_y))
+            cx += part.get_width()
+            if idx < len(parts) - 1:
+                cx += spacing
     
     def render_element(self, screen: pygame.Surface, index: int, element: Dict, x: int, y: int):
         """Render a single element"""

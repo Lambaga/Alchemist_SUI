@@ -82,6 +82,12 @@ class SpellBar:
     def load_spell_icons(self):
         """Load spell icons or create placeholders if not found"""
         assets_dir = Path(config.paths.ASSETS_DIR) / "ui" / "spells"
+        # Prepare optional fallback icon loader
+        try:
+            from .spell_icons import SpellIcons
+            icons = SpellIcons(base_size=self.slot_size)
+        except Exception:
+            icons = None
         
         for i, spell in enumerate(self.spells):
             icon_path = assets_dir / Path(spell["icon_path"]).name
@@ -92,6 +98,17 @@ class SpellBar:
                     icon = pygame.transform.scale(icon, (self.slot_size, self.slot_size))
                     self.spell_icons[spell["id"]] = icon
                     print("Loaded icon for '{}': {}".format(spell["id"], icon_path.name))
+                elif icons is not None:
+                    # Try to derive from element/combos assets by combination key if present
+                    combo = spell.get("elements") or spell.get("combo")
+                    if isinstance(combo, (list, tuple)) and len(combo) == 2:
+                        a, b = combo
+                        surf = icons.get_combo(a, b, self.slot_size)
+                    else:
+                        # fall back to display/name as element icon
+                        surf = icons.get_element(spell.get("id", "?"), self.slot_size)
+                    self.spell_icons[spell["id"]] = surf
+                    print("Fallback icon for '{}' from assets/ui/spells".format(spell["id"]))
                 else:
                     # Create a simple placeholder
                     self.spell_icons[spell["id"]] = self.create_placeholder_icon(i)
