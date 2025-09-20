@@ -27,6 +27,7 @@ from menu_system import MenuSystem, GameState
 from save_system import save_manager
 from hotkey_display import HotkeyDisplay
 from input_system import init_universal_input
+from managers.settings_manager import SettingsManager
 
 # Action System Integration (aktiviert, wenn verfügbar)
 try:
@@ -186,6 +187,8 @@ class Game:
         
         # Start with menu music on initial MAIN_MENU
         self._current_music_path = None
+        self.settings = SettingsManager()
+        self._last_nonzero_music_vol = float(self.settings.music_volume) or 0.7
         self._apply_music_for_state(GameState.MAIN_MENU)
         
         print("Game started with Menu System!")
@@ -205,12 +208,53 @@ class Game:
             if self._current_music_path != music_path:
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load(music_path)
-                pygame.mixer.music.set_volume(MUSIC_VOLUME)
+                vol = 0.7
+                try:
+                    base = float(self.settings.music_volume)
+                except Exception:
+                    base = MUSIC_VOLUME
+                # Apply master volume/mute
+                try:
+                    from managers.settings_manager import SettingsManager
+                    sm = SettingsManager()
+                    if sm.master_mute:
+                        vol = 0.0
+                    else:
+                        vol = max(0.0, min(1.0, base * float(sm.master_volume)))
+                except Exception:
+                    vol = base
+                pygame.mixer.music.set_volume(vol)
                 pygame.mixer.music.play(-1)
                 self._current_music_path = music_path
                 print("Music started:", music_path)
+                try:
+                    print(f"🎵 Music volume: {pygame.mixer.music.get_volume():.2f}")
+                except Exception:
+                    pass
         except Exception as e:
             print("Music error:", e)
+
+    def apply_current_music_volume(self):
+        """Reapply the current music volume from settings without restarting track."""
+        try:
+            base = float(self.settings.music_volume)
+            # Apply master volume/mute
+            try:
+                from managers.settings_manager import SettingsManager
+                sm = SettingsManager()
+                if sm.master_mute:
+                    vol = 0.0
+                else:
+                    vol = max(0.0, min(1.0, base * float(sm.master_volume)))
+            except Exception:
+                vol = base
+            pygame.mixer.music.set_volume(vol)
+            try:
+                print(f"🎵 Music volume applied: {pygame.mixer.music.get_volume():.2f}")
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _apply_music_for_state(self, state: 'GameState'):
         """Switches music based on current high-level state."""
@@ -228,10 +272,57 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            # Apply music volume on settings change
+            if event.type == pygame.USEREVENT and getattr(event, 'name', '') == 'APPLY_MUSIC_VOLUME':
+                self.apply_current_music_volume()
+            elif event.type == pygame.USEREVENT and getattr(event, 'name', '') == 'APPLY_DIFFICULTY':
+                try:
+                    if self.level and getattr(self.level, 'enemy_manager', None):
+                        self.level.enemy_manager.apply_difficulty_to_all()
+                        print("⚔️ Difficulty reapplied to all enemies")
+                except Exception as _e:
+                    print(f"⚠️ Failed to apply difficulty: {_e}")
             
             # Pass all keyboard events to the current state
             if event.type in [pygame.KEYDOWN, pygame.KEYUP]:
                 if event.type == pygame.KEYDOWN:
+                    # Global runtime music controls
+                    if event.key == pygame.K_PAGEDOWN:
+                        new_vol = max(0.0, min(1.0, float(self.settings.music_volume) - 0.05))
+                        self.settings.music_volume = new_vol
+                        try:
+                            from managers.settings_manager import SettingsManager
+                            SettingsManager().save()
+                        except Exception:
+                            pass
+                        if new_vol > 0:
+                            self._last_nonzero_music_vol = new_vol
+                        self.apply_current_music_volume()
+                    elif event.key == pygame.K_PAGEUP:
+                        new_vol = max(0.0, min(1.0, float(self.settings.music_volume) + 0.05))
+                        self.settings.music_volume = new_vol
+                        try:
+                            from managers.settings_manager import SettingsManager
+                            SettingsManager().save()
+                        except Exception:
+                            pass
+                        if new_vol > 0:
+                            self._last_nonzero_music_vol = new_vol
+                        self.apply_current_music_volume()
+                    elif event.key == pygame.K_m:
+                        # Toggle mute/unmute
+                        cur = float(self.settings.music_volume)
+                        if cur > 0.0:
+                            self._last_nonzero_music_vol = cur
+                            self.settings.music_volume = 0.0
+                        else:
+                            self.settings.music_volume = max(0.05, self._last_nonzero_music_vol)
+                        try:
+                            from managers.settings_manager import SettingsManager
+                            SettingsManager().save()
+                        except Exception:
+                            pass
+                        self.apply_current_music_volume()
                     # ESC zum Beenden (nur im Gameplay)
                     if event.key == pygame.K_ESCAPE:
                         if self.game_state == GameState.GAMEPLAY:
@@ -403,13 +494,19 @@ class Game:
         return False
     
     def quick_save(self):
-        """Schnelles Speichern in Slot 1"""
-        if self.save_current_game(1):
-            print("💾 Spiel gespeichert!")
-            self.show_message("💾 Schnell gespeichert (Slot 1)!")
+        """Schnelles Speichern: wählt automatisch einen freien Slot (1-5) oder überschreibt den ältesten."""
+        if self.level and self.level.game_logic:
+            data = save_manager.export_save_data(self.level.game_logic)
+            used_slot = save_manager.save_auto(data)
+            if used_slot:
+                print(f"💾 Schnell gespeichert in Slot {used_slot}!")
+                self.show_message(f"💾 Schnell gespeichert (Slot {used_slot})!")
+            else:
+                print("❌ Fehler beim Speichern!")
+                self.show_message("❌ Speichern fehlgeschlagen!")
         else:
-            print("❌ Fehler beim Speichern!")
-            self.show_message("❌ Speichern fehlgeschlagen!")
+            print("⚠️ Kein aktives Spiel zum Speichern!")
+            self.show_message("⚠️ Kein aktives Spiel!")
     
     def save_to_slot(self, slot_number: int):
         """Speichert das Spiel in einen bestimmten Slot"""
@@ -425,8 +522,10 @@ class Game:
     def save_from_menu(self):
         """Speichert das Spiel vom Hauptmenü aus"""
         if self.level and self.level.game_logic:
-            if self.save_current_game(1):  # Save to slot 1
-                print("💾 Spiel vom Hauptmenü gespeichert!")
+            data = save_manager.export_save_data(self.level.game_logic)
+            used_slot = save_manager.save_auto(data)
+            if used_slot:
+                print(f"💾 Spiel vom Hauptmenü gespeichert (Slot {used_slot})!")
                 self.menu_system.show_save_confirmation()
                 return True
             else:

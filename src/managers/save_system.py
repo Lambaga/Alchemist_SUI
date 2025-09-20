@@ -13,6 +13,8 @@ from settings import ROOT_DIR
 class SaveGameManager:
     """Manages game save/load functionality"""
     
+    MAX_SLOTS = 5  # Slots 1..5
+    
     def __init__(self):
         self.save_dir = os.path.join(ROOT_DIR, "saves")
         self.ensure_save_directory()
@@ -65,11 +67,11 @@ class SaveGameManager:
             return None
     
     def get_save_slots_info(self) -> List[Dict[str, str]]:
-        """Get information about all save slots"""
+        """Get information about all save slots (1..MAX_SLOTS)."""
         slots_info = []
         
-        # Include auto-save slot (slot 0) and regular slots (1-5)
-        for slot_number in range(0, 6):  # 0 for auto-save, 1-5 for manual saves
+        # Regular slots (1..MAX_SLOTS)
+        for slot_number in range(1, self.MAX_SLOTS + 1):
             save_file = os.path.join(self.save_dir, f"save_slot_{slot_number}.json")
             
             if os.path.exists(save_file):
@@ -87,11 +89,7 @@ class SaveGameManager:
                     
                     game_data = save_data.get("game_data", {})
                     level_info = game_data.get("level_info", "Level 1")
-                    
-                    if slot_number == 0:
-                        player_name = "Auto-Save"
-                    else:
-                        player_name = game_data.get("player_name", f"Spielstand {slot_number}")
+                    player_name = game_data.get("player_name", f"Spielstand {slot_number}")
                     
                     slots_info.append({
                         "slot": slot_number,
@@ -103,7 +101,7 @@ class SaveGameManager:
                     
                 except Exception as e:
                     print(f"⚠️ Error reading save slot {slot_number}: {e}")
-                    slot_name = "Auto-Save (Beschädigt)" if slot_number == 0 else f"Beschädigter Spielstand {slot_number}"
+                    slot_name = f"Beschädigter Spielstand {slot_number}"
                     slots_info.append({
                         "slot": slot_number,
                         "name": slot_name,
@@ -112,10 +110,7 @@ class SaveGameManager:
                         "exists": True
                     })
             else:
-                if slot_number == 0:
-                    slot_name = "Auto-Save (Leer)"
-                else:
-                    slot_name = f"Leerer Slot {slot_number}"
+                slot_name = f"Leerer Slot {slot_number}"
                 
                 slots_info.append({
                     "slot": slot_number,
@@ -126,6 +121,60 @@ class SaveGameManager:
                 })
         
         return slots_info
+
+    def _load_slot_timestamp(self, slot_number: int) -> float:
+        """Return a sortable timestamp for the given slot. Fallback to file mtime."""
+        save_file = os.path.join(self.save_dir, f"save_slot_{slot_number}.json")
+        if not os.path.exists(save_file):
+            return 0.0
+        try:
+            with open(save_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            ts = data.get("timestamp")
+            if ts:
+                return datetime.fromisoformat(ts).timestamp()
+        except Exception:
+            pass
+        try:
+            return os.path.getmtime(save_file)
+        except Exception:
+            return 0.0
+
+    def get_next_free_slot(self) -> Optional[int]:
+        """Return first empty slot number in 1..MAX_SLOTS, else None."""
+        for slot in range(1, self.MAX_SLOTS + 1):
+            save_file = os.path.join(self.save_dir, f"save_slot_{slot}.json")
+            if not os.path.exists(save_file):
+                return slot
+        return None
+
+    def get_oldest_slot(self) -> Optional[int]:
+        """Return the slot number with the oldest timestamp in 1..MAX_SLOTS, or None if none exist."""
+        timestamps = []
+        for slot in range(1, self.MAX_SLOTS + 1):
+            save_file = os.path.join(self.save_dir, f"save_slot_{slot}.json")
+            if os.path.exists(save_file):
+                timestamps.append((self._load_slot_timestamp(slot), slot))
+        if not timestamps:
+            return None
+        timestamps.sort(key=lambda x: x[0])
+        return timestamps[0][1]
+
+    def save_auto(self, game_data: Dict[str, Any]) -> Optional[int]:
+        """Save to first free slot 1..MAX_SLOTS, otherwise overwrite the oldest. Returns used slot or None on failure."""
+        try:
+            slot = self.get_next_free_slot()
+            if slot is None:
+                slot = self.get_oldest_slot()
+            if slot is None:
+                # No slots available? Should not happen, but guard.
+                print("❌ No available save slots")
+                return None
+            ok = self.save_game(slot, game_data)
+            return slot if ok else None
+        except Exception as e:
+            print(f"❌ Error in save_auto: {e}")
+            return None
     
     def delete_save(self, slot_number: int) -> bool:
         """Delete save from specified slot"""

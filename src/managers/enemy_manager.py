@@ -6,6 +6,7 @@ from demon import Demon
 from fireworm import FireWorm
 import os
 from settings import ASSETS_DIR
+from managers.settings_manager import SettingsManager
 
 class EnemyManager:
     """Manages all enemies on the map"""
@@ -28,6 +29,11 @@ class EnemyManager:
         if hasattr(self, 'obstacle_sprites') and self.obstacle_sprites:
             if hasattr(demon, 'set_obstacle_sprites'):
                 demon.set_obstacle_sprites(self.obstacle_sprites)
+        # Apply difficulty scaling
+        try:
+            self._apply_difficulty(demon)
+        except Exception:
+            pass
         self.enemies.add(demon)
         return demon
     
@@ -38,6 +44,11 @@ class EnemyManager:
         # Set obstacle sprites if available
         if hasattr(self, 'obstacle_sprites') and self.obstacle_sprites:
             fireworm.set_obstacle_sprites(self.obstacle_sprites)
+        # Apply difficulty scaling
+        try:
+            self._apply_difficulty(fireworm)
+        except Exception:
+            pass
         self.enemies.add(fireworm)
         return fireworm
         
@@ -98,6 +109,51 @@ class EnemyManager:
                 print(f"❌ XML Fallback failed: {e}")
 
         print(f"🎮 ENDE: {enemy_count} Gegner gespawnt (aktuell: {len(self.enemies)})")
+
+    # --- Difficulty management ---
+    def _get_difficulty_multiplier(self) -> float:
+        """Return HP scaling based on current difficulty setting."""
+        try:
+            diff = SettingsManager().get('difficulty', 'Normal')
+        except Exception:
+            diff = 'Normal'
+        mapping = {
+            'Leicht': 0.5,
+            'Normal': 1.0,
+            'Schwer': 2.0,
+        }
+        return mapping.get(diff, 1.0)
+
+    def _apply_difficulty(self, enemy) -> None:
+        """Apply HP scaling to a single enemy, preserving current HP percentage.
+
+        Stores `base_max_health` on first application to avoid compounding.
+        """
+        mult = self._get_difficulty_multiplier()
+        # Remember base (normal) max health once
+        if not hasattr(enemy, 'base_max_health') or enemy.base_max_health is None:
+            try:
+                enemy.base_max_health = int(getattr(enemy, 'max_health', 100))
+            except Exception:
+                enemy.base_max_health = 100
+        old_max = int(getattr(enemy, 'max_health', enemy.base_max_health) or enemy.base_max_health)
+        base_max = int(getattr(enemy, 'base_max_health', old_max) or old_max)
+        new_max = max(1, int(round(base_max * mult)))
+        # Preserve health percentage relative to previous max
+        old_den = max(1, old_max)
+        cur = int(getattr(enemy, 'current_health', new_max) or new_max)
+        pct = max(0.0, min(1.0, float(cur) / float(old_den)))
+        enemy.max_health = new_max
+        enemy.current_health = max(1, min(new_max, int(round(new_max * pct))))
+
+    def apply_difficulty_to_all(self) -> None:
+        """Reapply difficulty scaling to all existing enemies."""
+        mult = self._get_difficulty_multiplier()
+        for enemy in list(self.enemies):
+            try:
+                self._apply_difficulty(enemy)
+            except Exception:
+                continue
 
     def update(self, dt, player=None):
         """Update all enemies with player reference for AI and collision detection"""

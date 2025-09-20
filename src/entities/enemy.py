@@ -84,6 +84,8 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         # Gesundheitssystem
         self.max_health: int = 100
         self.current_health: int = self.max_health
+        # Baseline HP for difficulty scaling (filled when EnemyManager applies scaling)
+        self.base_max_health: Optional[int] = None
         self.alive_status: bool = True  # Renamed from is_alive to avoid conflict
         
         # Animations-Frames - werden von Subklassen befüllt

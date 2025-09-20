@@ -301,6 +301,16 @@ class ElementMixer:
                 if sound_path:
                     snd = assets.load_sound(sound_path)
                     if snd:
+                        try:
+                            from managers.settings_manager import SettingsManager
+                            sm = SettingsManager()
+                            if sm.master_mute:
+                                vol = 0.0
+                            else:
+                                vol = max(0.0, min(1.0, float(sm.sound_volume) * float(sm.master_volume)))
+                            snd.set_volume(vol)
+                        except Exception:
+                            pass
                         snd.play()
             except Exception as _e:
                 # Non-fatal; continue silently

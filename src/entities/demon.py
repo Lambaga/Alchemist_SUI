@@ -21,6 +21,39 @@ class Demon(Enemy):
         # Call parent constructor
         super().__init__(asset_path, pos_x, pos_y, scale_factor)
         
+        # Preload bite sound for melee attack (safe if mixer unavailable)
+        self._snd_bite = None
+        try:
+            bite_path = None
+            try:
+                from settings import config as _cfg  # prefer canonical path from config
+                base_sounds = getattr(_cfg.paths, 'SOUNDS_DIR', None)
+            except Exception:
+                base_sounds = None
+            if not base_sounds:
+                # Fallback: derive from repo layout ../../.. -> assets/sounds
+                here = os.path.dirname(__file__)
+                base_sounds = os.path.abspath(os.path.join(here, '..', '..', '..', 'assets', 'sounds'))
+
+            candidates = [
+                os.path.join(base_sounds, 'enemies', 'monster-bite-44538.mp3'),
+                os.path.join(base_sounds, 'enemies', 'monster-bite-44538.ogg'),
+                os.path.join(base_sounds, 'enemies', 'monster-bite-44538.wav'),
+            ]
+            for p in candidates:
+                if os.path.exists(p):
+                    bite_path = p
+                    break
+            if bite_path:
+                self._snd_bite = self.asset_manager.load_sound(bite_path)
+                try:
+                    if self._snd_bite:
+                        self._snd_bite.set_volume(0.8)
+                except Exception:
+                    pass
+        except Exception:
+            self._snd_bite = None
+
         # Demon specific properties (override parent values)
         self.max_health = 200  # Erhöhte Health
         self.current_health = self.max_health  # Vollständige Health beim Start
@@ -144,6 +177,22 @@ class Demon(Enemy):
                     if self.can_attack():
                         now = pygame.time.get_ticks()
                         if self.start_attack(now):
+                            # Play bite sound on successful attack start
+                            try:
+                                if getattr(self, "_snd_bite", None):
+                                    try:
+                                        from managers.settings_manager import SettingsManager
+                                        _sm = SettingsManager()
+                                        if _sm.master_mute:
+                                            effective = 0.0
+                                        else:
+                                            effective = max(0.0, min(1.0, float(_sm.sound_volume) * float(_sm.master_volume)))
+                                        self._snd_bite.set_volume(effective)
+                                    except Exception:
+                                        pass
+                                    self._snd_bite.play()
+                            except Exception:
+                                pass
                             # Deal physical damage to player immediately (simple melee)
                             try:
                                 dmg = int(getattr(self, 'attack_damage', 25))

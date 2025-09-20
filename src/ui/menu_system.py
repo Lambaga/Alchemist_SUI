@@ -10,7 +10,15 @@ import os
 from typing import Optional, List, Dict, Any
 from enum import Enum
 from settings import *
+from managers.settings_manager import SettingsManager
 from save_system import save_manager
+
+# Optional Action System integration (for hardware/buttons)
+try:
+    from systems.action_system import get_action_system, ActionType
+    _ACTION_SYSTEM_AVAILABLE = True
+except Exception:
+    _ACTION_SYSTEM_AVAILABLE = False
 
 class GameState(Enum):
     """Game state enumeration"""
@@ -208,7 +216,7 @@ class BaseMenuState:
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 self.selected_index = (self.selected_index + 1) % len(self.buttons)
             # Confirm: Space, C, or Enter
-            elif event.key in (pygame.K_SPACE, pygame.K_c, pygame.K_RETURN):
+            elif event.key in (pygame.K_SPACE, pygame.K_c, pygame.K_RETURN, pygame.K_i):
                 return self.buttons[self.selected_index].action
         elif event.type == pygame.JOYAXISMOTION:
             # Basic joystick navigation on vertical axis (usually axis 1)
@@ -355,17 +363,31 @@ class SettingsMenuState(BaseMenuState):
     
     def __init__(self, screen: pygame.Surface):
         super().__init__(screen)
+        self._settings_mgr = SettingsManager()
         self.settings = self.load_settings()
+        # Keys shown as rows (order matters). Last virtual row is "Back".
+        self._setting_keys = [
+            "master_volume",
+            "music_volume",
+            "sound_volume",
+            "fullscreen",
+            "show_fps",
+            "difficulty",
+        ]
+        self.selected_row = 0
+        self._rows_count = len(self._setting_keys) + 1
         self.setup_buttons()
     
     def load_settings(self) -> Dict[str, Any]:
         """Load current settings"""
         return {
-            "music_volume": 0.7,
-            "sound_volume": 0.8,
+            "master_volume": float(self._settings_mgr.master_volume),
+            "master_mute": bool(self._settings_mgr.master_mute),
+            "music_volume": float(self._settings_mgr.music_volume),
+            "sound_volume": float(self._settings_mgr.sound_volume),
             "fullscreen": False,
             "show_fps": True,
-            "difficulty": "Normal"
+            "difficulty": str(self._settings_mgr.get('difficulty', 'Normal'))
         }
     
     def setup_buttons(self):
@@ -373,7 +395,7 @@ class SettingsMenuState(BaseMenuState):
         screen_width = self.screen.get_width()
         screen_height = self.screen.get_height()
         
-        # Back button
+        # Back button (clickable with mouse); keyboard/gamepad uses virtual back row
         back_button = MenuButton(50, screen_height - 80, 180, 50, 
                                "← Zurück", self.button_font, GameState.MAIN_MENU)
         self.buttons.append(back_button)
@@ -388,19 +410,231 @@ class SettingsMenuState(BaseMenuState):
         title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 100))
         self.screen.blit(title_surface, title_rect)
         
-        # Settings options (placeholder for now)
-        y_offset = 200
-        settings_text = [
-            f"🎵 Musik Lautstärke: {int(self.settings['music_volume'] * 100)}%",
-            f"🔊 Sound Lautstärke: {int(self.settings['sound_volume'] * 100)}%",
-            f"🖥️ Vollbild: {'Ein' if self.settings['fullscreen'] else 'Aus'}",
-            f"📊 FPS anzeigen: {'Ein' if self.settings['show_fps'] else 'Aus'}",
-            f"⚔️ Schwierigkeit: {self.settings['difficulty']}"
-        ]
+        # Settings rows with icons, values and sliders for clarity
+        # Build rows from keys
+        label_map = {
+            "master_volume": ("🕹️ Master Lautstärke", "volume"),
+            "music_volume": ("🎵 Musik Lautstärke", "volume"),
+            "sound_volume": ("🔊 Sound Lautstärke", "volume"),
+            "fullscreen": ("🖥️ Vollbild", "bool"),
+            "show_fps": ("📊 FPS anzeigen", "bool"),
+            "difficulty": ("⚔️ Schwierigkeit", "choice"),
+        }
+        rows = [(k, label_map[k][0], label_map[k][1]) for k in self._setting_keys]
+        y_base = 200
+        line_h = 46
+        left_x = 100
+        value_x = self.screen.get_width() - 160
+        slider_left = 420
+        slider_right = self.screen.get_width() - 220
+        slider_w = max(120, slider_right - slider_left)
         
-        for i, text in enumerate(settings_text):
-            text_surface = self.text_font.render(text, True, (200, 200, 200))
-            self.screen.blit(text_surface, (100, y_offset + i * 40))
+        for i, (key, label, kind) in enumerate(rows):
+            y = y_base + i * line_h
+            # Active row highlight
+            if i == self.selected_row:
+                rect = pygame.Rect(left_x - 20, y - 8, self.screen.get_width() - (left_x - 20) - 80, line_h)
+                pygame.draw.rect(self.screen, (255, 215, 0), rect, 2)
+            # Label
+            label_surface = self.text_font.render(label + ":", True, (220, 220, 220))
+            self.screen.blit(label_surface, (left_x, y))
+            # Value + slider
+            if kind == "volume":
+                pct = int(self.settings[key] * 100)
+                # Slider background
+                pygame.draw.rect(self.screen, (60, 60, 90), (slider_left, y + 8, slider_w, 10))
+                # Slider fill
+                fill_w = int(slider_w * max(0.0, min(1.0, self.settings[key])))
+                pygame.draw.rect(self.screen, (120, 200, 255) if key != "master_volume" else (255, 215, 0), (slider_left, y + 8, fill_w, 10))
+                # Percentage text
+                val_surface = self.text_font.render(f"{pct}%" + (" (Mute)" if key == "master_volume" and self.settings.get("master_mute") else ""), True, (200, 200, 200))
+                val_rect = val_surface.get_rect()
+                val_rect.right = self.screen.get_width() - 100
+                val_rect.top = y - 4
+                self.screen.blit(val_surface, val_rect)
+            elif kind == "bool":
+                v = self.settings[key]
+                val_surface = self.text_font.render("Ein" if v else "Aus", True, (200, 200, 200))
+                val_rect = val_surface.get_rect()
+                val_rect.right = self.screen.get_width() - 100
+                val_rect.top = y - 4
+                self.screen.blit(val_surface, val_rect)
+            elif kind == "choice":
+                v = self.settings[key]
+                val_surface = self.text_font.render(str(v), True, (200, 200, 200))
+                val_rect = val_surface.get_rect()
+                val_rect.right = self.screen.get_width() - 100
+                val_rect.top = y - 4
+                self.screen.blit(val_surface, val_rect)
+
+        # Draw virtual 'Back' row and highlight if selected
+        back_label = "← Zurück"
+        back_index = len(rows)
+        back_y = y_base + back_index * line_h + 14
+        if self.selected_row == back_index:
+            rect = pygame.Rect(left_x - 20, back_y - 8, 260, line_h)
+            pygame.draw.rect(self.screen, (255, 215, 0), rect, 2)
+        back_surface = self.text_font.render(back_label, True, (220, 220, 220))
+        self.screen.blit(back_surface, (left_x, back_y))
+
+        # Key hints at the bottom
+        hints = "↑/↓: Auswahl  •  ←/→: Wert ändern  •  Enter/I: Bestätigen  •  N: Master Mute  •  ESC: Fokus auf Zurück"
+        hint_surface = pygame.font.Font(None, 24).render(hints, True, (140, 140, 140))
+        hint_rect = hint_surface.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 60))
+        self.screen.blit(hint_surface, hint_rect)
+
+    def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
+        """Extend to adjust settings with keyboard arrows and save."""
+        result = super().handle_event(event)
+        if event is None:
+            return result
+        if event.type == pygame.KEYDOWN:
+            # Navigate rows
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected_row = (self.selected_row - 1) % self._rows_count
+                return None
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected_row = (self.selected_row + 1) % self._rows_count
+                return None
+            # ESC moves focus to Back first; if already on Back, go to Main Menu
+            if event.key == pygame.K_ESCAPE:
+                back_index = len(self._setting_keys)
+                if self.selected_row != back_index:
+                    self.selected_row = back_index
+                    return None
+                return GameState.MAIN_MENU
+            # Toggle master mute
+            if event.key == pygame.K_n:
+                muted = not bool(self.settings.get('master_mute', False))
+                self.settings['master_mute'] = muted
+                self._settings_mgr.master_mute = muted
+                self._settings_mgr.save()
+                try:
+                    pygame.event.post(pygame.event.Event(pygame.USEREVENT, {'name': 'APPLY_MUSIC_VOLUME'}))
+                except Exception:
+                    pass
+            # Adjust master volume Q/E (legacy)
+            if event.key in (pygame.K_q, pygame.K_e):
+                step = -0.05 if event.key == pygame.K_q else 0.05
+                new_vol = max(0.0, min(1.0, self.settings['master_volume'] + step))
+                self.settings['master_volume'] = new_vol
+                self._settings_mgr.master_volume = new_vol
+                self._settings_mgr.save()
+                try:
+                    pygame.event.post(pygame.event.Event(pygame.USEREVENT, {'name': 'APPLY_MUSIC_VOLUME'}))
+                except Exception:
+                    pass
+            # Row-context adjustments with Left/Right (and A/D as alt) — only when not on Back
+            if event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d):
+                is_left = event.key in (pygame.K_LEFT, pygame.K_a)
+                step = -0.05 if is_left else 0.05
+                if self.selected_row >= len(self._setting_keys):
+                    return None
+                key_order = self._setting_keys
+                active_key = key_order[self.selected_row]
+                kind = "volume" if active_key.endswith("volume") else ("bool" if active_key in ("fullscreen", "show_fps") else "choice")
+                if kind == "volume":
+                    new_val = max(0.0, min(1.0, self.settings[active_key] + step))
+                    self.settings[active_key] = new_val
+                    setattr(self._settings_mgr, active_key, new_val)
+                    self._settings_mgr.save()
+                    # Re-apply music volume if master or music changed
+                    if active_key in ("master_volume", "music_volume"):
+                        try:
+                            pygame.event.post(pygame.event.Event(pygame.USEREVENT, {'name': 'APPLY_MUSIC_VOLUME'}))
+                        except Exception:
+                            pass
+                    return None
+                elif kind == "bool":
+                    # Left/Right toggles
+                    new_val = not bool(self.settings[active_key])
+                    self.settings[active_key] = new_val
+                    # Persist if supported by settings manager
+                    try:
+                        setattr(self._settings_mgr, active_key, new_val)
+                        self._settings_mgr.save()
+                    except Exception:
+                        pass
+                    return None
+                elif kind == "choice":
+                    choices = ["Leicht", "Normal", "Schwer"]
+                    cur = self.settings.get(active_key, "Normal")
+                    idx = choices.index(cur) if cur in choices else 1
+                    idx = (idx - 1) % len(choices) if is_left else (idx + 1) % len(choices)
+                    new_val = choices[idx]
+                    self.settings[active_key] = new_val
+                    try:
+                        self._settings_mgr.set('difficulty', new_val)
+                        self._settings_mgr.save()
+                        pygame.event.post(pygame.event.Event(pygame.USEREVENT, {'name': 'APPLY_DIFFICULTY'}))
+                    except Exception:
+                        pass
+                    return None
+            # Enter/I toggles for bool/choice rows; when on Back, acts as confirm back
+            if event.key in (pygame.K_RETURN, pygame.K_i):
+                if self.selected_row >= len(self._setting_keys):
+                    return GameState.MAIN_MENU
+                key_order = self._setting_keys
+                active_key = key_order[self.selected_row]
+                if active_key in ("fullscreen", "show_fps"):
+                    self.settings[active_key] = not bool(self.settings[active_key])
+                    try:
+                        setattr(self._settings_mgr, active_key, self.settings[active_key])
+                        self._settings_mgr.save()
+                    except Exception:
+                        pass
+                    return None
+                elif active_key == "difficulty":
+                    # cycle forward
+                    choices = ["Leicht", "Normal", "Schwer"]
+                    cur = self.settings.get(active_key, "Normal")
+                    idx = (choices.index(cur) + 1) % len(choices) if cur in choices else 1
+                    new_val = choices[idx]
+                    self.settings[active_key] = new_val
+                    try:
+                        self._settings_mgr.set('difficulty', new_val)
+                        self._settings_mgr.save()
+                        pygame.event.post(pygame.event.Event(pygame.USEREVENT, {'name': 'APPLY_DIFFICULTY'}))
+                    except Exception:
+                        pass
+                    return None
+        elif event.type == pygame.JOYAXISMOTION:
+            now = pygame.time.get_ticks() / 1000.0
+            if now - self._last_axis_move_time >= self._axis_move_cooldown:
+                if event.axis == 1:  # vertical select
+                    if event.value <= -0.6:
+                        self.selected_row = (self.selected_row - 1) % self._rows_count
+                        self._last_axis_move_time = now
+                    elif event.value >= 0.6:
+                        self.selected_row = (self.selected_row + 1) % self._rows_count
+                        self._last_axis_move_time = now
+                elif event.axis == 0:  # horizontal adjust
+                    if self.selected_row >= len(self._setting_keys):
+                        self._last_axis_move_time = now
+                        return result
+                    key_order = self._setting_keys
+                    active_key = key_order[self.selected_row]
+                    is_left = event.value <= -0.6
+                    step = -0.05 if is_left else 0.05
+                    if active_key.endswith("volume"):
+                        new_val = max(0.0, min(1.0, self.settings[active_key] + step))
+                        self.settings[active_key] = new_val
+                        try:
+                            setattr(self._settings_mgr, active_key, new_val)
+                            self._settings_mgr.save()
+                        except Exception:
+                            pass
+                        if active_key in ("master_volume", "music_volume"):
+                            try:
+                                pygame.event.post(pygame.event.Event(pygame.USEREVENT, {'name': 'APPLY_MUSIC_VOLUME'}))
+                            except Exception:
+                                pass
+                        self._last_axis_move_time = now
+                    elif active_key in ("fullscreen", "show_fps", "difficulty"):
+                        # treat as toggle/cycle
+                        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_RETURN}))
+                        self._last_axis_move_time = now
+        return result
 
 class CreditsMenuState(BaseMenuState):
     """Credits menu state"""
@@ -537,13 +771,112 @@ class LoadGameMenuState(BaseMenuState):
     
     def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
         """Handle events for load game menu (mouse + keyboard/joystick)"""
+        # If confirmation dialog is open, prioritize confirm/cancel hotkeys
+        if self.show_delete_confirmation:
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_RETURN, pygame.K_i):
+                    if save_manager.delete_save(self.delete_slot):
+                        print(f"🗑️ Save slot {self.delete_slot} deleted successfully")
+                    else:
+                        print(f"❌ Failed to delete save slot {self.delete_slot}")
+                    self.show_delete_confirmation = False
+                    self.delete_slot = None
+                    self.refresh_save_slots()
+                    self.setup_buttons()
+                    return None
+                elif event.key in (pygame.K_ESCAPE, pygame.K_z):
+                    self.show_delete_confirmation = False
+                    self.delete_slot = None
+                    self.setup_buttons()
+                    return None
         # First try base navigation
         base_result = super().handle_event(event)
         if base_result is not None:
-            # Map base_result (could be tuple actions)
+            # Map base_result (could be tuple actions from keyboard/joystick confirm)
             if isinstance(base_result, tuple):
-                return base_result
+                kind = base_result[0]
+                if kind == "load_slot":
+                    self.selected_slot = base_result[1]
+                    return ("load_game", self.selected_slot)
+                elif kind == "delete_slot":
+                    # Show delete confirmation
+                    self.delete_slot = base_result[1]
+                    self.show_delete_confirmation = True
+                    self.setup_buttons()
+                    return None
+                elif kind == "confirm_delete":
+                    if save_manager.delete_save(base_result[1]):
+                        print(f"🗑️ Save slot {base_result[1]} deleted successfully")
+                    else:
+                        print(f"❌ Failed to delete save slot {base_result[1]}")
+                    self.show_delete_confirmation = False
+                    self.delete_slot = None
+                    self.refresh_save_slots()
+                    self.setup_buttons()
+                    return None
+                elif kind == "cancel_delete":
+                    self.show_delete_confirmation = False
+                    self.delete_slot = None
+                    self.setup_buttons()
+                    return None
+                else:
+                    return base_result
             return base_result
+        # Horizontal navigation between Load and Delete buttons on the same slot row
+        if event.type == pygame.KEYDOWN and not self.show_delete_confirmation and self.buttons:
+            if event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
+                current_btn = self.buttons[self.selected_index]
+                target_kind = None
+                if isinstance(current_btn.action, tuple):
+                    if current_btn.action[0] == "load_slot":
+                        target_kind = "delete_slot"
+                    elif current_btn.action[0] == "delete_slot":
+                        target_kind = "load_slot"
+                if target_kind:
+                    for idx, btn in enumerate(self.buttons):
+                        if btn is current_btn:
+                            continue
+                        if isinstance(btn.action, tuple) and btn.action[0] == target_kind and btn.rect.y == current_btn.rect.y:
+                            self.selected_index = idx
+                            break
+        # Gamepad: axis 0 (left/right) and hat/dpad
+        if not self.show_delete_confirmation and self.buttons:
+            now = pygame.time.get_ticks() / 1000.0
+            if event.type == pygame.JOYAXISMOTION and event.axis == 0 and abs(event.value) >= 0.6:
+                if now - self._last_axis_move_time >= self._axis_move_cooldown:
+                    current_btn = self.buttons[self.selected_index]
+                    target_kind = None
+                    if isinstance(current_btn.action, tuple):
+                        if current_btn.action[0] == "load_slot":
+                            target_kind = "delete_slot"
+                        elif current_btn.action[0] == "delete_slot":
+                            target_kind = "load_slot"
+                    if target_kind:
+                        for idx, btn in enumerate(self.buttons):
+                            if btn is current_btn:
+                                continue
+                            if isinstance(btn.action, tuple) and btn.action[0] == target_kind and btn.rect.y == current_btn.rect.y:
+                                self.selected_index = idx
+                                self._last_axis_move_time = now
+                                break
+            elif event.type == pygame.JOYHATMOTION:
+                # event.value is a tuple (x,y); x=-1 left, 1 right
+                if event.value[0] != 0 and now - self._last_axis_move_time >= self._axis_move_cooldown:
+                    current_btn = self.buttons[self.selected_index]
+                    target_kind = None
+                    if isinstance(current_btn.action, tuple):
+                        if current_btn.action[0] == "load_slot":
+                            target_kind = "delete_slot"
+                        elif current_btn.action[0] == "delete_slot":
+                            target_kind = "load_slot"
+                    if target_kind:
+                        for idx, btn in enumerate(self.buttons):
+                            if btn is current_btn:
+                                continue
+                            if isinstance(btn.action, tuple) and btn.action[0] == target_kind and btn.rect.y == current_btn.rect.y:
+                                self.selected_index = idx
+                                self._last_axis_move_time = now
+                                break
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
             for button in self.buttons:
@@ -673,7 +1006,7 @@ class LoadGameMenuState(BaseMenuState):
             f"'{slot_name}' wird unwiderruflich gelöscht!",
             "Diese Aktion kann nicht rückgängig gemacht werden.",
             "",
-            "Enter = Bestätigen, Esc = Abbrechen"
+            "Enter/I = Bestätigen, Esc/Z = Abbrechen"
         ]
         
         y_text = dialog_y + 90
@@ -724,6 +1057,7 @@ class PauseMenuState(BaseMenuState):
                 ("💾 Speichern in Slot 2", "save_slot_2"),  
                 ("💾 Speichern in Slot 3", "save_slot_3"),
                 ("💾 Speichern in Slot 4", "save_slot_4"),
+                ("💾 Speichern in Slot 5", "save_slot_5"),
                 ("🔙 Zurück", "back_to_pause")
             ]
         
@@ -753,8 +1087,8 @@ class PauseMenuState(BaseMenuState):
                 self.show_save_menu = False
                 self.setup_buttons()
                 return None
-            elif base_result in ("save_slot_1", "save_slot_2", "save_slot_3", "save_slot_4"):
-                slot_map = {"save_slot_1": 1, "save_slot_2": 2, "save_slot_3": 3, "save_slot_4": 4}
+            elif base_result in ("save_slot_1", "save_slot_2", "save_slot_3", "save_slot_4", "save_slot_5"):
+                slot_map = {"save_slot_1": 1, "save_slot_2": 2, "save_slot_3": 3, "save_slot_4": 4, "save_slot_5": 5}
                 return ("save_to_slot", slot_map[base_result])
             else:
                 return base_result
@@ -778,6 +1112,8 @@ class PauseMenuState(BaseMenuState):
                         return ("save_to_slot", 3)
                     elif button.action == "save_slot_4":
                         return ("save_to_slot", 4)
+                    elif button.action == "save_slot_5":
+                        return ("save_to_slot", 5)
                     else:
                         return button.action
         elif event.type == pygame.MOUSEMOTION:
@@ -802,6 +1138,8 @@ class PauseMenuState(BaseMenuState):
                     return ("save_to_slot", 3)
                 elif event.key == pygame.K_4:
                     return ("save_to_slot", 4)
+                elif event.key == pygame.K_5:
+                    return ("save_to_slot", 5)
         
         return None
 
@@ -927,8 +1265,16 @@ class GameOverMenuState(BaseMenuState):
         self.screen.blit(subtitle_surface, subtitle_rect)
         
         # Draw buttons (always visible for debugging)
-        for button in self.buttons:
+        for i, button in enumerate(self.buttons):
             button.draw(self.screen)
+            if i == self.selected_index:
+                # Draw a selection highlight similar to BaseMenuState
+                pygame.draw.rect(self.screen, (255, 215, 0), button.rect.inflate(8, 6), 2)
+                arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
+                arrow_rect = arrow_surface.get_rect()
+                arrow_rect.centery = button.rect.centery
+                arrow_rect.right = button.rect.left - 12
+                self.screen.blit(arrow_surface, arrow_rect)
         
         # Show controls hint (always visible)
         hint_text = "⌨️ ESC: Hauptmenü  •  R: Neues Spiel"
@@ -939,6 +1285,10 @@ class GameOverMenuState(BaseMenuState):
     def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
         """Handle game over events"""
         # Always allow interaction (remove fade-in restriction for debugging)
+        # Delegate to base handler to support mouse/keyboard/joystick navigation
+        result = super().handle_event(event)
+        if result is not None:
+            return result
         
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_r:
@@ -982,6 +1332,26 @@ class MenuSystem:
         self.fade_alpha = 0
         self.fading = False
         self.next_state = None
+
+        # Integrate Action System so hardware "brew/attack" selects in menus
+        if _ACTION_SYSTEM_AVAILABLE:
+            try:
+                self._action_system = get_action_system()
+
+                def _confirm_from_action(evt):
+                    # Only react on PRESS and when we are in menu-like states
+                    if not evt.pressed:
+                        return
+                    if self.current_state in [GameState.MAIN_MENU, GameState.SETTINGS, GameState.CREDITS,
+                                              GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
+                        # Post a synthetic ENTER key event so existing handlers run
+                        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+                # Map both ATTACK and CAST_MAGIC to confirm selection
+                self._action_system.register_handler(ActionType.ATTACK, _confirm_from_action)
+                self._action_system.register_handler(ActionType.CAST_MAGIC, _confirm_from_action)
+            except Exception:
+                self._action_system = None
     
     def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
         """Handle events and return state change if needed"""
@@ -991,7 +1361,8 @@ class MenuSystem:
                 if self.current_state == GameState.GAME_OVER:
                     self.change_state(GameState.MAIN_MENU)
                     return None
-                elif self.current_state != GameState.MAIN_MENU:
+                # Let Settings screen handle its own ESC/back logic
+                elif self.current_state != GameState.MAIN_MENU and self.current_state != GameState.SETTINGS:
                     self.change_state(GameState.MAIN_MENU)
                     return None
                 else:
