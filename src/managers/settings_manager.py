@@ -8,7 +8,7 @@ import os
 from typing import Any, Dict
 
 try:
-    from settings import ROOT_DIR
+    from core.settings import ROOT_DIR
 except Exception:
     ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 

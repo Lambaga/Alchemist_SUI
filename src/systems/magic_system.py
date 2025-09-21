@@ -236,14 +236,24 @@ class MagicProjectile(pygame.sprite.Sprite):
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "water")
-                    print(f"💧 Wasserkugel trifft Feuerkreatur für {damage} Schaden!")
+                    try:
+                        from core.settings import VERBOSE_LOGS
+                    except Exception:
+                        VERBOSE_LOGS = False  # type: ignore
+                    if VERBOSE_LOGS:  # type: ignore[name-defined]
+                        print(f"💧 Wasserkugel trifft Feuerkreatur für {damage} Schaden!")
                 else:
                     # Gegen alle anderen neutralen Kreaturen
                     damage = 10
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "water")
-                    print(f"💧 Wasserkugel trifft für {damage} Schaden!")
+                    try:
+                        from core.settings import VERBOSE_LOGS
+                    except Exception:
+                        VERBOSE_LOGS = False  # type: ignore
+                    if VERBOSE_LOGS:  # type: ignore[name-defined]
+                        print(f"💧 Wasserkugel trifft für {damage} Schaden!")
                     
             else:
                 # Andere Projektile verwenden Standard-Schaden
@@ -251,7 +261,12 @@ class MagicProjectile(pygame.sprite.Sprite):
                 target.take_damage(damage)
                 if magic_system:
                     magic_system.add_floating_damage(target, damage, "normal")
-                print(f"✨ Projektil trifft für {damage} Schaden!")
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print(f"✨ Projektil trifft für {damage} Schaden!")
         
         self.is_alive = False
     
@@ -491,7 +506,12 @@ class MagicSystem:
             if healed > 0:
                 self.add_floating_damage(caster, healed, "heal")
             
-            print(f"💚 Geheilt um {healed} HP! ({caster.current_health}/{caster.max_health})")
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print(f"💚 Geheilt um {healed} HP! ({caster.current_health}/{caster.max_health})")
     
     def _cast_shield(self, effect: MagicEffect, caster):
         """Aktiviert Schutzschild"""
@@ -527,9 +547,19 @@ class MagicSystem:
         self._create_whirlwind_effect(caster_pos, effect.radius)
         
         if hit_enemies:
-            print(f"🌪️ Wirbelattacke trifft {len(hit_enemies)} Feinde!")
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print(f"🌪️ Wirbelattacke trifft {len(hit_enemies)} Feinde!")
         else:
-            print(f"🌪️ Wirbelattacke ausgeführt - keine Feinde in Reichweite (2 Tiles)")
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print(f"🌪️ Wirbelattacke ausgeführt - keine Feinde in Reichweite (2 Tiles)")
     
     def _create_whirlwind_effect(self, center_pos, radius):
         """Erstellt visuellen Wirbel-Effekt mit deutlicher Reichweiten-Animation"""
@@ -548,7 +578,12 @@ class MagicSystem:
         if "visual_effects" not in self.active_effects:
             self.active_effects["visual_effects"] = []
         self.active_effects["visual_effects"].append(whirlwind_effect)
-        print(f"🌪️ Whirlwind-Animation startet - Reichweite: {radius} Pixel (2 Tiles)")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print(f"🌪️ Whirlwind-Animation startet - Reichweite: {radius} Pixel (2 Tiles)")
     
     def add_floating_damage(self, target, damage: int, damage_type: str = "normal"):
         """Fügt eine schwebende Schadenszahl hinzu"""

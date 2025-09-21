@@ -69,7 +69,12 @@ class ActionSystem:
         # Debug
         self.debug_enabled = False
         
-        print("🎯 Action System initialisiert")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print("🎯 Action System initialisiert")
     
     def register_handler(self, action: ActionType, handler: Callable[[ActionEvent], None]):
         """Registriert einen Handler für eine Aktion"""

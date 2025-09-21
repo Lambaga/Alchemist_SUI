@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(src_dir, 'entities'))
 sys.path.insert(0, os.path.join(src_dir, 'world'))
 sys.path.insert(0, os.path.join(src_dir, 'systems'))
 
-from typing import Optional
+from typing import Optional, Any, Callable
 from settings import *
 from level import Level
 from asset_manager import AssetManager
@@ -26,18 +26,33 @@ from fps_monitor import FPSMonitor, create_detailed_fps_display
 from menu_system import MenuSystem, GameState
 from save_system import save_manager
 from hotkey_display import HotkeyDisplay
-from input_system import init_universal_input
+from systems.input_system import init_universal_input
 from managers.settings_manager import SettingsManager
+
+"""
+Optionale Action-System-Importe: Definiere Platzhalter, damit Pylance keine
+"possibly unbound"-Warnungen meldet, falls die Imports zur Laufzeit fehlen.
+"""
+init_action_system: Optional[Callable[..., Any]] = None
+get_action_system: Optional[Callable[..., Any]] = None
+MagicSystemAdapter: Optional[Any] = None
+create_hardware_input_adapter: Optional[Callable[..., Any]] = None
 
 # Action System Integration (aktiviert, wenn verfügbar)
 try:
-    from systems.action_system import init_action_system, get_action_system, MagicSystemAdapter
-    from systems.hardware_input_adapter import create_hardware_input_adapter
+    from systems.action_system import init_action_system as _init_action_system, get_action_system as _get_action_system, MagicSystemAdapter as _MagicSystemAdapter
+    from systems.hardware_input_adapter import create_hardware_input_adapter as _create_hardware_input_adapter
+    init_action_system = _init_action_system
+    get_action_system = _get_action_system
+    MagicSystemAdapter = _MagicSystemAdapter
+    create_hardware_input_adapter = _create_hardware_input_adapter
     ACTION_SYSTEM_AVAILABLE = True
-    print("✅ Action System verfügbar")
+    if VERBOSE_LOGS:
+        print("✅ Action System verfügbar")
 except ImportError as e:
     ACTION_SYSTEM_AVAILABLE = False
-    print("⚠️ Action System nicht verfügbar: {}".format(e))
+    if VERBOSE_LOGS:
+        print("⚠️ Action System nicht verfügbar: {}".format(e))
 
 import os
 
@@ -72,7 +87,7 @@ class Game:
         # Action System initialisieren (falls verfügbar)
         self.action_system = None
         self.hardware_adapter = None
-        if ACTION_SYSTEM_AVAILABLE:
+        if ACTION_SYSTEM_AVAILABLE and init_action_system is not None:
             self.action_system = init_action_system()
             
             # Versuche Hardware Input Adapter zu erstellen
@@ -107,16 +122,21 @@ class Game:
                     return default_port
 
                 resolved_port = _resolve_serial_port(hardware_config.get('port', '/dev/ttyUSB0'))
-                self.hardware_adapter = create_hardware_input_adapter(
-                    port=resolved_port,
-                    mock_mode=hardware_config.get('mock_mode', True)
-                )
-                if self.hardware_adapter:
-                    print(f"✅ Hardware Input Adapter aktiviert (Port: {resolved_port}, Mock: {hardware_config.get('mock_mode', True)})")
+                # create_hardware_input_adapter sollte vorhanden sein, wenn ACTION_SYSTEM_AVAILABLE True ist
+                if create_hardware_input_adapter is not None:
+                    self.hardware_adapter = create_hardware_input_adapter(
+                        port=resolved_port,
+                        mock_mode=hardware_config.get('mock_mode', True)
+                    )
                 else:
+                    self.hardware_adapter = None
+                if self.hardware_adapter and VERBOSE_LOGS:
+                    print(f"✅ Hardware Input Adapter aktiviert (Port: {resolved_port}, Mock: {hardware_config.get('mock_mode', True)})")
+                elif not self.hardware_adapter and VERBOSE_LOGS:
                     print("⚠️ Hardware Input Adapter nicht verfügbar - Fallback auf Tastatur/Gamepad")
             except Exception as e:
-                print("Hardware Input Adapter Fehler: {}".format(e))
+                if VERBOSE_LOGS:
+                    print("Hardware Input Adapter Fehler: {}".format(e))
                 self.hardware_adapter = None
         
         # Initialize AssetManager
@@ -127,7 +147,8 @@ class Game:
         window_height = self.optimized_settings['WINDOW_HEIGHT']
         use_fullscreen = self.optimized_settings.get('FULLSCREEN', False)
         
-        print("🚀 Display: {}x{} @ {} FPS{}".format(
+        if VERBOSE_LOGS:
+            print("🚀 Display: {}x{} @ {} FPS{}".format(
             window_width, window_height, 
             self.optimized_settings['FPS'],
             " (Vollbild)" if use_fullscreen else ""
@@ -172,7 +193,8 @@ class Game:
         from ui.element_mixer import ElementMixer
         self.spell_cooldown_manager = SpellCooldownManager()
         self.element_mixer = ElementMixer(self.spell_cooldown_manager)
-        print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
+        if VERBOSE_LOGS:
+            print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
         
         # Falls ACTION_SYSTEM nicht verfügbar, bleibt nur Keyboard/Gamepad
         if not ACTION_SYSTEM_AVAILABLE:
@@ -191,12 +213,14 @@ class Game:
         self._last_nonzero_music_vol = float(self.settings.music_volume) or 0.7
         self._apply_music_for_state(GameState.MAIN_MENU)
         
-        print("Game started with Menu System!")
-        print("Architecture: Central Game class with Menu System and Level system")
-        print(f"🎯 Target FPS: {FPS}")
-        print("💡 Drücke F3 um FPS-Anzeige ein/auszuschalten")
-        print("💡 Drücke F4 um zwischen einfacher/detaillierter Anzeige zu wechseln")
-        print("🎮 Verwende das Menu-System zum Navigieren!")
+        if VERBOSE_LOGS:
+            print("Game started with Menu System!")
+            print("Architecture: Central Game class with Menu System and Level system")
+            if VERBOSE_LOGS:
+                print(f"🎯 Target FPS: {FPS}")
+            print("💡 Drücke F3 um FPS-Anzeige ein/auszuschalten")
+            print("💡 Drücke F4 um zwischen einfacher/detaillierter Anzeige zu wechseln")
+            print("🎮 Verwende das Menu-System zum Navigieren!")
     
     def load_background_music(self):
         """Legacy helper: plays gameplay background music."""
@@ -226,13 +250,16 @@ class Game:
                 pygame.mixer.music.set_volume(vol)
                 pygame.mixer.music.play(-1)
                 self._current_music_path = music_path
-                print("Music started:", music_path)
-                try:
-                    print(f"🎵 Music volume: {pygame.mixer.music.get_volume():.2f}")
-                except Exception:
-                    pass
+                if VERBOSE_LOGS:
+                    print("Music started:", music_path)
+                if VERBOSE_LOGS:
+                    try:
+                        print(f"🎵 Music volume: {pygame.mixer.music.get_volume():.2f}")
+                    except Exception:
+                        pass
         except Exception as e:
-            print("Music error:", e)
+            if VERBOSE_LOGS:
+                print("Music error:", e)
 
     def apply_current_music_volume(self):
         """Reapply the current music volume from settings without restarting track."""
@@ -249,10 +276,12 @@ class Game:
             except Exception:
                 vol = base
             pygame.mixer.music.set_volume(vol)
-            try:
-                print(f"🎵 Music volume applied: {pygame.mixer.music.get_volume():.2f}")
-            except Exception:
-                pass
+            if VERBOSE_LOGS:
+                try:
+                    if VERBOSE_LOGS:
+                        print(f"🎵 Music volume applied: {pygame.mixer.music.get_volume():.2f}")
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -279,9 +308,11 @@ class Game:
                 try:
                     if self.level and getattr(self.level, 'enemy_manager', None):
                         self.level.enemy_manager.apply_difficulty_to_all()
-                        print("⚔️ Difficulty reapplied to all enemies")
+                        if VERBOSE_LOGS:
+                            print("⚔️ Difficulty reapplied to all enemies")
                 except Exception as _e:
-                    print(f"⚠️ Failed to apply difficulty: {_e}")
+                    if VERBOSE_LOGS:
+                        print(f"⚠️ Failed to apply difficulty: {_e}")
             
             # Pass all keyboard events to the current state
             if event.type in [pygame.KEYDOWN, pygame.KEYUP]:
@@ -335,28 +366,33 @@ class Game:
                     # F3: FPS-Anzeige ein/ausschalten (nur im Gameplay)
                     elif event.key == pygame.K_F3 and self.game_state == GameState.GAMEPLAY:
                         self.show_fps = not self.show_fps
-                        print(f"🔧 FPS-Anzeige: {'Ein' if self.show_fps else 'Aus'}")
+                        if VERBOSE_LOGS:
+                            print(f"🔧 FPS-Anzeige: {'Ein' if self.show_fps else 'Aus'}")
                     
                     # F4: Detaillierte/Einfache FPS-Anzeige wechseln (nur im Gameplay)
                     elif event.key == pygame.K_F4 and self.game_state == GameState.GAMEPLAY:
                         self.fps_monitor.toggle_detailed()
                         mode = "Detailliert" if self.fps_monitor.show_detailed else "Einfach"
-                        print(f"🔧 FPS-Modus: {mode}")
+                        if VERBOSE_LOGS:
+                            print(f"🔧 FPS-Modus: {mode}")
                     
                     # F5: FPS-Statistiken zurücksetzen (nur im Gameplay)
                     elif event.key == pygame.K_F5 and self.game_state == GameState.GAMEPLAY:
                         self.fps_monitor.reset_stats()
-                        print("🔧 FPS-Statistiken zurückgesetzt")
+                        if VERBOSE_LOGS:
+                            print("🔧 FPS-Statistiken zurückgesetzt")
                     
                     # F6: Performance-Zusammenfassung ausgeben (nur im Gameplay)
                     elif event.key == pygame.K_F6 and self.game_state == GameState.GAMEPLAY:
-                        self._print_performance_summary()
+                        if VERBOSE_LOGS:
+                            self._print_performance_summary()
                     
                     # H: Hotkey-Anzeige ein/ausschalten (nur im Gameplay)
                     elif event.key == pygame.K_h and self.game_state == GameState.GAMEPLAY:
                         self.hotkey_display.toggle_visibility()
-                        status = "Ein" if self.hotkey_display.visible else "Aus"
-                        print(f"🔧 Hotkey-Anzeige: {status}")
+                        if VERBOSE_LOGS:
+                            status = "Ein" if self.hotkey_display.visible else "Aus"
+                            print(f"🔧 Hotkey-Anzeige: {status}")
                     
                     # 🚀 GLOBAL MAGIC TEST HOTKEYS (F7-F8 statt F10-F12 - kein Konflikt mit Speicher-Slots!)
                     elif event.key == pygame.K_F7:  # F7 für direkten Magie-Test (war F10)
@@ -416,7 +452,8 @@ class Game:
                 if (event.type == pygame.KEYDOWN and 
                     event.key in [pygame.K_1, pygame.K_2, pygame.K_3]):
                     skip_level = True
-                    print(f"🚫 Skipping level handling for element key: {event.key}")
+                    if VERBOSE_LOGS:
+                        print(f"🚫 Skipping level handling for element key: {event.key}")
                 
                 # Pass events to level if in gameplay (except element keys 1-3)
                 if not skip_level and self.level and hasattr(self.level, 'handle_event'):
@@ -425,7 +462,8 @@ class Game:
     
     def start_new_game(self):
         """Startet ein neues Spiel"""
-        print("🎮 Neues Spiel wird gestartet...")
+        if VERBOSE_LOGS:
+            print("🎮 Neues Spiel wird gestartet...")
         self.game_state = GameState.GAMEPLAY
         self.level = Level(self.game_surface, main_game=self)
         self._apply_music_for_state(self.game_state)
@@ -439,7 +477,8 @@ class Game:
         #     self.action_system.set_magic_handler(self.magic_adapter)
         #     print("✅ Magic System Adapter für Action System konfiguriert")
         
-        print("✅ Level geladen, Spiel bereit!")
+        if VERBOSE_LOGS:
+            print("✅ Level geladen, Spiel bereit!")
     
     def restart_current_game(self):
         """Startet das aktuelle Level neu"""
@@ -573,7 +612,8 @@ class Game:
     def pause_game(self):
         """Pausiert das Spiel ohne automatisches Speichern"""
         if self.game_state == GameState.GAMEPLAY:
-            print("⏸️ Spiel pausiert...")
+            if VERBOSE_LOGS:
+                print("⏸️ Spiel pausiert...")
             
             # Input-Status leeren um Bug zu vermeiden
             if self.level:
@@ -587,7 +627,8 @@ class Game:
     def resume_game(self):
         """Setzt das Spiel fort"""
         if self.game_state == GameState.PAUSE:
-            print("▶️ Spiel fortgesetzt")
+            if VERBOSE_LOGS:
+                print("▶️ Spiel fortgesetzt")
             
             # Input-Status leeren um sicherzustellen, dass keine Tasten "hängen"
             if self.level:
@@ -768,24 +809,25 @@ class Game:
     
     def run(self) -> None:
         """Hauptspielschleife mit Performance-Tracking und Menu-System."""
-        print("Main loop started with Menu System!")
-        print("🎮 Navigation:")
-        print("   🖱️ Maus: Menu-Navigation")
-        print("   ESC: Zurück zum Menu / Beenden")
-        print("   Im Spiel:")
-        print("     W A S D: Spieler bewegen")
-        print("     Maus: Blickrichtung")
-        print("     Linksklick: Feuerball schießen")
-        print("     1-6: Zauberspruch auswählen (keine Cooldown)")
-        print("     C: Ausgewählten Zauber wirken (startet Cooldown)")
-        print("     F3: FPS-Anzeige ein/aus")
-        print("     F4: Detaillierte/Einfache Anzeige")
-        print("     F5: Statistiken zurücksetzen")
-        print("     F6: Performance-Zusammenfassung")
-        print("     F7: Global Magic Test")  # 🚀 Verschoben von F10
-        print("     F8: Feuer + Heilung")   # 🚀 Kombiniert F11+F12
-        print("     F9-F12: Speichern in Slot 1-4")  # 🚀 Jetzt konfliktfrei!
-        print("     H: Hotkey-Anzeige ein/aus")
+        if VERBOSE_LOGS:
+            print("Main loop started with Menu System!")
+            print("🎮 Navigation:")
+            print("   🖱️ Maus: Menu-Navigation")
+            print("   ESC: Zurück zum Menu / Beenden")
+            print("   Im Spiel:")
+            print("     W A S D: Spieler bewegen")
+            print("     Maus: Blickrichtung")
+            print("     Linksklick: Feuerball schießen")
+            print("     1-6: Zauberspruch auswählen (keine Cooldown)")
+            print("     C: Ausgewählten Zauber wirken (startet Cooldown)")
+            print("     F3: FPS-Anzeige ein/aus")
+            print("     F4: Detaillierte/Einfache Anzeige")
+            print("     F5: Statistiken zurücksetzen")
+            print("     F6: Performance-Zusammenfassung")
+            print("     F7: Global Magic Test")  # 🚀 Verschoben von F10
+            print("     F8: Feuer + Heilung")   # 🚀 Kombiniert F11+F12
+            print("     F9-F12: Speichern in Slot 1-4")  # 🚀 Jetzt konfliktfrei!
+            print("     H: Hotkey-Anzeige ein/aus")
         
         while self.running:
             self.handle_events()
@@ -793,11 +835,12 @@ class Game:
             self.draw()
         
         # Finale Performance-Zusammenfassung
-        if self.game_state == GameState.GAMEPLAY:
+        if self.game_state == GameState.GAMEPLAY and VERBOSE_LOGS:
             print("\n🏁 FINALE PERFORMANCE-STATISTIKEN:")
             self._print_performance_summary()
         
-        print("Game is shutting down...")
+        if VERBOSE_LOGS:
+            print("Game is shutting down...")
         pygame.quit()
         sys.exit()
     
@@ -867,9 +910,10 @@ class Game:
 
 def main() -> None:
     """Hauptfunktion zum Starten des Spiels mit Menu-System."""
-    print("The Alchemist - Enhanced Version with Menu System & FPS Monitoring!")
-    print("🔍 Performance-Tracking aktiviert")
-    print("🎮 Vollständiges Menu-System implementiert")
+    if VERBOSE_LOGS:
+        print("The Alchemist - Enhanced Version with Menu System & FPS Monitoring!")
+        print("🔍 Performance-Tracking aktiviert")
+        print("🎮 Vollständiges Menu-System implementiert")
     
     game = Game()
     game.run()

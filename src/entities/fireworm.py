@@ -39,7 +39,12 @@ class FireWorm(Enemy):
         # Collision detection
         self.obstacle_sprites = None
         
-        print("🐍 FireWorm created at ({}, {})".format(pos_x, pos_y))
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print("🐍 FireWorm created at ({}, {})".format(pos_x, pos_y))
         # Path following state
         self._path: list[tuple[int, int]] = []
         self._path_idx: int = 0
@@ -68,13 +73,33 @@ class FireWorm(Enemy):
 
             # Logging
             if self.idle_frames:
-                print("✅ FireWorm loaded {} idle frames".format(len(self.idle_frames)))
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("✅ FireWorm loaded {} idle frames".format(len(self.idle_frames)))
             if self.walk_frames:
-                print("✅ FireWorm loaded {} walk frames".format(len(self.walk_frames)))
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("✅ FireWorm loaded {} walk frames".format(len(self.walk_frames)))
             if self.attack_frames:
-                print("✅ FireWorm loaded {} attack frames".format(len(self.attack_frames)))
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("✅ FireWorm loaded {} attack frames".format(len(self.attack_frames)))
             if self.death_frames:
-                print("✅ FireWorm loaded {} death frames".format(len(self.death_frames)))
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("✅ FireWorm loaded {} death frames".format(len(self.death_frames)))
 
         except Exception as e:
             print("❌ Error loading FireWorm animations: {}".format(e))

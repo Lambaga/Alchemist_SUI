@@ -87,7 +87,12 @@ class Fireball(pygame.sprite.Sprite):
                 print("✅ Fireball loaded explosion animation")
             
             if self.move_frames:
-                print("✅ Fireball loaded {} move frames".format(len(self.move_frames)))
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("✅ Fireball loaded {} move frames".format(len(self.move_frames)))
                 
         except Exception as e:
             print("❌ Error loading fireball animations: {}".format(e))

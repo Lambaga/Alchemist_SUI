@@ -1,97 +1,60 @@
 # Copilot Instructions for Alchemist_SUI
 
-## Project Overview
-- **Alchemist_SUI** is a Python-based 2D adventure game using Pygame, with hardware integration (ESP32, Raspberry Pi), modular architecture, and multi-platform launcher scripts.
-- Core gameplay logic in `src/`, organized into subfolders:
-  - `core/`: Main game loop, level management, config
-  - `entities/`: Player, enemies, game objects
-  - `managers/`: Asset, save, enemy management
-  - `systems/`: Magic, combat, pathfinding
-  - `ui/`: Menu system, HUD elements
-  - `world/`: Map loading, camera, collision
-- Asset management (sprites, sounds, maps) in `assets/`, including character packs and map files
-- Hardware and platform-specific scripts in project root and `scripts/`
+These instructions make AI agents productive quickly in this repo. Keep answers concrete and code-referenced; prefer repo conventions over generic advice.
 
-## Key Components & Data Flow
-- **Game Loop:** (`src/core/main.py`)
-  - Initializes core systems: display, audio, input
-  - Manages game states: menu, gameplay, pause, game over
-  - Handles hardware integration and performance monitoring
+## Architecture Overview
+- Core in `src/` with these boundaries:
+  - `core/`: Entry point and state machine. `main.py` owns the window, music, FPS monitor, menu orchestration, and transitions between `GameState`s (MAIN_MENU, GAMEPLAY, PAUSE, GAME_OVER).
+  - `world/`: Maps/camera/collision; TMX loading via pytmx.
+  - `entities/`: Player/enemies and projectiles; all use `AssetManager` for sprites.
+  - `systems/`: Input, magic, action-system adapters, cooldowns, pathfinding.
+  - `ui/`: Menu system, hotkey HUD, element mixer and on-screen bars.
+  - `managers/`: Assets, saves, settings, enemy management.
+- Rendering flow: `Game.draw()` → `Level.render()` → layered world + UI; FPS/Hotkeys/Element mixer drawn last.
+- Save system: `save_manager` with auto-slot and slots 1-4; integrated in menus and gameplay.
 
-- **Level System:** (`src/core/level.py`)
-  - Controls gameplay state and map transitions
-  - Manages entities: player, enemies, collectibles
-  - Integrates pathfinding and collision systems
-  - Processes save/load requests (F9-F12 slots)
+## Run/Debug Workflows
+- Windows launchers (create venv, install deps, run):
+  - `run_game.bat` → runs `python -m core.main` from `src/`.
+  - `run_game_7inch.bat` → sets `ALCHEMIST_SMALL_SCREEN=1` and optimizes for 1024x600.
+- Linux/RPi equivalents: `run_game.sh`, `run_game_7inch.sh`.
+- Useful tasks (VS Code): Smart cache cleaners and “Run Game (BAT)”.
+- Hardware mode: set `ALCHEMIST_HW=1` (optionally `ALCHEMIST_HW_PORT`) before launch to prefer ESP32 input; auto-falls back to keyboard/gamepad.
 
-- **Input Architecture:**
-  - Priority system: Hardware > Gamepad > Keyboard
-  - JSON protocol for ESP32 communication
-  - Action abstraction layer for device-agnostic input
-  - Automatic fallback on hardware disconnect
+## Input Model
+- Priority: Hardware > Gamepad > Keyboard via `systems/input_system.py` (universal abstraction).
+- Action System: If available, initialized in `core/main.py`; hardware adapter created via `systems/hardware_input_adapter`.
+- In gameplay, element keys 1-3 are intercepted by `Game.handle_events` to avoid double-processing in `Level`.
 
-- **Rendering Pipeline:**
-  - Layered rendering with depth sorting
-  - Alpha/transparency caching for performance
-  - Camera system with zoom controls
-  - HUD elements and status displays
+## Menus & States
+- `ui/menu_system.py` defines `GameState` and state screens (Main, Settings, Load, Pause, Game Over).
+- State transitions are centralized in `Game.handle_events()` and `MenuSystem.handle_event()`/`change_state()`.
+- Quick save/load: F9–F12 save to slots; menu also offers save/load/delete with confirmations.
 
-- **State Management:**
-  - Menu system for game flow control
-  - Save/load system with multiple slots
-  - Console debugging output
-  - Performance monitoring (FPS tracking)
+## Rendering & Performance
+- Alpha/transparency cache: `GameRenderer` in `core/level.py` with `_alpha_cache` and bounded size to avoid re-blits of alpha surfaces; use `get_alpha_cache_info()` when debugging.
+- FPS monitor: `fps_monitor.py`; toggle with F3, details with F4, reset with F5, summary with F6.
+- Element mixer + mana bar: `ui/element_mixer.py` rendered after level; positioned relative to screen bottom.
 
-## Developer Workflows
-- **Run Game:** Use platform-specific launchers for automatic venv and dependency setup:
-  ```
-  # Windows
-  run_game.bat         # Standard display
-  run_game_7inch.bat   # 7-inch display optimization
-  
-  # Linux/Raspberry Pi
-  ./run_game.sh
-  ./run_game_7inch.sh
-  ```
+## Maps & Transitions
+- TMX/TSX assets must use relative paths and exist under `assets/maps` (and referenced tilesets/images under `assets/`).
+- Level completion: `Level.trigger_level_completion()` handles message + next map load; guard for missing tilesets/images.
 
-- **Test Hardware:**
-  ```
-  # Enable hardware mode
-  set ALCHEMIST_HW=1  # Windows
-  export ALCHEMIST_HW=1  # Linux/Pi
+## Assets & Managers
+- Always load sprites/sounds via `managers/asset_manager.py` (shared caching and scaling). Entities already hold an `AssetManager()` instance.
+- Settings/music: `managers/settings_manager.py` and `Game._apply_music_for_state`; runtime music volume keys: PageUp/PageDown, `m` toggles mute.
 
-  # Test controller
-  python test_hardware_input.py
-  ```
+## Conventions & Tips
+- New features should be modular in the appropriate subfolder; follow existing naming and constructor patterns.
+- Respect the input priority and avoid re-handling element keys 1–3 in new gameplay code.
+- Prefer console logs for recoverable issues; most critical failures continue with degraded behavior.
+- For small screens, feature-detect `ALCHEMIST_SMALL_SCREEN` in config paths (`core/config.py` → `DisplayConfig`).
 
-- **Debug Tools:**
-  - F1: Toggle collision visualization
-  - F3: Toggle FPS display
-  - F4: Switch between simple/detailed FPS view
-  - Console for detailed error/warning output
+## File Pointers (examples)
+- Entry/game loop: `src/core/main.py` (Game class, state management, audio, FPS, element mixer).
+- Level/rendering: `src/core/level.py` (`GameRenderer`, `_alpha_cache`, `trigger_level_completion`).
+- Input: `src/systems/input_system.py` (universal input), optional hardware adapter in `systems/hardware_input_adapter`.
+- UI: `src/ui/menu_system.py`, `src/ui/hotkey_display.py`, `src/ui/element_mixer.py`.
+- Saves: `src/managers/save_system.py` (used by menus and gameplay).
 
-- **Map Editing:** TMX/TSX files must use relative paths; verify all referenced tilesets/images exist
-
-## Project-Specific Patterns
-- **Map Transitions:** Level completion triggers (`trigger_level_completion`) show a message and load the next map. Always check for missing tilesets/images in TMX/TSX.
-- **Alpha/Transparency:** Use the `_alpha_cache` in `GameRenderer` for performance when rendering sprites with transparency.
-- **Input Priority:** Hardware > Gamepad > Keyboard, with automatic fallback and mock mode for development.
-- **Error Handling:** Most critical errors (map loading, asset missing) are logged to console; game attempts to continue with degraded features if possible.
-
-## Integration Points
-- **Hardware:** ESP32 input via serial JSON protocol; Raspberry Pi compatibility scripts provided.
-- **External:** Uses Pygame, pytmx for map loading, and standard Python modules.
-
-## Examples
-- **Map Transition:** See `Level.trigger_level_completion()` in `src/core/level.py`.
-- **Asset Loading:** See `asset_manager.py` and usage in `GameRenderer`.
-- **Input System:** See `input_system.py` for unified input handling.
-
-## Conventions
-- All new features should be modular (new files/classes in `src/` subfolders).
-- Map and asset paths must be relative and compatible with project structure.
-- Console output is the primary debugging tool; add clear messages for new error cases.
-
----
-
-If any section is unclear or missing important project-specific details, please provide feedback or point to relevant files for further refinement.
+If anything here seems off for your task, cite the file you’re reading and propose a correction.

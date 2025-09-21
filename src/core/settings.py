@@ -29,6 +29,9 @@ FPS = config.display.FPS
 # === SPIEL EINSTELLUNGEN ===
 GAME_TITLE = config.game.TITLE
 
+# Logging verbosity toggle
+# Set to False to reduce console noise on startup and during loading
+VERBOSE_LOGS = False
 # === MUSIK ===
 BACKGROUND_MUSIC = config.paths.BACKGROUND_MUSIC
 MUSIC_VOLUME = config.game.MUSIC_VOLUME

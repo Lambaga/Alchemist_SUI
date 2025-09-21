@@ -433,7 +433,12 @@ class Player(pygame.sprite.Sprite, CombatEntity):
             self.collision_system.add_dynamic_object(self)
             
             self.collision_optimization_enabled = True
-            print(f"✅ Optimierte Kollisionserkennung aktiviert mit {len(obstacles)} Objekten")
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print(f"✅ Optimierte Kollisionserkennung aktiviert mit {len(obstacles)} Objekten")
             
         except Exception as e:
             print(f"⚠️ Fallback zu traditioneller Kollisionserkennung: {e}")

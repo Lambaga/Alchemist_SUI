@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from settings import ROOT_DIR
+from core.settings import ROOT_DIR
 
 class SaveGameManager:
     """Manages game save/load functionality"""

@@ -7,15 +7,21 @@ Provides main menu, settings, credits, and game state management
 import pygame
 import sys
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable, Tuple
 from enum import Enum
 from settings import *
 from managers.settings_manager import SettingsManager
 from save_system import save_manager
+from managers.asset_manager import AssetManager
 
 # Optional Action System integration (for hardware/buttons)
+# Define safe stubs so Pylance doesn't flag possibly-unbound
+get_action_system: Optional[Callable[..., Any]] = None
+ActionType: Any = None
 try:
-    from systems.action_system import get_action_system, ActionType
+    from systems.action_system import get_action_system as _get_action_system, ActionType as _ActionType
+    get_action_system = _get_action_system
+    ActionType = _ActionType
     _ACTION_SYSTEM_AVAILABLE = True
 except Exception:
     _ACTION_SYSTEM_AVAILABLE = False
@@ -107,24 +113,155 @@ class SavePopup:
         message_rect = message_surface.get_rect(center=(self.x + self.width // 2, self.y + 100))
         self.screen.blit(message_surface, message_rect)
 
+# Image-based textured button backgrounds (user-provided texture)
+_MENU_TEX_BASES: Dict[str, Optional[pygame.Surface]] = {"normal": None, "hover": None, "click": None}
+_MENU_TEX_PATHS_RESOLVED = False
+_asset_mgr = AssetManager()
+
+def _resolve_menu_texture_paths() -> Dict[str, Optional[str]]:
+    global _MENU_TEX_PATHS_RESOLVED
+    _MENU_TEX_PATHS_RESOLVED = True
+    # Determine project root
+    ui_dir = os.path.dirname(__file__)
+    src_dir = os.path.dirname(ui_dir)
+    project_root = os.path.dirname(src_dir)
+    assets_ui = os.path.join(project_root, 'assets', 'ui')
+    assets_ui_spells = os.path.join(assets_ui, 'spells')
+
+    env_base = os.environ.get('ALCHEMIST_MENU_BUTTON_TEXTURE', '').strip()
+    def abs_if_exists(p: str) -> Optional[str]:
+        if not p:
+            return None
+        candidate = p if os.path.isabs(p) else os.path.normpath(os.path.join(project_root, p))
+        return candidate if os.path.isfile(candidate) else None
+
+    paths: Dict[str, Optional[str]] = {"normal": None, "hover": None, "click": None}
+    base_path = abs_if_exists(env_base) if env_base else None
+    if base_path:
+        root, ext = os.path.splitext(base_path)
+        paths["normal"] = base_path
+        hover = root + "_hover" + ext
+        click = root + "_click" + ext
+        paths["hover"] = hover if os.path.isfile(hover) else None
+        paths["click"] = click if os.path.isfile(click) else None
+        return paths
+
+    # Helper to search multiple extensions and folders
+    def find_any(name_no_ext: str) -> Optional[str]:
+        for folder in (assets_ui, assets_ui_spells):
+            for ext in ('.png', '.jpg', '.jpeg'):
+                candidate = os.path.join(folder, name_no_ext + ext)
+                if os.path.isfile(candidate):
+                    return candidate
+        return None
+
+    # Defaults under assets/ui (with fallbacks to assets/ui/spells)
+    paths["normal"] = find_any('menu_button_stone')
+    paths["hover"] = find_any('menu_button_stone_hover')
+    paths["click"] = find_any('menu_button_stone_click')
+    return paths
+
+def _ensure_menu_textures_loaded() -> None:
+    paths = _resolve_menu_texture_paths() if not _MENU_TEX_PATHS_RESOLVED else _resolve_menu_texture_paths()
+    for state, p in paths.items():
+        if p and _MENU_TEX_BASES.get(state) is None:
+            try:
+                _MENU_TEX_BASES[state] = _asset_mgr.load_image(p)
+            except Exception:
+                _MENU_TEX_BASES[state] = None
+
+def _get_menu_texture_scaled(size: Tuple[int, int], state: str) -> Optional[pygame.Surface]:
+    _ensure_menu_textures_loaded()
+    base = _MENU_TEX_BASES.get(state) or _MENU_TEX_BASES.get('normal')
+    if not base:
+        return None
+    return _asset_mgr.get_scaled_sprite(base, size)
+
+# Menu background image (user-provided)
+_MENU_BG_BASE: Optional[pygame.Surface] = None
+_MENU_BG_PATH_RESOLVED = False
+
+def _resolve_menu_bg_path() -> Optional[str]:
+    global _MENU_BG_PATH_RESOLVED
+    _MENU_BG_PATH_RESOLVED = True
+    # Project root
+    ui_dir = os.path.dirname(__file__)
+    src_dir = os.path.dirname(ui_dir)
+    project_root = os.path.dirname(src_dir)
+    assets_ui = os.path.join(project_root, 'assets', 'ui')
+    assets_ui_spells = os.path.join(assets_ui, 'spells')
+
+    env_bg = os.environ.get('ALCHEMIST_MENU_BG', '').strip()
+    def abs_if_exists(p: str) -> Optional[str]:
+        if not p:
+            return None
+        candidate = p if os.path.isabs(p) else os.path.normpath(os.path.join(project_root, p))
+        return candidate if os.path.isfile(candidate) else None
+
+    if env_bg:
+        p = abs_if_exists(env_bg)
+        if p:
+            return p
+
+    # Try common base names and extensions
+    def find_any(name_no_ext: str) -> Optional[str]:
+        for folder in (assets_ui, assets_ui_spells):
+            for ext in ('.png', '.jpg', '.jpeg'):
+                candidate = os.path.join(folder, name_no_ext + ext)
+                if os.path.isfile(candidate):
+                    return candidate
+        return None
+
+    return (
+        find_any('menu_bg') or
+        find_any('main_menu_bg') or
+        None
+    )
+
+def _ensure_menu_bg_loaded() -> None:
+    global _MENU_BG_BASE
+    if _MENU_BG_BASE is not None:
+        return
+    path = _resolve_menu_bg_path()
+    if path:
+        try:
+            _MENU_BG_BASE = _asset_mgr.load_image(path)
+        except Exception:
+            _MENU_BG_BASE = None
+
+def _get_menu_bg_scaled(size: Tuple[int, int]) -> Optional[pygame.Surface]:
+    _ensure_menu_bg_loaded()
+    if not _MENU_BG_BASE:
+        return None
+    return _asset_mgr.get_scaled_sprite(_MENU_BG_BASE, size)
+
 class MenuButton:
     """A clickable menu button"""
     
     def __init__(self, x: int, y: int, width: int, height: int, text: str, 
-                 font: pygame.font.Font, action: GameState = None):
+                 font: pygame.font.Font, action: Optional[Any] = None):
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
         self.font = font
-        self.action = action
+        self.action: Optional[Any] = action
         self.hovered = False
         self.clicked = False
         
         # Colors
-        self.normal_color = (40, 40, 60)
-        self.hover_color = (60, 60, 90)
-        self.click_color = (80, 80, 120)
-        self.text_color = (255, 255, 255)
-        self.border_color = (100, 100, 150)
+        self.normal_color: tuple[int, int, int] = (40, 40, 60)
+        self.hover_color: tuple[int, int, int] = (60, 60, 90)
+        self.click_color: tuple[int, int, int] = (80, 80, 120)
+        self.text_color: tuple[int, int, int] = (255, 255, 255)
+        self.border_color: tuple[int, int, int] = (100, 100, 150)
+
+    # Allow external code to set a generic "color" which maps to normal_color
+    @property
+    def color(self) -> tuple[int, int, int]:
+        return self.normal_color
+
+    @color.setter
+    def color(self, value: tuple[int, int, int]) -> None:
+        self.normal_color = value
     
     def update(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
         """Update button state and return True if clicked"""
@@ -139,16 +276,20 @@ class MenuButton:
     
     def draw(self, screen: pygame.Surface):
         """Draw the button"""
-        # Choose color based on state
-        if self.clicked:
-            color = self.click_color
-        elif self.hovered:
-            color = self.hover_color
+        # Choose texture or solid color based on availability
+        state = 'click' if self.clicked else ('hover' if self.hovered else 'normal')
+        tex = _get_menu_texture_scaled((self.rect.width, self.rect.height), state)
+        if tex is not None:
+            screen.blit(tex, self.rect)
         else:
-            color = self.normal_color
-        
-        # Draw button background
-        pygame.draw.rect(screen, color, self.rect)
+            # Fallback to color fill
+            if self.clicked:
+                color = self.click_color
+            elif self.hovered:
+                color = self.hover_color
+            else:
+                color = self.normal_color
+            pygame.draw.rect(screen, color, self.rect)
         pygame.draw.rect(screen, self.border_color, self.rect, 2)
         
         # Draw text with emoji support
@@ -172,6 +313,8 @@ class BaseMenuState:
         self.selected_index: int = 0
         self._last_axis_move_time: float = 0.0
         self._axis_move_cooldown: float = 0.18  # seconds, to debounce joystick
+        self.disable_menu_emojis: bool = False  # When using a custom font without emoji glyphs
+        self._custom_menu_font_loaded: bool = False
         
         # Try to use system fonts that support emojis better
         try:
@@ -194,9 +337,92 @@ class BaseMenuState:
                 self.text_font = pygame.font.Font(None, 28)
                 self.emoji_font = self.button_font
         
+        # Try to load a custom medieval/alchemic menu font from assets or env
+        try:
+            self._try_load_custom_menu_font()
+        except Exception:
+            # Non-fatal: keep defaults if anything goes wrong
+            pass
+
         self.background_color = (20, 20, 40)
+
+    def _try_load_custom_menu_font(self) -> None:
+        """Load a custom menu font if present.
+        Priority:
+        1) Env var ALCHEMIST_MENU_FONT (absolute or path relative to project root)
+        2) assets/fonts/menu.ttf or menu.otf
+        3) First matching medieval-ish font in assets/fonts directory
+        """
+        # Determine project root (repo root), then assets/fonts path
+        ui_dir = os.path.dirname(__file__)
+        src_dir = os.path.dirname(ui_dir)
+        project_root = os.path.dirname(src_dir)
+        fonts_dir = os.path.join(project_root, 'assets', 'fonts')
+
+        def _font_path_exists(path: str) -> Optional[str]:
+            if not path:
+                return None
+            # If not absolute, resolve against project root
+            candidate = path
+            if not os.path.isabs(candidate):
+                candidate = os.path.normpath(os.path.join(project_root, candidate))
+            return candidate if os.path.isfile(candidate) else None
+
+        # 1) Env override
+        env_font = os.environ.get('ALCHEMIST_MENU_FONT', '').strip()
+        font_path: Optional[str] = _font_path_exists(env_font) if env_font else None
+
+        # 2) Default menu.ttf/otf in assets/fonts
+        if not font_path and os.path.isdir(fonts_dir):
+            for fname in ('menu.ttf', 'menu.otf'):
+                candidate = os.path.join(fonts_dir, fname)
+                if os.path.isfile(candidate):
+                    font_path = candidate
+                    break
+
+        # 3) Try to pick a medieval-looking font from assets/fonts
+        if not font_path and os.path.isdir(fonts_dir):
+            try:
+                candidates = [f for f in os.listdir(fonts_dir) if f.lower().endswith(('.ttf', '.otf'))]
+            except Exception:
+                candidates = []
+            # Prefer names with these keywords
+            keywords = ('fraktur', 'blackletter', 'medieval', 'gothic', 'celtic', 'unifraktur', 'alchemy', 'alchemist')
+            prioritized: List[str] = []
+            others: List[str] = []
+            for f in candidates:
+                name = f.lower()
+                if any(k in name for k in keywords):
+                    prioritized.append(f)
+                else:
+                    others.append(f)
+            chosen = prioritized[0] if prioritized else (others[0] if others else None)
+            if chosen:
+                font_path = os.path.join(fonts_dir, chosen)
+
+        if not font_path:
+            return  # Nothing to do
+
+        # Load sizes (keep title larger, buttons/text smaller)
+        try:
+            self.title_font = pygame.font.Font(font_path, 56)
+            self.button_font = pygame.font.Font(font_path, 36)
+            self.text_font = pygame.font.Font(font_path, 28)
+            # When a custom TTF is used, assume it has no emoji glyphs
+            # Keep emoji_font as a system font for icon rendering tests if needed, but disable emoji usage explicitly
+            try:
+                self.emoji_font = pygame.font.SysFont('segoeuiemoji', 28)
+            except Exception:
+                self.emoji_font = self.text_font
+            self._custom_menu_font_loaded = True
+            self.disable_menu_emojis = True
+            # Slightly adjust background to complement medieval look
+            self.background_color = (18, 16, 28)
+        except Exception:
+            # If loading fails, silently keep defaults
+            self._custom_menu_font_loaded = False
         
-    def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
+    def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
         """Handle events and return new state if needed (mouse + keyboard + joystick)"""
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
@@ -245,17 +471,27 @@ class BaseMenuState:
     
     def draw(self):
         """Draw the menu with selection highlight"""
-        self.screen.fill(self.background_color)
+        # Draw custom background if available, else solid color
+        bg = _get_menu_bg_scaled((self.screen.get_width(), self.screen.get_height()))
+        if bg is not None:
+            self.screen.blit(bg, (0, 0))
+        else:
+            self.screen.fill(self.background_color)
         for i, button in enumerate(self.buttons):
             button.draw(self.screen)
             if i == self.selected_index:
                 # Draw a subtle highlight border and left arrow
                 pygame.draw.rect(self.screen, (255, 215, 0), button.rect.inflate(8, 6), 2)
-                arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
-                arrow_rect = arrow_surface.get_rect()
-                arrow_rect.centery = button.rect.centery
-                arrow_rect.right = button.rect.left - 12
-                self.screen.blit(arrow_surface, arrow_rect)
+                # Skip left arrow if special glyphs may render as squares
+                if not getattr(self, 'disable_menu_emojis', False):
+                    try:
+                        arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
+                        arrow_rect = arrow_surface.get_rect()
+                        arrow_rect.centery = button.rect.centery
+                        arrow_rect.right = button.rect.left - 12
+                        self.screen.blit(arrow_surface, arrow_rect)
+                    except Exception:
+                        pass
 
 class MainMenuState(BaseMenuState):
     """Main menu state"""
@@ -286,12 +522,12 @@ class MainMenuState(BaseMenuState):
         
         # Fallback text without emojis if font doesn't support them
         fallback_buttons_data = [
-            ("[NEW] Neues Spiel", GameState.NEW_GAME),
-            ("[SAVE] Spiel speichern", "save_game"),
-            ("[LOAD] Spiel laden", GameState.LOAD_GAME),
-            ("[SET] Einstellungen", GameState.SETTINGS),
-            ("[INFO] Credits", GameState.CREDITS),
-            ("[EXIT] Beenden", GameState.QUIT)
+            ("Neues Spiel", GameState.NEW_GAME),
+            ("Spiel speichern", "save_game"),
+            ("Spiel laden", GameState.LOAD_GAME),
+            ("Einstellungen", GameState.SETTINGS),
+            ("Credits", GameState.CREDITS),
+            ("Beenden", GameState.QUIT)
         ]
         
         for i, (text, action) in enumerate(buttons_data):
@@ -308,6 +544,9 @@ class MainMenuState(BaseMenuState):
                     emoji_works = True
             except:
                 pass
+            # Force-disable emojis when a custom font is active
+            if getattr(self, 'disable_menu_emojis', False):
+                emoji_works = False
             
             # Use fallback text if emojis don't work
             if not emoji_works:
@@ -344,7 +583,7 @@ class MainMenuState(BaseMenuState):
         super().draw()
         
         # Title
-        title_text = "🧙‍♂️ Der Alchemist"
+        title_text = "Der Alchemist" if getattr(self, 'disable_menu_emojis', False) else "🧙‍♂️ Der Alchemist"
         title_surface = self.title_font.render(title_text, True, (255, 215, 0))
         title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 120))
         self.screen.blit(title_surface, title_rect)
@@ -405,7 +644,7 @@ class SettingsMenuState(BaseMenuState):
         super().draw()
         
         # Title
-        title_text = "⚙️ Einstellungen"
+        title_text = "Einstellungen" if getattr(self, 'disable_menu_emojis', False) else "⚙️ Einstellungen"
         title_surface = self.title_font.render(title_text, True, (255, 215, 0))
         title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 100))
         self.screen.blit(title_surface, title_rect)
@@ -483,7 +722,7 @@ class SettingsMenuState(BaseMenuState):
         hint_rect = hint_surface.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 60))
         self.screen.blit(hint_surface, hint_rect)
 
-    def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
+    def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
         """Extend to adjust settings with keyboard arrows and save."""
         result = super().handle_event(event)
         if event is None:
@@ -657,7 +896,7 @@ class CreditsMenuState(BaseMenuState):
         super().draw()
         
         # Title
-        title_text = "📜 Credits"
+        title_text = "Credits" if getattr(self, 'disable_menu_emojis', False) else "📜 Credits"
         title_surface = self.title_font.render(title_text, True, (255, 215, 0))
         title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 100))
         self.screen.blit(title_surface, title_rect)
@@ -708,10 +947,10 @@ class LoadGameMenuState(BaseMenuState):
     
     def __init__(self, screen: pygame.Surface):
         super().__init__(screen)
-        self.save_slots = []
-        self.selected_slot = None
-        self.show_delete_confirmation = False
-        self.delete_slot = None
+        self.save_slots: List[Dict[str, Any]] = []
+        self.selected_slot: Optional[int] = None
+        self.show_delete_confirmation: bool = False
+        self.delete_slot: Optional[int] = None
         self.refresh_save_slots()
         self.setup_buttons()
     
@@ -769,13 +1008,13 @@ class LoadGameMenuState(BaseMenuState):
             self.buttons.append(cancel_button)
     
     
-    def handle_event(self, event: pygame.event.Event) -> Optional[GameState]:
+    def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
         """Handle events for load game menu (mouse + keyboard/joystick)"""
         # If confirmation dialog is open, prioritize confirm/cancel hotkeys
         if self.show_delete_confirmation:
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_RETURN, pygame.K_i):
-                    if save_manager.delete_save(self.delete_slot):
+                    if isinstance(self.delete_slot, int) and save_manager.delete_save(self.delete_slot):
                         print(f"🗑️ Save slot {self.delete_slot} deleted successfully")
                     else:
                         print(f"❌ Failed to delete save slot {self.delete_slot}")
@@ -796,16 +1035,19 @@ class LoadGameMenuState(BaseMenuState):
             if isinstance(base_result, tuple):
                 kind = base_result[0]
                 if kind == "load_slot":
-                    self.selected_slot = base_result[1]
-                    return ("load_game", self.selected_slot)
+                    slot_val = base_result[1]
+                    if isinstance(slot_val, int):
+                        self.selected_slot = slot_val
+                        return ("load_game", self.selected_slot)
+                    return None
                 elif kind == "delete_slot":
                     # Show delete confirmation
-                    self.delete_slot = base_result[1]
+                    self.delete_slot = base_result[1] if isinstance(base_result[1], int) else None
                     self.show_delete_confirmation = True
                     self.setup_buttons()
                     return None
                 elif kind == "confirm_delete":
-                    if save_manager.delete_save(base_result[1]):
+                    if isinstance(base_result[1], int) and save_manager.delete_save(base_result[1]):
                         print(f"🗑️ Save slot {base_result[1]} deleted successfully")
                     else:
                         print(f"❌ Failed to delete save slot {base_result[1]}")
@@ -883,17 +1125,20 @@ class LoadGameMenuState(BaseMenuState):
                 if button.update(mouse_pos, True):
                     if isinstance(button.action, tuple):
                         if button.action[0] == "load_slot":
-                            self.selected_slot = button.action[1]
-                            return ("load_game", self.selected_slot)  # Return special load action
+                            slot_val = button.action[1]
+                            if isinstance(slot_val, int):
+                                self.selected_slot = slot_val
+                                return ("load_game", self.selected_slot)  # Return special load action
+                            return None
                         elif button.action[0] == "delete_slot":
                             # Show delete confirmation
-                            self.delete_slot = button.action[1]
+                            self.delete_slot = button.action[1] if isinstance(button.action[1], int) else None
                             self.show_delete_confirmation = True
                             self.setup_buttons()  # Refresh buttons to show confirmation
                             return None
                         elif button.action[0] == "confirm_delete":
                             # Actually delete the save
-                            if save_manager.delete_save(button.action[1]):
+                            if isinstance(button.action[1], int) and save_manager.delete_save(button.action[1]):
                                 print(f"🗑️ Save slot {button.action[1]} deleted successfully")
                             else:
                                 print(f"❌ Failed to delete save slot {button.action[1]}")
@@ -924,7 +1169,7 @@ class LoadGameMenuState(BaseMenuState):
                 return None
             elif event.key == pygame.K_RETURN and self.show_delete_confirmation:
                 # Enter key confirms delete
-                if save_manager.delete_save(self.delete_slot):
+                if isinstance(self.delete_slot, int) and save_manager.delete_save(self.delete_slot):
                     print(f"🗑️ Save slot {self.delete_slot} deleted successfully")
                 else:
                     print(f"❌ Failed to delete save slot {self.delete_slot}")
@@ -941,7 +1186,7 @@ class LoadGameMenuState(BaseMenuState):
         super().draw()
         
         # Title
-        title_text = "📁 Spiel laden"
+        title_text = "Spiel laden" if getattr(self, 'disable_menu_emojis', False) else "📁 Spiel laden"
         title_surface = self.title_font.render(title_text, True, (255, 215, 0))
         title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 100))
         self.screen.blit(title_surface, title_rect)
@@ -1088,8 +1333,11 @@ class PauseMenuState(BaseMenuState):
                 self.setup_buttons()
                 return None
             elif base_result in ("save_slot_1", "save_slot_2", "save_slot_3", "save_slot_4", "save_slot_5"):
-                slot_map = {"save_slot_1": 1, "save_slot_2": 2, "save_slot_3": 3, "save_slot_4": 4, "save_slot_5": 5}
-                return ("save_to_slot", slot_map[base_result])
+                slot_map: Dict[str, int] = {"save_slot_1": 1, "save_slot_2": 2, "save_slot_3": 3, "save_slot_4": 4, "save_slot_5": 5}
+                slot_val = slot_map.get(str(base_result))
+                if slot_val is not None:
+                    return ("save_to_slot", slot_val)
+                return None
             else:
                 return base_result
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -1150,10 +1398,10 @@ class PauseMenuState(BaseMenuState):
         
         # Title
         if not self.show_save_menu:
-            title_text = "⏸️ Spiel Pausiert"
+            title_text = "Spiel Pausiert" if getattr(self, 'disable_menu_emojis', False) else "⏸️ Spiel Pausiert"
             subtitle_text = "ESC zum Fortsetzen"
         else:
-            title_text = "💾 Spiel Speichern"
+            title_text = "Spiel Speichern" if getattr(self, 'disable_menu_emojis', False) else "💾 Spiel Speichern"
             subtitle_text = "Wähle einen Speicherplatz"
             
         title_surface = self.title_font.render(title_text, True, (255, 215, 0))
@@ -1243,7 +1491,7 @@ class GameOverMenuState(BaseMenuState):
         alpha = max(200, int(255 * fade_progress))  # Minimum visibility
         
         # Game Over title with dramatic effect
-        title_text = "💀 GAME OVER 💀"
+        title_text = "GAME OVER" if getattr(self, 'disable_menu_emojis', False) else "💀 GAME OVER 💀"
         title_color = (255, 50, 50)  # Red color
         title_surface = self.title_font.render(title_text, True, title_color)
         title_surface.set_alpha(alpha)
@@ -1270,11 +1518,15 @@ class GameOverMenuState(BaseMenuState):
             if i == self.selected_index:
                 # Draw a selection highlight similar to BaseMenuState
                 pygame.draw.rect(self.screen, (255, 215, 0), button.rect.inflate(8, 6), 2)
-                arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
-                arrow_rect = arrow_surface.get_rect()
-                arrow_rect.centery = button.rect.centery
-                arrow_rect.right = button.rect.left - 12
-                self.screen.blit(arrow_surface, arrow_rect)
+                if not getattr(self, 'disable_menu_emojis', False):
+                    try:
+                        arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
+                        arrow_rect = arrow_surface.get_rect()
+                        arrow_rect.centery = button.rect.centery
+                        arrow_rect.right = button.rect.left - 12
+                        self.screen.blit(arrow_surface, arrow_rect)
+                    except Exception:
+                        pass
         
         # Show controls hint (always visible)
         hint_text = "⌨️ ESC: Hauptmenü  •  R: Neues Spiel"
@@ -1334,7 +1586,7 @@ class MenuSystem:
         self.next_state = None
 
         # Integrate Action System so hardware "brew/attack" selects in menus
-        if _ACTION_SYSTEM_AVAILABLE:
+        if _ACTION_SYSTEM_AVAILABLE and get_action_system is not None:
             try:
                 self._action_system = get_action_system()
 
@@ -1348,8 +1600,9 @@ class MenuSystem:
                         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
 
                 # Map both ATTACK and CAST_MAGIC to confirm selection
-                self._action_system.register_handler(ActionType.ATTACK, _confirm_from_action)
-                self._action_system.register_handler(ActionType.CAST_MAGIC, _confirm_from_action)
+                if hasattr(self._action_system, "register_handler") and ActionType is not None:
+                    self._action_system.register_handler(ActionType.ATTACK, _confirm_from_action)
+                    self._action_system.register_handler(ActionType.CAST_MAGIC, _confirm_from_action)
             except Exception:
                 self._action_system = None
     
@@ -1387,7 +1640,7 @@ class MenuSystem:
                 elif isinstance(result, tuple) and result[0] == "save_to_slot":
                     # Handle save to specific slot
                     return result
-                else:
+                elif isinstance(result, GameState):
                     self.change_state(result)
         
         return None
@@ -1402,7 +1655,7 @@ class MenuSystem:
                 self.states[GameState.LOAD_GAME].setup_buttons()
             # Reset selection so first item is focused by default
             state_obj = self.states.get(new_state)
-            if hasattr(state_obj, 'selected_index'):
+            if state_obj is not None and hasattr(state_obj, 'selected_index'):
                 state_obj.selected_index = 0
     
     def show_save_confirmation(self):

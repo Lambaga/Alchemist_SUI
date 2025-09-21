@@ -1,98 +1,106 @@
 # -*- coding: utf-8 -*-
 # src/map_loader.py
 import os
+try:
+    from core.settings import VERBOSE_LOGS
+except Exception:
+    VERBOSE_LOGS = False
 import pygame
 import pytmx
 from config import Colors
 from asset_manager import AssetManager
+from typing import Optional
 
 class MapLoader:
     """
-    Diese Klasse lädt eine TMX-Karte aus Tiled und stellt sie dar.
-    Sie extrahiert auch Kollisionsobjekte aus einer spez                    # Versuche Tile-Image zu laden
-                    try:
-                        tile_image = self.tmx_data.get_tile_image_by_gid(gid)
-                        if not tile_image:
-                            # Fallback: Versuche Tile direkt aus Bilddatei zu laden
-                            tile_image = self.get_tile_image_direct(gid)
-
-                        if tile_image:
-                            surface.blit(tile_image, (tile_x, tile_y))
-                        else:
-                            # Debug: Erster Fehler - tile_image ist None
-                            if not hasattr(layer, '_tile_none_logged'):
-                                print(f"� Layer {layer.name}: GID {gid} gibt tile_image=None zurück")
-                                print(f"   Erstes Tileset: {self.tmx_data.tilesets[0].name if self.tmx_data.tilesets else 'Keine Tilesets'}")
-                                if self.tmx_data.tilesets:
-                                    ts = self.tmx_data.tilesets[0]
-                                    print(f"   GID-Range: {ts.firstgid} bis {ts.firstgid + ts.tilecount - 1}")
-                                layer._tile_none_logged = Truebene.
+    Lädt eine TMX-Karte (Tiled) und stellt Rendering-/Hilfsfunktionen bereit.
+    Enthält Workarounds für externe TSX/Tileset-Bilder.
     """
     def __init__(self, filename):
-        """
-        Lädt die Kartendaten aus der angegebenen TMX-Datei.
-        """
-        # Initialize AssetManager
+        """Lädt die Kartendaten aus der angegebenen TMX-Datei."""
         self.asset_manager = AssetManager()
-        self.foreground_layer = None  # Initialisiere das Attribut, um AttributeError zu vermeiden
-        
-        # Cache für geladene Tile-Images (Performance-Optimierung)
-        # BEHOBEN: Verwende String-Keys statt GID-Keys um Tileset-Konflikte zu vermeiden
+        self.foreground_layer = None
         self.tile_cache = {}
-        
-        # Speichere ursprüngliches Arbeitsverzeichnis
+
         original_cwd = os.getcwd()
-        
+        maps_dir: Optional[str] = None
         try:
-            # Verwende absoluten Pfad für TMX-Datei - pytmx kann relative Pfade in TSX-Dateien besser auflösen
+            # Absoluten TMX-Pfad bestimmen
             if os.path.isabs(filename):
                 tmx_filename = filename
                 maps_dir = os.path.dirname(filename)
             else:
                 tmx_filename = os.path.abspath(filename)
                 maps_dir = os.path.dirname(tmx_filename)
-            
-            print(f"🗂️ Maps-Verzeichnis: {maps_dir}")
-            print(f"📁 Lade TMX: {tmx_filename}")
-            
-            # Speichere aktuelles Arbeitsverzeichnis
-            original_cwd = os.getcwd()
-            
-            # Wechsle temporär ins maps-Verzeichnis für bessere relative Pfad-Auflösung
+
+            if VERBOSE_LOGS:
+                print(f"🗂️ Maps-Verzeichnis: {maps_dir}")
+                print(f"📁 Lade TMX: {tmx_filename}")
+
+            # Temporär ins Maps-Verzeichnis wechseln (relative TSX/PNG-Auflösung)
             if maps_dir and os.path.exists(maps_dir):
                 os.chdir(maps_dir)
-                print(f"✅ Arbeitsverzeichnis gewechselt zu: {maps_dir}")
+                if VERBOSE_LOGS:
+                    print(f"✅ Arbeitsverzeichnis gewechselt zu: {maps_dir}")
             else:
-                print(f"⚠️ Maps-Verzeichnis nicht gefunden: {maps_dir}")
-            
-            # Lade TMX-Datei mit absolutem Pfad
+                if VERBOSE_LOGS:
+                    print(f"⚠️ Maps-Verzeichnis nicht gefunden: {maps_dir}")
+
+            # TMX laden und Pfad merken
             self.tmx_data = pytmx.load_pygame(tmx_filename, pixelalpha=True)
-            # Merke den absoluten Pfad für Downstream-Systeme
             self.map_path = tmx_filename
-            print("✅ TMX-Datei geladen: {}".format(tmx_filename))
-            
-            # **CRITICAL FIX**: PyTMX lädt externe TSX falsch - manuelle Lösung
-            print("🔧 MANUELLES TSX-LOADING: Korrigiere externe Tileset-Referenzen...")
+            if VERBOSE_LOGS:
+                print(f"✅ TMX-Datei geladen: {tmx_filename}")
+
+            # Externe TSX manuell korrigieren
+            if VERBOSE_LOGS:
+                print("🔧 MANUELLES TSX-LOADING: Korrigiere externe Tileset-Referenzen...")
             self._load_external_tilesets_manually(tmx_filename)
+        except FileNotFoundError:
+            print(f"FEHLER: Kartendatei nicht gefunden: {filename}")
+            self.tmx_data = None
+            self.width = 0
+            self.height = 0
+            self.collision_objects = []
+            return
+        except Exception as e:
+            print(f"WARNUNG: Tileset-Fehler ignoriert: {e}")
+            print("🎨 Versuche trotzdem zu laden...")
+            try:
+                # Letzter Versuch: TMX relativ laden
+                tmx_basename = os.path.basename(filename)
+                self.tmx_data = pytmx.load_pygame(tmx_basename, pixelalpha=True)
+            except Exception:
+                print("❌ Map konnte gar nicht geladen werden")
+                self.tmx_data = None
+                self.width = 0
+                self.height = 0
+                self.collision_objects = []
+                return
+        finally:
+            # Ursprüngliches Arbeitsverzeichnis wiederherstellen
+            os.chdir(original_cwd)
             
             # Debug: Prüfe Tilesets
-            if hasattr(self.tmx_data, 'tilesets'):
+            if self.tmx_data is not None and hasattr(self.tmx_data, 'tilesets') and VERBOSE_LOGS:
                 print("🎨 Verfügbare Tilesets:")
                 for i, tileset in enumerate(self.tmx_data.tilesets):
                     source = getattr(tileset, 'source', 'embedded')
                     first_gid = getattr(tileset, 'firstgid', 'unknown')
-                    print(f"  {i+1}. {tileset.name} (GID: {first_gid}, Source: {source})")
+                    if VERBOSE_LOGS:
+                        print(f"  {i+1}. {tileset.name} (GID: {first_gid}, Source: {source})")
 
                     # Prüfe ob Tileset-Bilder geladen wurden und ob die Bilddatei existiert / geladen werden kann
                     if hasattr(tileset, 'image') and getattr(tileset.image, 'source', None):
                         img_source = getattr(tileset.image, 'source')
                         # Versuche verschiedene Pfad-Kombinationen
-                        possible_paths = [
-                            img_source,  # Relativer Pfad aus TSX
-                            os.path.join(maps_dir, img_source),  # Relativer Pfad vom maps-Verzeichnis
-                            os.path.join(os.getcwd(), img_source),  # Relativer Pfad vom aktuellen Arbeitsverzeichnis
-                            os.path.abspath(img_source)  # Absoluter Pfad
+                        possible_paths_candidates = [
+                            img_source,
+                            os.path.join(maps_dir, img_source) if maps_dir else None,
+                            os.path.join(os.getcwd(), img_source),
+                            os.path.abspath(img_source),
                         ]
+                        possible_paths = [p for p in possible_paths_candidates if isinstance(p, str)]
                         
                         img_path = None
                         for path in possible_paths:
@@ -126,11 +134,12 @@ class MapLoader:
                         print(f"     🔧 MANUAL LOAD: Lade PNG-Pfad aus TSX '{tsx_source}'...")
                         
                         # Finde die TSX-Datei  
-                        tsx_paths = [
-                            tsx_source,  # Relativer Pfad
-                            os.path.join(maps_dir, tsx_source),  # maps-Verzeichnis
-                            os.path.join(os.getcwd(), tsx_source),  # Aktuelles Verzeichnis
+                        tsx_paths_candidates = [
+                            tsx_source,
+                            os.path.join(maps_dir, tsx_source) if maps_dir else None,
+                            os.path.join(os.getcwd(), tsx_source),
                         ]
+                        tsx_paths = [p for p in tsx_paths_candidates if isinstance(p, str)]
                         
                         tsx_path = None
                         for path in tsx_paths:
@@ -153,11 +162,15 @@ class MapLoader:
                                     
                                     # Versuche verschiedene Pfad-Kombinationen für PNG (relativ zur TSX-Datei)
                                     tsx_dir = os.path.dirname(tsx_path)
-                                    png_paths = [
-                                        os.path.join(tsx_dir, png_source),  # Relativ zur TSX-Datei
-                                        os.path.join(maps_dir, png_source),  # maps-Verzeichnis
-                                        png_source,  # Direkter Pfad
-                                    ]
+                                    if png_source:
+                                        png_paths_candidates = [
+                                            os.path.join(tsx_dir, png_source),
+                                            os.path.join(maps_dir, png_source) if maps_dir else None,
+                                            png_source,
+                                        ]
+                                        png_paths = [p for p in png_paths_candidates if isinstance(p, str)]
+                                    else:
+                                        png_paths = []
                                     
                                     png_path = None
                                     for path in png_paths:
@@ -192,31 +205,38 @@ class MapLoader:
                     # Wenn das Tileset bereits ein geladenes Bild hat (embedded oder bereits nachgeladen)
                     elif hasattr(tileset, 'image') and tileset.image and hasattr(tileset.image, 'source'):
                         img_source = tileset.image.source
-                        print(f"     ✅ Bild bereits geladen: {img_source}")
+                        if VERBOSE_LOGS:
+                            print(f"     ✅ Bild bereits geladen: {img_source}")
                     else:
-                        print(f"     ⚠️ Unbekannter Tileset-Status")
+                        if VERBOSE_LOGS:
+                            print(f"     ⚠️ Unbekannter Tileset-Status")
                         
                     # Zusätzliche Debug-Info für alle Tilesets
-                    print(f"     📊 Tileset {tileset.name}: firstgid={tileset.firstgid}, tilecount={tileset.tilecount}, range={tileset.firstgid}-{tileset.firstgid + tileset.tilecount - 1}")
-                    if hasattr(tileset, 'columns'):
-                        print(f"         Columns: {tileset.columns}, TileSize: {tileset.tilewidth}x{tileset.tileheight}")
+                    if VERBOSE_LOGS:
+                        print(f"     📊 Tileset {tileset.name}: firstgid={tileset.firstgid}, tilecount={tileset.tilecount}, range={tileset.firstgid}-{tileset.firstgid + tileset.tilecount - 1}")
+                        if hasattr(tileset, 'columns'):
+                            print(f"         Columns: {tileset.columns}, TileSize: {tileset.tilewidth}x{tileset.tileheight}")
         
             # Debug: Zähle erfolgreich geladene Tilesets
             loaded_tilesets = 0
-            for tileset in self.tmx_data.tilesets:
+            for tileset in (self.tmx_data.tilesets if self.tmx_data else []):
                 if hasattr(tileset, 'image') and tileset.image:
                     loaded_tilesets += 1
-            print(f"🎨 Tilesets-Status: {loaded_tilesets}/{len(self.tmx_data.tilesets)} erfolgreich geladen")
-            if loaded_tilesets < len(self.tmx_data.tilesets):
-                print(f"⚠️ {len(self.tmx_data.tilesets) - loaded_tilesets} Tilesets konnten nicht geladen werden!")
+            total_tilesets = len(self.tmx_data.tilesets) if self.tmx_data else 0
+            if VERBOSE_LOGS:
+                print(f"🎨 Tilesets-Status: {loaded_tilesets}/{total_tilesets} erfolgreich geladen")
+            if self.tmx_data and loaded_tilesets < total_tilesets and VERBOSE_LOGS:
+                print(f"⚠️ {total_tilesets - loaded_tilesets} Tilesets konnten nicht geladen werden!")
                 
             # ZUSÄTZLICH: Analysiere GID-Ranges auf Überlappungen/Lücken
-            print("🔍 GID-Range-Analyse:")
-            sorted_tilesets = sorted(self.tmx_data.tilesets, key=lambda ts: ts.firstgid)
+            if VERBOSE_LOGS:
+                print("🔍 GID-Range-Analyse:")
+            sorted_tilesets = sorted(self.tmx_data.tilesets, key=lambda ts: ts.firstgid) if self.tmx_data else []
             for i, tileset in enumerate(sorted_tilesets):
                 range_end = tileset.firstgid + tileset.tilecount - 1
                 range_status = "✅" if hasattr(tileset, 'image') and tileset.image else "❌"
-                print(f"  {range_status} {tileset.name}: GID {tileset.firstgid}-{range_end} ({tileset.tilecount} tiles)")
+                if VERBOSE_LOGS:
+                    print(f"  {range_status} {tileset.name}: GID {tileset.firstgid}-{range_end} ({tileset.tilecount} tiles)")
                 
                 # Prüfe auf Lücken/Überlappungen
                 if i > 0:
@@ -224,38 +244,11 @@ class MapLoader:
                     prev_end = prev_tileset.firstgid + prev_tileset.tilecount - 1
                     if prev_end + 1 != tileset.firstgid:
                         if prev_end >= tileset.firstgid:
-                            print(f"    ⚠️ ÜBERLAPPUNG mit {prev_tileset.name}: {prev_end} >= {tileset.firstgid}")
+                            if VERBOSE_LOGS:
+                                print(f"    ⚠️ ÜBERLAPPUNG mit {prev_tileset.name}: {prev_end} >= {tileset.firstgid}")
                         else:
-                            print(f"    ⚠️ LÜCKE nach {prev_tileset.name}: {prev_end+1} bis {tileset.firstgid-1} ({tileset.firstgid-prev_end-1} GIDs)")
-                        
-        except FileNotFoundError:
-            print("FEHLER: Kartendatei nicht gefunden: {}".format(filename))
-            # Erstelle ein leeres tmx_data-Objekt, um Abstürze zu vermeiden
-            self.tmx_data = None
-            self.width = 0
-            self.height = 0
-            self.collision_objects = []
-            return
-        except Exception as e:
-            print("WARNUNG: Tileset-Fehler ignoriert: {}".format(e))
-            print("🎨 Versuche trotzdem zu laden...")
-            # Versuche trotzdem zu laden, auch wenn Tilesets fehlen
-            try:
-                if maps_dir:
-                    tmx_filename = os.path.basename(filename)
-                else:
-                    tmx_filename = filename
-                self.tmx_data = pytmx.load_pygame(tmx_filename, pixelalpha=True)
-            except:
-                print("❌ Map konnte gar nicht geladen werden")
-                self.tmx_data = None
-                self.width = 0
-                self.height = 0
-                self.collision_objects = []
-                return
-        finally:
-            # Setze ursprüngliches Arbeitsverzeichnis zurück
-            os.chdir(original_cwd)
+                            if VERBOSE_LOGS:
+                                print(f"    ⚠️ LÜCKE nach {prev_tileset.name}: {prev_end+1} bis {tileset.firstgid-1} ({tileset.firstgid-prev_end-1} GIDs)")
 
     def _load_external_tilesets_manually(self, tmx_filename):
         """
@@ -265,7 +258,8 @@ class MapLoader:
         import xml.etree.ElementTree as ET
         
         tmx_dir = os.path.dirname(tmx_filename)
-        print(f"🔧 Manuelles TSX-Loading aus: {tmx_dir}")
+        if VERBOSE_LOGS:
+            print(f"🔧 Manuelles TSX-Loading aus: {tmx_dir}")
         
         # Parse TMX direkt um Tileset-Referenzen zu finden
         try:
@@ -280,12 +274,14 @@ class MapLoader:
                 if source:
                     external_tilesets.append((firstgid, source))
             
-            print(f"   Gefunden: {len(external_tilesets)} externe Tileset-Referenzen")
+            if VERBOSE_LOGS:
+                print(f"   Gefunden: {len(external_tilesets)} externe Tileset-Referenzen")
             
             # Lade jedes externe Tileset manuell
             for firstgid, tsx_source in external_tilesets:
                 tsx_path = os.path.join(tmx_dir, tsx_source)
-                print(f"   Lade: {tsx_source} (firstgid={firstgid})")
+                if VERBOSE_LOGS:
+                    print(f"   Lade: {tsx_source} (firstgid={firstgid})")
                 
                 if not os.path.exists(tsx_path):
                     print(f"   ❌ TSX nicht gefunden: {tsx_path}")
@@ -313,9 +309,13 @@ class MapLoader:
                     width = int(image_elem.get('width', 0))
                     height = int(image_elem.get('height', 0))
                     
-                    print(f"     TSX-Info: {name}, {tilecount} tiles, {columns} cols, PNG: {png_source}")
+                    if VERBOSE_LOGS:
+                        print(f"     TSX-Info: {name}, {tilecount} tiles, {columns} cols, PNG: {png_source}")
                     
                     # Finde PNG-Datei
+                    if not png_source:
+                        print(f"     ❌ PNG-Quelle fehlt im TSX: {tsx_source}")
+                        continue
                     png_path = os.path.join(tmx_dir, png_source)
                     if not os.path.exists(png_path):
                         print(f"     ❌ PNG nicht gefunden: {png_path}")
@@ -324,10 +324,11 @@ class MapLoader:
                     # Lade PNG mit pygame
                     try:
                         png_surface = pygame.image.load(png_path).convert_alpha()
-                        print(f"     ✅ PNG geladen: {png_surface.get_size()}")
+                        if VERBOSE_LOGS:
+                            print(f"     ✅ PNG geladen: {png_surface.get_size()}")
                         
                         # Finde das entsprechende Tileset in tmx_data und setze das Bild
-                        for tileset in self.tmx_data.tilesets:
+                        for tileset in (self.tmx_data.tilesets if self.tmx_data else []):
                             if tileset.firstgid == firstgid:
                                 # Erstelle MockImage
                                 class MockImage:
@@ -343,7 +344,8 @@ class MapLoader:
                                 tileset.tilewidth = tilewidth
                                 tileset.tileheight = tileheight
                                 
-                                print(f"     ✅ Tileset {name} erfolgreich korrigiert!")
+                                if VERBOSE_LOGS:
+                                    print(f"     ✅ Tileset {name} erfolgreich korrigiert!")
                                 break
                         else:
                             print(f"     ⚠️ Tileset mit firstgid={firstgid} nicht in tmx_data gefunden")
@@ -383,11 +385,13 @@ class MapLoader:
             # Suche nach Foreground/Front Layer
             if hasattr(layer, 'data') and layer.name and layer.name.lower() in ['foreground', 'front', 'overlay']:
                 self.foreground_layer = layer
-                print(f"🎭 Foreground-Layer gefunden: {layer.name}")
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print(f"🎭 Foreground-Layer gefunden: {layer.name}")
                 break
         
         if not self.foreground_layer:
-            print("⚠️ Kein Foreground-Layer gefunden")
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print("⚠️ Kein Foreground-Layer gefunden")
     
     def render(self, surface, camera):
         """Rendert alle Layer inklusive Foreground in der richtigen Reihenfolge"""
@@ -407,7 +411,7 @@ class MapLoader:
                     layers_with_tiles += 1
     
         # Debug-Zusammenfassung nur einmal
-        if not hasattr(self, '_render_summary_logged'):
+        if VERBOSE_LOGS and not hasattr(self, '_render_summary_logged'):
             print(f"🎨 RENDER-ZUSAMMENFASSUNG: {total_tiles_rendered} Tiles in {layers_with_tiles} Layern")
             print(f"   Map-Größe: {self.tmx_data.width}x{self.tmx_data.height} Tiles ({self.width}x{self.height} Pixel)")
             self._render_summary_logged = True
@@ -527,6 +531,9 @@ class MapLoader:
         """Rendert einen einzelnen Tile-Layer mit Debug-Informationen"""
         if not layer or not hasattr(layer, 'data'):
             return
+        tmx = self.tmx_data
+        if not tmx:
+            return
         
         # Debug: Prüfe Layer-Daten (erweitert)
         total_tiles = 0
@@ -555,12 +562,12 @@ class MapLoader:
                         mid_non_empty += 1
                         sample_gids.append(gid)
             
-            if mid_non_empty > 0 and not hasattr(layer, '_mid_debug_logged'):
+            if VERBOSE_LOGS and mid_non_empty > 0 and not hasattr(layer, '_mid_debug_logged'):
                 print(f"🎯 Layer {layer.name} (Mitte): {mid_non_empty} nicht-leere Tiles gefunden!")
                 layer._mid_debug_logged = True
 
         # Debug-Ausgabe nur einmal pro Layer
-        if not hasattr(layer, '_debug_logged'):
+        if VERBOSE_LOGS and not hasattr(layer, '_debug_logged'):
             print(f"🔍 Layer {layer.name}: {non_empty_tiles}/{total_tiles} nicht-leere Tiles (Sample: {sample_gids[:5]})")
             layer._debug_logged = True
         
@@ -570,8 +577,8 @@ class MapLoader:
             surface.get_width(), surface.get_height()
         )
         
-        tile_width = self.tmx_data.tilewidth
-        tile_height = self.tmx_data.tileheight
+        tile_width = tmx.tilewidth
+        tile_height = tmx.tileheight
         
         start_x = max(0, screen_rect.left // tile_width)
         start_y = max(0, screen_rect.top // tile_height)
@@ -615,7 +622,7 @@ class MapLoader:
                     
                     # Versuche Tile-Image zu laden
                     try:
-                        tile_image = self.tmx_data.get_tile_image_by_gid(gid)
+                        tile_image = tmx.get_tile_image_by_gid(gid)
                         if not tile_image:
                             # Fallback: Versuche Tile direkt aus Bilddatei zu laden
                             tile_image = self.get_tile_image_direct(gid)
@@ -623,12 +630,13 @@ class MapLoader:
                             surface.blit(tile_image, (tile_x, tile_y))
                         else:
                             # Debug: Erweiterte Fehlerdiagnose für fehlende Tiles
-                            if not hasattr(layer, '_tile_none_logged'):
+                            if VERBOSE_LOGS and not hasattr(layer, '_tile_none_logged'):
                                 print(f"❌ Layer {layer.name}: GID {gid} gibt tile_image=None zurück")
-                                print(f"   Erstes Tileset: {self.tmx_data.tilesets[0].name if self.tmx_data.tilesets else 'Keine Tilesets'}")
-                                if self.tmx_data.tilesets:
-                                    ts = self.tmx_data.tilesets[0]
-                                    print(f"   GID-Range: {ts.firstgid} bis {ts.firstgid + ts.tilecount - 1}")
+                                print(f"   Erstes Tileset: {tmx.tilesets[0].name if (tmx and tmx.tilesets) else 'Keine Tilesets'}")
+                                if tmx and tmx.tilesets:
+                                    ts = tmx.tilesets[0]
+                                    if VERBOSE_LOGS:
+                                        print(f"   GID-Range: {ts.firstgid} bis {ts.firstgid + ts.tilecount - 1}")
                                 layer._tile_none_logged = True
                             
                             # ERWEITERT: Detaillierte GID-Analyse für fehlende Tiles
@@ -639,50 +647,62 @@ class MapLoader:
                                 layer._missing_gids.add(gid)
                                 # Analysiere warum dieses GID fehlt
                                 found_tileset = None
-                                for ts in self.tmx_data.tilesets:
+                                for ts in tmx.tilesets:
                                     if ts.firstgid <= gid < ts.firstgid + ts.tilecount:
                                         found_tileset = ts
                                         break
                                 
                                 if found_tileset:
                                     local_id = gid - found_tileset.firstgid
-                                    print(f"🔍 Fehlender Tile - GID {gid}: Tileset '{found_tileset.name}', local_id={local_id}")
+                                    if VERBOSE_LOGS:
+                                        print(f"🔍 Fehlender Tile - GID {gid}: Tileset '{found_tileset.name}', local_id={local_id}")
                                     
                                     # ERWEITERTE DIAGNOSE
                                     if hasattr(found_tileset, 'image') and found_tileset.image:
                                         if hasattr(found_tileset.image, 'surface'):
                                             surf = found_tileset.image.surface
-                                            print(f"   MockImage verfügbar: {surf.get_size()}, Columns: {getattr(found_tileset, 'columns', 'unknown')}")
+                                            if VERBOSE_LOGS:
+                                                print(f"   MockImage verfügbar: {surf.get_size()}, Columns: {getattr(found_tileset, 'columns', 'unknown')}")
                                             
                                             # Prüfe ob local_id innerhalb der erwarteten Grenzen liegt
                                             max_tiles_in_surface = (surf.get_width() // found_tileset.tilewidth) * (surf.get_height() // found_tileset.tileheight)
                                             if local_id >= max_tiles_in_surface:
-                                                print(f"   ❌ local_id {local_id} > max_tiles {max_tiles_in_surface} in Surface!")
+                                                if VERBOSE_LOGS:
+                                                    print(f"   ❌ local_id {local_id} > max_tiles {max_tiles_in_surface} in Surface!")
                                             else:
-                                                print(f"   ✅ local_id {local_id} < max_tiles {max_tiles_in_surface} - sollte funktionieren!")
+                                                if VERBOSE_LOGS:
+                                                    print(f"   ✅ local_id {local_id} < max_tiles {max_tiles_in_surface} - sollte funktionieren!")
                                                 
                                         else:
-                                            print(f"   PyTMX Image verfügbar: {type(found_tileset.image)}")
+                                            if VERBOSE_LOGS:
+                                                print(f"   PyTMX Image verfügbar: {type(found_tileset.image)}")
                                         
                                         # Prüfe Cache
                                         cache_key = f"{found_tileset.name}_{local_id}"
                                         if cache_key in self.tile_cache:
                                             cached_result = self.tile_cache[cache_key]
-                                            print(f"   Cache-Inhalt: {type(cached_result)} ({cached_result is not None})")
+                                            if VERBOSE_LOGS:
+                                                print(f"   Cache-Inhalt: {type(cached_result)} ({cached_result is not None})")
                                         else:
-                                            print(f"   ❌ Nicht im Cache: '{cache_key}'")
+                                            if VERBOSE_LOGS:
+                                                print(f"   ❌ Nicht im Cache: '{cache_key}'")
                                             
                                             # ZUSÄTZLICH: Versuche das Tile JETZT direkt zu laden
-                                            print(f"   🔧 Versuche direktes Laden für GID {gid}...")
+                                            if VERBOSE_LOGS:
+                                                print(f"   🔧 Versuche direktes Laden für GID {gid}...")
                                             direct_tile = self.get_tile_image_direct(gid)
                                             if direct_tile:
-                                                print(f"   ✅ Direktes Laden erfolgreich: {direct_tile.get_size()}")
+                                                if VERBOSE_LOGS:
+                                                    print(f"   ✅ Direktes Laden erfolgreich: {direct_tile.get_size()}")
                                             else:
-                                                print(f"   ❌ Direktes Laden fehlgeschlagen!")
+                                                if VERBOSE_LOGS:
+                                                    print(f"   ❌ Direktes Laden fehlgeschlagen!")
                                     else:
-                                        print(f"   ❌ Kein Tileset-Bild verfügbar!")
+                                        if VERBOSE_LOGS:
+                                            print(f"   ❌ Kein Tileset-Bild verfügbar!")
                                 else:
-                                    print(f"🔍 Fehlender Tile - GID {gid}: ❌ Kein zuständiges Tileset gefunden!")
+                                    if VERBOSE_LOGS:
+                                        print(f"🔍 Fehlender Tile - GID {gid}: ❌ Kein zuständiges Tileset gefunden!")
                             
                             # Fallback: Bunte Rechtecke für fehlende Tiles (DEAKTIVIERT)
                             # color = self.get_placeholder_color(gid)
@@ -690,7 +710,7 @@ class MapLoader:
                             pass  # Keine Platzhalter mehr zeichnen
                     except Exception as e:
                         # Debug: Exception Details
-                        if not hasattr(layer, '_exception_logged'):
+                        if VERBOSE_LOGS and not hasattr(layer, '_exception_logged'):
                             print(f"❌ Tile-Exception Layer {layer.name}: {type(e).__name__}: {e}")
                             layer._exception_logged = True
                         
@@ -700,16 +720,18 @@ class MapLoader:
                         pass  # Keine Platzhalter mehr zeichnen
         
         # Ergebnis-Log mit detaillierter Tile-Statistik
-        if tiles_rendered > 0 and not hasattr(layer, '_render_logged'):
+        if VERBOSE_LOGS and tiles_rendered > 0 and not hasattr(layer, '_render_logged'):
             print(f"  ✅ Layer {layer.name}: {tiles_rendered} Tiles gerendert")
             
             # ERWEITERT: Zeige GID-Verteilung für diesen Layer
-            if hasattr(layer, '_missing_gids') and layer._missing_gids:
+            if VERBOSE_LOGS and hasattr(layer, '_missing_gids') and layer._missing_gids:
                 print(f"    ❌ Fehlende GIDs: {sorted(list(layer._missing_gids))}")
             
             layer._render_logged = True
         elif tiles_rendered == 0 and not hasattr(layer, '_empty_logged'):
-            print(f"  ⚠️ Layer {layer.name}: Keine Tiles gerendert (leer oder außerhalb Sichtbereich)")
+            if VERBOSE_LOGS:
+                if VERBOSE_LOGS:
+                    print(f"  ⚠️ Layer {layer.name}: Keine Tiles gerendert (leer oder außerhalb Sichtbereich)")
             layer._empty_logged = True
         
         # ERWEITERT: Rückgabe der Anzahl gerenderter Tiles
@@ -774,7 +796,12 @@ class MapLoader:
         if not self.tmx_data:
             return
 
-        print("Baue Kollisionsobjekte aus der Karte...")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print("Baue Kollisionsobjekte aus der Karte...")
         try:
             # Reset, then gather ONLY from Tiled Object Layers that represent colliders
             self.collision_objects = []
@@ -854,12 +881,15 @@ class MapLoader:
             total = len(self.collision_objects)
             if added_from_layers:
                 summary = ", ".join([f"{name}:+{cnt} ({kind})" for name, cnt, kind in added_from_layers])
-                print(f"✅ {total} Kollisionsobjekte aus Objektebenen: {summary}")
+                if VERBOSE_LOGS:
+                    print(f"✅ {total} Kollisionsobjekte aus Objektebenen: {summary}")
             else:
-                print("WARNUNG: Keine kollidierbaren Objektebenen gefunden – keine Kollisionsobjekte erstellt")
+                if VERBOSE_LOGS:
+                    print("WARNUNG: Keine kollidierbaren Objektebenen gefunden – keine Kollisionsobjekte erstellt")
 
         except Exception as e:
-            print("FEHLER beim Laden der Kollisionsobjekte: {}".format(e))
+            if VERBOSE_LOGS:
+                print("FEHLER beim Laden der Kollisionsobjekte: {}".format(e))
 
     def load_depth_objects_from_map(self):
         """Lädt Objekte mit Depth-Information aus der Tiled-Map"""

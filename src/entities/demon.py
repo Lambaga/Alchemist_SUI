@@ -92,12 +92,22 @@ class Demon(Enemy):
             )
             
             if self.idle_frames:
-                print(f"✅ Demon loaded {len(self.idle_frames)} idle frames")
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print(f"✅ Demon loaded {len(self.idle_frames)} idle frames")
             else:
                 print(f"⚠️ No demon idle frames found in {asset_path}")
                 
             if self.run_frames:
-                print(f"✅ Demon loaded {len(self.run_frames)} run frames")
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print(f"✅ Demon loaded {len(self.run_frames)} run frames")
             else:
                 print(f"⚠️ No demon run frames found in {asset_path}")
                 
@@ -179,7 +189,8 @@ class Demon(Enemy):
                         if self.start_attack(now):
                             # Play bite sound on successful attack start
                             try:
-                                if getattr(self, "_snd_bite", None):
+                                snd = getattr(self, "_snd_bite", None)
+                                if snd is not None:
                                     try:
                                         from managers.settings_manager import SettingsManager
                                         _sm = SettingsManager()
@@ -187,10 +198,10 @@ class Demon(Enemy):
                                             effective = 0.0
                                         else:
                                             effective = max(0.0, min(1.0, float(_sm.sound_volume) * float(_sm.master_volume)))
-                                        self._snd_bite.set_volume(effective)
+                                        snd.set_volume(effective)
                                     except Exception:
                                         pass
-                                    self._snd_bite.play()
+                                    snd.play()
                             except Exception:
                                 pass
                             # Deal physical damage to player immediately (simple melee)
@@ -219,7 +230,7 @@ class Demon(Enemy):
                             self.facing_right = False
                         move = step_dir * self.speed * dt
                         npos = pygame.math.Vector2(self.rect.centerx + move.x, self.rect.centery + move.y)
-                        trect = self.hitbox.copy(); trect.center = npos
+                        trect = self.hitbox.copy(); trect.center = (round(npos.x), round(npos.y))
                         if not self.check_collision_with_obstacles(trect):
                             self.rect.centerx = round(npos.x)
                             self.rect.centery = round(npos.y)
@@ -238,6 +249,7 @@ class Demon(Enemy):
                             self.facing_right = True
                         elif self.direction.x < 0:
                             self.facing_right = False
+                        movement = pygame.math.Vector2(0, 0)
                         if dt:
                             movement = self.direction * self.speed * dt
                         # Attempt move with wall + enemy collision constraints
@@ -245,7 +257,7 @@ class Demon(Enemy):
                         new_center = pygame.math.Vector2(self.rect.centerx + movement.x,
                                                          self.rect.centery + movement.y)
                         trial_rect = self.hitbox.copy()
-                        trial_rect.center = new_center
+                        trial_rect.center = (round(new_center.x), round(new_center.y))
                         blocked = self.check_collision_with_obstacles(trial_rect)
                         if other_enemies and not blocked:
                             for other in other_enemies:
@@ -263,7 +275,7 @@ class Demon(Enemy):
                             # Try axis-separated moves to slide along walls
                             # Horizontal only
                             hx = pygame.math.Vector2(self.rect.centerx + movement.x, self.rect.centery)
-                            hrect = self.hitbox.copy(); hrect.center = hx
+                            hrect = self.hitbox.copy(); hrect.center = (round(hx.x), round(hx.y))
                             h_blocked = self.check_collision_with_obstacles(hrect)
                             if other_enemies and not h_blocked:
                                 for other in other_enemies:
@@ -273,7 +285,7 @@ class Demon(Enemy):
 
                             # Vertical only
                             vy = pygame.math.Vector2(self.rect.centerx, self.rect.centery + movement.y)
-                            vrect = self.hitbox.copy(); vrect.center = vy
+                            vrect = self.hitbox.copy(); vrect.center = (round(vy.x), round(vy.y))
                             v_blocked = self.check_collision_with_obstacles(vrect)
                             if other_enemies and not v_blocked:
                                 for other in other_enemies:

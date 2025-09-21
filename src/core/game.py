@@ -3,6 +3,7 @@
 # Erweiterte Alchemist-Spiel-Logik mit animiertem Spieler
 
 import pygame
+from typing import Any, Optional
 from os import path
 from player import Player
 from settings import *
@@ -15,7 +16,12 @@ class Game:
     """
     
     def __init__(self):
-        print("🧙‍♂️ Der Alchemist - Erweiterte Version startet!")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print("🧙‍♂️ Der Alchemist - Erweiterte Version startet!")
         
         # Pygame muss initialisiert sein für die Player-Klasse
         if not pygame.get_init():
@@ -29,7 +35,8 @@ class Game:
             wizard_path = path.join(ASSETS_DIR, "Wizard Pack")
             if path.exists(wizard_path):
                 self.player = Player(wizard_path, start_x, start_y)
-                print(f"✅ Spieler erfolgreich erstellt mit: {wizard_path}")
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print(f"✅ Spieler erfolgreich erstellt mit: {wizard_path}")
             else:
                 raise FileNotFoundError("Wizard Pack Ordner nicht gefunden")
         except Exception as e:
@@ -54,9 +61,13 @@ class Game:
         # Legacy-Attribute für Kompatibilität
         self.aktive_zutaten = []  # Stelle sicher, dass diese Liste initialisiert
         
-        # Spielstatus
+        # Referenzen und Spielstatus
+        self._level_ref: Optional[Any] = None  # Back-reference set by Level
         self.last_brew_result = "Spiel gestartet"
         self.score = 0
+        # Inventory/quest lists used by Level transitions
+        self.inventory = []
+        self.quest_items = []
         
     def reset_game(self):
         """Setzt das Spiel zurück (für neues Spiel nach Game Over)"""
@@ -91,6 +102,16 @@ class Game:
             return "game_over"  # Signal für Game Over
         
         return None
+
+    def reset_magic_system(self):
+        """Reset UI/Magic-system state if present. Safe no-op for compatibility."""
+        try:
+            if hasattr(self, 'alchemy_system') and hasattr(self.alchemy_system, 'clear_ingredients'):
+                self.alchemy_system.clear_ingredients()
+            # clear legacy/derived lists
+            self.aktive_zutaten = []
+        except Exception:
+            pass
     
     def move_player_with_collision(self, dt, direction_vector, collision_objects):
         """Bewegt den Spieler mit der neuen dt-basierten Bewegung und Kollisionserkennung"""

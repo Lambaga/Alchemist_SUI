@@ -1,0 +1,19 @@
+{
+  "include": ["src"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "src",
+        "src/core",
+        "src/entities",
+        "src/managers",
+        "src/ui",
+        "src/world",
+        "src/systems"
+      ]
+    }
+  ]
+}

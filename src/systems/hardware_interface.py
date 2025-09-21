@@ -9,6 +9,11 @@ from typing import Callable, Dict, Any, Optional
 from collections import deque
 import pygame
 
+try:
+    from core.settings import VERBOSE_LOGS
+except Exception:
+    VERBOSE_LOGS = False
+
 class HardwareInterface:
     """
     Verwaltet die Kommunikation zwischen Raspberry Pi (Spiel) und ESP32 (Hardware)
@@ -18,7 +23,7 @@ class HardwareInterface:
         self.port = port
         self.baud_rate = baud_rate
         self.mock_mode = mock_mode
-        self.serial_connection = None
+        self.serial_connection: Optional[serial.Serial] = None
         self.is_connected = False
         
         # Message handling
@@ -38,12 +43,14 @@ class HardwareInterface:
         # Mock-Daten für Entwicklung ohne Hardware
         self.mock_tokens = {}
         
-        print(f"🔌 Hardware Interface initialisiert (Mock-Mode: {mock_mode})")
+        if VERBOSE_LOGS:
+            print(f"🔌 Hardware Interface initialisiert (Mock-Mode: {mock_mode})")
         
     def connect(self):
         """Verbindung zum ESP32 herstellen"""
         if self.mock_mode:
-            print("🎭 Mock-Mode: Simuliere Hardware-Verbindung")
+            if VERBOSE_LOGS:
+                print("🎭 Mock-Mode: Simuliere Hardware-Verbindung")
             self.is_connected = True
             return True
             
@@ -57,11 +64,13 @@ class HardwareInterface:
             self.read_thread = threading.Thread(target=self._read_messages)
             self.read_thread.start()
             
-            print(f"✅ Verbunden mit ESP32 auf {self.port}")
+            if VERBOSE_LOGS:
+                print(f"✅ Verbunden mit ESP32 auf {self.port}")
             return True
             
         except Exception as e:
-            print(f"❌ Verbindung fehlgeschlagen: {e}")
+            if VERBOSE_LOGS:
+                print(f"❌ Verbindung fehlgeschlagen: {e}")
             return False
     
     def disconnect(self):
@@ -74,12 +83,14 @@ class HardwareInterface:
             self.serial_connection.close()
         
         self.is_connected = False
-        print("🔌 Hardware-Verbindung getrennt")
+        if VERBOSE_LOGS:
+            print("🔌 Hardware-Verbindung getrennt")
     
     def register_callback(self, message_type: str, callback: Callable):
         """Callback für bestimmten Message-Typ registrieren"""
         self.message_callbacks[message_type] = callback
-        print(f"📋 Callback registriert für: {message_type}")
+        if VERBOSE_LOGS:
+            print(f"📋 Callback registriert für: {message_type}")
     
     def send_message(self, message_type: str, data: Dict[str, Any]):
         """Nachricht an ESP32 senden"""
@@ -90,32 +101,43 @@ class HardwareInterface:
         }
         
         if self.mock_mode:
-            print(f"🎭 Mock-Send: {message}")
+            if VERBOSE_LOGS:
+                print(f"🎭 Mock-Send: {message}")
             return True
             
         if not self.is_connected:
-            print("❌ Nicht verbunden - kann nicht senden")
+            if VERBOSE_LOGS:
+                print("❌ Nicht verbunden - kann nicht senden")
             return False
             
         try:
             message_json = json.dumps(message) + '\n'
-            self.serial_connection.write(message_json.encode())
+            sc = self.serial_connection
+            if sc is None:
+                return False
+            sc.write(message_json.encode())
             return True
         except Exception as e:
-            print(f"❌ Sende-Fehler: {e}")
+            if VERBOSE_LOGS:
+                print(f"❌ Sende-Fehler: {e}")
             return False
     
     def _read_messages(self):
         """Kontinuierlich Nachrichten vom ESP32 lesen (läuft in eigenem Thread)"""
         while self.running and self.is_connected:
             try:
-                if self.serial_connection.in_waiting > 0:
-                    line = self.serial_connection.readline().decode().strip()
+                sc = self.serial_connection
+                if sc is None:
+                    time.sleep(0.01)
+                    continue
+                if sc.in_waiting > 0:
+                    line = sc.readline().decode().strip()
                     if line:
                         message = json.loads(line)
                         self._handle_message(message)
             except Exception as e:
-                print(f"❌ Lese-Fehler: {e}")
+                if VERBOSE_LOGS:
+                    print(f"❌ Lese-Fehler: {e}")
             
             time.sleep(0.01)  # Kurze Pause
     
@@ -126,7 +148,7 @@ class HardwareInterface:
         # Add to queue for thread-safe processing
         self.message_queue.append(message)
         
-        if self.mock_mode and message_type != "PING":
+        if self.mock_mode and message_type != "PING" and VERBOSE_LOGS:
             print(f"📨 Hardware empfangen: {message_type} - {message}")
         
         # Handle different message types
@@ -139,7 +161,7 @@ class HardwareInterface:
         elif message_type == "PING":
             # Respond to ping
             self.send_message("PONG", {"fw": "pi_1.0"})
-        elif message_type == "STATUS":
+        elif message_type == "STATUS" and VERBOSE_LOGS:
             print(f"📡 Hardware Status: {message.get('code', 'unknown')}")
         
         # Legacy callback system

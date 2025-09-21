@@ -10,8 +10,8 @@ import pygame
 import os
 from typing import Dict, List, Tuple, Optional, Union, Any
 from settings import *
-from asset_manager import AssetManager
-from combat_system import CombatEntity, DamageType
+from managers.asset_manager import AssetManager
+from systems.combat_system import CombatEntity, DamageType
 
 class Enemy(pygame.sprite.Sprite, CombatEntity):
     """
@@ -198,13 +198,13 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
             img = frames[self.current_frame_index]
             self.image = pygame.transform.flip(img, True, False) if not self.facing_right else img
     
-    def take_damage(self, damage: int, damage_type: DamageType = DamageType.PHYSICAL, 
+    def take_damage(self, amount: int, damage_type: DamageType = DamageType.PHYSICAL, 
                    source: Optional['CombatEntity'] = None) -> bool:
         """
         Fügt dem Gegner Schaden zu und behandelt den Tod.
         
         Args:
-            damage: Schadensmenge die zugefügt werden soll
+            amount: Schadensmenge die zugefügt werden soll
             damage_type: Art des Schadens
             source: Quelle des Schadens (Optional)
             
@@ -220,12 +220,12 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         if not self.alive_status:
             return False
         
-        if damage < 0:
+        if amount < 0:
             # Negative Schadenswerte = Heilung
-            self.current_health = min(self.max_health, self.current_health - damage)
+            self.current_health = min(self.max_health, self.current_health - amount)
         else:
             # Normaler Schaden
-            self.current_health = max(0, self.current_health - damage)
+            self.current_health = max(0, self.current_health - amount)
             
         if self.current_health <= 0:
             self.alive_status = False

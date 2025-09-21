@@ -2,8 +2,8 @@
 # Manages all enemy types on the map
 
 import pygame
-from demon import Demon
-from fireworm import FireWorm
+from entities.demon import Demon
+from entities.fireworm import FireWorm
 import os
 from settings import ASSETS_DIR
 from managers.settings_manager import SettingsManager
@@ -17,9 +17,19 @@ class EnemyManager:
         self.fireworm_asset_path = os.path.join(ASSETS_DIR, "fireWorm")
         self.pathfinder = None
         
-        print(f"🔧 ENEMY MANAGER DEBUG:")
-        print(f"   Demon path: {self.demon_asset_path} (exists: {os.path.exists(self.demon_asset_path)})")
-        print(f"   FireWorm path: {self.fireworm_asset_path} (exists: {os.path.exists(self.fireworm_asset_path)})")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False
+        if VERBOSE_LOGS:
+            print(f"🔧 ENEMY MANAGER DEBUG:")
+            print(f"   Demon path: {self.demon_asset_path} (exists: {os.path.exists(self.demon_asset_path)})")
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print(f"   FireWorm path: {self.fireworm_asset_path} (exists: {os.path.exists(self.fireworm_asset_path)})")
         
     def add_demon(self, x, y, scale=1.0, facing_right=True):
         """Add a demon at specified position"""
@@ -54,9 +64,15 @@ class EnemyManager:
         
     def add_enemies_from_map(self, map_loader):
         """Spawn enemies from Tiled object layer 'Enemy' (name: demon/fireworm). Falls pytmx-Objekte nicht verfügbar sind, XML-Fallback."""
-        print("🔍 START: add_enemies_from_map")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False
+        if VERBOSE_LOGS:
+            print("🔍 START: add_enemies_from_map")
         if not map_loader or not getattr(map_loader, 'tmx_data', None):
-            print("⚠️ Kein MapLoader/TMX vorhanden")
+            if VERBOSE_LOGS:
+                print("⚠️ Kein MapLoader/TMX vorhanden")
             return
 
         enemy_count = 0
@@ -71,7 +87,8 @@ class EnemyManager:
                         x = float(getattr(obj, 'x', 0) or 0)
                         y = float(getattr(obj, 'y', 0) or 0)
                         if name in ('demon', 'enemy', 'monster', 'fireworm'):
-                            print(f"✅ PYTMX: {name} @ ({x:.0f},{y:.0f})")
+                            if VERBOSE_LOGS:
+                                print(f"✅ PYTMX: {name} @ ({x:.0f},{y:.0f})")
                             if name == 'fireworm':
                                 self.add_fireworm(x, y, 2.0, True)
                             else:
@@ -79,7 +96,8 @@ class EnemyManager:
                             enemy_count += 1
                             pytmx_found = True
         except Exception as e:
-            print(f"⚠️ PYTMX Spawn-Fehler: {e}")
+            if VERBOSE_LOGS:
+                print(f"⚠️ PYTMX Spawn-Fehler: {e}")
 
         # 2) Fallback: Direktes XML für aktuelle Map (nur wenn pytmx nichts fand)
         if not pytmx_found:
@@ -87,7 +105,8 @@ class EnemyManager:
                 import xml.etree.ElementTree as ET
                 map_path = getattr(map_loader, 'map_path', None)
                 if not map_path:
-                    print("⚠️ Kein map_path am MapLoader – XML-Fallback übersprungen")
+                    if VERBOSE_LOGS:
+                        print("⚠️ Kein map_path am MapLoader – XML-Fallback übersprungen")
                 else:
                     tree = ET.parse(map_path)
                     root = tree.getroot()
@@ -99,16 +118,19 @@ class EnemyManager:
                                     x = float(obj.get('x', 0) or 0)
                                     y = float(obj.get('y', 0) or 0)
                                     if name in ('demon', 'enemy', 'monster', 'fireworm'):
-                                        print(f"✅ XML: {name} @ ({x:.0f},{y:.0f})")
+                                        if VERBOSE_LOGS:
+                                            print(f"✅ XML: {name} @ ({x:.0f},{y:.0f})")
                                         if name == 'fireworm':
                                             self.add_fireworm(x, y, 2.0, True)
                                         else:
                                             self.add_demon(x, y, 2.0, True)
                                         enemy_count += 1
             except Exception as e:
-                print(f"❌ XML Fallback failed: {e}")
+                if VERBOSE_LOGS:
+                    print(f"❌ XML Fallback failed: {e}")
 
-        print(f"🎮 ENDE: {enemy_count} Gegner gespawnt (aktuell: {len(self.enemies)})")
+        if VERBOSE_LOGS:
+            print(f"🎮 ENDE: {enemy_count} Gegner gespawnt (aktuell: {len(self.enemies)})")
 
     # --- Difficulty management ---
     def _get_difficulty_multiplier(self) -> float:
@@ -241,4 +263,9 @@ class EnemyManager:
         """Setzt alle Feinde zurück (für Game Over / Neustart)"""
         # Alle aktuellen Feinde entfernen
         self.enemies.empty()
-        print("🔄 Alle Feinde zurückgesetzt")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False
+        if VERBOSE_LOGS:
+            print("🔄 Alle Feinde zurückgesetzt")

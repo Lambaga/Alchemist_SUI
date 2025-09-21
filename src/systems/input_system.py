@@ -10,11 +10,39 @@ from typing import Dict, List, Tuple, Optional, Union
 from enum import Enum
 
 try:
-    from systems.action_system import get_action_system, ActionType
+    from core.settings import VERBOSE_LOGS
+except Exception:
+    VERBOSE_LOGS = False
+
+try:
+    from systems.action_system import get_action_system as _get_action_system, ActionType as _ActionType
     ACTION_SYSTEM_AVAILABLE = True
 except ImportError:
+    # Provide safe fallbacks so references stay bound without redefining public names
     ACTION_SYSTEM_AVAILABLE = False
-    print("⚠️ Action System nicht verfügbar - Input System läuft im Legacy-Mode")
+    from types import SimpleNamespace as _SimpleNamespace
+    _get_action_system = None
+    _ActionType = _SimpleNamespace(
+        MAGIC_FIRE=1,
+        MAGIC_WATER=2,
+        MAGIC_STONE=3,
+        CAST_MAGIC=4,
+        CLEAR_MAGIC=5,
+        ATTACK=6,
+        PAUSE=7,
+        MUSIC_TOGGLE=8,
+        RESET_GAME=9,
+        TOGGLE_DEBUG=10,
+        TOGGLE_FPS=11,
+    )
+    if VERBOSE_LOGS:
+        print("⚠️ Action System nicht verfügbar - Input System läuft im Legacy-Mode")
+
+# Re-export ActionType symbol for local use (Enum or fallback namespace)
+ActionType = _ActionType
+
+def _maybe_get_action_system():
+    return _get_action_system() if _get_action_system else None
 
 class InputDevice(Enum):
     """Input-Device Typen"""
@@ -54,7 +82,7 @@ class UniversalInputSystem:
         
         # Action System Integration
         if self.use_action_system:
-            self.action_system = get_action_system()
+            self.action_system = _maybe_get_action_system()
         else:
             self.action_system = None
         
@@ -78,8 +106,9 @@ class UniversalInputSystem:
         self._init_joysticks()
         
         mode = "Action System" if self.use_action_system else "Legacy"
-        print(f"🎮 Universal Input System initialisiert ({mode})")
-        print(f"📱 Gefundene Joysticks: {len(self.joysticks)}")
+        if VERBOSE_LOGS:
+            print(f"🎮 Universal Input System initialisiert ({mode})")
+            print(f"📱 Gefundene Joysticks: {len(self.joysticks)}")
         
     def _init_joysticks(self):
         """Initialisiert alle verfügbaren Joysticks"""
@@ -92,18 +121,21 @@ class UniversalInputSystem:
                 joystick.init()
                 self.joysticks.append(joystick)
                 
-                print(f"✅ Joystick {i} verbunden: {joystick.get_name()}")
-                print(f"   Achsen: {joystick.get_numaxes()}")
-                print(f"   Buttons: {joystick.get_numbuttons()}")
-                print(f"   Hats: {joystick.get_numhats()}")
+                if VERBOSE_LOGS:
+                    print(f"✅ Joystick {i} verbunden: {joystick.get_name()}")
+                    print(f"   Achsen: {joystick.get_numaxes()}")
+                    print(f"   Buttons: {joystick.get_numbuttons()}")
+                    print(f"   Hats: {joystick.get_numhats()}")
                 
                 # Ersten Joystick als aktiv setzen
                 if self.active_joystick is None:
                     self.active_joystick = joystick
-                    print(f"🎯 Aktiver Joystick: {joystick.get_name()}")
+                    if VERBOSE_LOGS:
+                        print(f"🎯 Aktiver Joystick: {joystick.get_name()}")
                     
             except pygame.error as e:
-                print(f"❌ Fehler beim Initialisieren von Joystick {i}: {e}")
+                if VERBOSE_LOGS:
+                    print(f"❌ Fehler beim Initialisieren von Joystick {i}: {e}")
     
     def _create_movement_mapping(self) -> Dict:
         """Erstellt Bewegungs-Mappings für alle Input-Devices"""
@@ -220,7 +252,8 @@ class UniversalInputSystem:
             except pygame.error:
                 # Joystick wurde getrennt
                 self.active_joystick = None
-                print("⚠️ Joystick getrennt")
+                if VERBOSE_LOGS:
+                    print("⚠️ Joystick getrennt")
     
     def is_action_pressed(self, action: str) -> bool:
         """Prüft ob eine Action gerade gedrückt wird (alle Input-Devices)"""
@@ -310,11 +343,13 @@ class UniversalInputSystem:
         
         # Joystick-Verbindung/Trennung
         elif event.type == pygame.JOYDEVICEADDED:
-            print(f"🎮 Neuer Joystick verbunden: Index {event.device_index}")
+            if VERBOSE_LOGS:
+                print(f"🎮 Neuer Joystick verbunden: Index {event.device_index}")
             self._init_joysticks()
             
         elif event.type == pygame.JOYDEVICEREMOVED:
-            print(f"🎮 Joystick getrennt: Index {event.instance_id}")
+            if VERBOSE_LOGS:
+                print(f"🎮 Joystick getrennt: Index {event.instance_id}")
             # Joystick-Liste aktualisieren
             self.joysticks = [j for j in self.joysticks if j.get_instance_id() != event.instance_id]
             if self.active_joystick and self.active_joystick.get_instance_id() == event.instance_id:
@@ -417,12 +452,15 @@ class UniversalInputSystem:
         """Setzt einen bestimmten Joystick als aktiv"""
         if 0 <= index < len(self.joysticks):
             self.active_joystick = self.joysticks[index]
-            print(f"🎯 Aktiver Joystick gewechselt zu: {self.active_joystick.get_name()}")
+            if VERBOSE_LOGS:
+                print(f"🎯 Aktiver Joystick gewechselt zu: {self.active_joystick.get_name()}")
             return True
         return False
     
     def print_control_scheme(self):
         """Gibt das aktuelle Kontroll-Schema aus"""
+        if not VERBOSE_LOGS:
+            return
         print("\n🎮 UNIVERSELLES KONTROLL-SCHEMA:")
         print("="*50)
         

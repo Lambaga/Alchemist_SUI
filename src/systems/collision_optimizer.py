@@ -46,7 +46,12 @@ class OptimizedCollisionSystem:
                 self.collision_manager.add_static_object(obj, rect)
         
         self.initialized = True
-        print(f"✅ Spatial Hash initialisiert mit {len(collision_objects)} statischen Objekten")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print(f"✅ Spatial Hash initialisiert mit {len(collision_objects)} statischen Objekten")
     
     def add_dynamic_object(self, obj: Any) -> None:
         """

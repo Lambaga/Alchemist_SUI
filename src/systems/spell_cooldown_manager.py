@@ -34,10 +34,20 @@ class SpellCooldownManager:
             end = pygame.time.get_ticks()
             
             if end > start:
-                print("🕰️ SpellCooldownManager: Using pygame.time.get_ticks()")
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("🕰️ SpellCooldownManager: Using pygame.time.get_ticks()")
                 self._use_perf_counter = False
             else:
-                print("🕰️ SpellCooldownManager: Using time.perf_counter() for precision")
+                try:
+                    from core.settings import VERBOSE_LOGS
+                except Exception:
+                    VERBOSE_LOGS = False  # type: ignore
+                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    print("🕰️ SpellCooldownManager: Using time.perf_counter() for precision")
                 self._use_perf_counter = True
         except:
             self._use_perf_counter = True
@@ -62,7 +72,12 @@ class SpellCooldownManager:
         
         self._cooldowns[spell_id] = end_time
         
-        print(f"🔥 Spell '{spell_id}' cooldown started: {cooldown_duration}s")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print(f"🔥 Spell '{spell_id}' cooldown started: {cooldown_duration}s")
     
     def is_ready(self, spell_id: str) -> bool:
         """
@@ -151,13 +166,23 @@ class SpellCooldownManager:
         """
         if spell_id in self._cooldowns:
             del self._cooldowns[spell_id]
-            print(f"🚀 Spell '{spell_id}' cooldown cleared")
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            if VERBOSE_LOGS:  # type: ignore[name-defined]
+                print(f"🚀 Spell '{spell_id}' cooldown cleared")
     
     def clear_all_cooldowns(self) -> None:
         """Clear all active cooldowns (for testing/debugging)"""
         cleared_count = len(self._cooldowns)
         self._cooldowns.clear()
-        print(f"🧹 All cooldowns cleared ({cleared_count} spells)")
+        try:
+            from core.settings import VERBOSE_LOGS
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print(f"🧹 All cooldowns cleared ({cleared_count} spells)")
     
     def update(self) -> None:
         """

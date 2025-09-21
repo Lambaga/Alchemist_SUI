@@ -9,6 +9,10 @@ import time
 from typing import Optional, Dict, Any
 from systems.hardware_interface import HardwareInterface
 from systems.action_system import get_action_system, ActionType
+try:
+    from core.settings import VERBOSE_LOGS
+except Exception:
+    VERBOSE_LOGS = False
 
 class HardwareInputAdapter:
     """
@@ -34,7 +38,8 @@ class HardwareInputAdapter:
         # Register callbacks with hardware interface
         self._register_hardware_callbacks()
         
-        print("🔌 Hardware Input Adapter initialisiert")
+        if VERBOSE_LOGS:
+            print("🔌 Hardware Input Adapter initialisiert")
     
     def _register_hardware_callbacks(self):
         """Register callbacks with the hardware interface"""
@@ -58,8 +63,7 @@ class HardwareInputAdapter:
             'cast_magic': ActionType.CAST_MAGIC,
             'clear_magic': ActionType.CLEAR_MAGIC
         }
-        
-        action_type = action_map.get(action_name)
+        action_type = action_map.get(action_name) if isinstance(action_name, str) else None
         if action_type:
             # Special handling for magic actions
             if action_type in [ActionType.MAGIC_FIRE, ActionType.MAGIC_WATER, ActionType.MAGIC_STONE, 
@@ -68,9 +72,11 @@ class HardwareInputAdapter:
             else:
                 self.action_system.dispatch_action(action_type, pressed, "hardware")
             
-            print(f"🔘 Hardware Button: {button_id} -> {action_name} ({'PRESS' if pressed else 'RELEASE'})")
+            if VERBOSE_LOGS:
+                print(f"🔘 Hardware Button: {button_id} -> {action_name} ({'PRESS' if pressed else 'RELEASE'})")
         else:
-            print(f"⚠️ Unbekannte Hardware Action: {action_name}")
+            if VERBOSE_LOGS:
+                print(f"⚠️ Unbekannte Hardware Action: {action_name}")
     
     def _handle_joystick_move(self, data: Dict[str, Any]):
         """Handle joystick movement from hardware"""
@@ -101,7 +107,7 @@ class HardwareInputAdapter:
                 action_type = action_map[direction]
                 self.action_system.dispatch_action(action_type, active, "hardware")
                 
-                if active:
+                if active and VERBOSE_LOGS:
                     print(f"🕹️ Hardware Joystick: {direction.upper()}")
         
         self.last_movement_state = new_movement
@@ -122,12 +128,14 @@ class HardwareInputAdapter:
     def enable(self):
         """Enable hardware input processing"""
         self.enabled = True
-        print("✅ Hardware Input aktiviert")
+        if VERBOSE_LOGS:
+            print("✅ Hardware Input aktiviert")
     
     def disable(self):
         """Disable hardware input processing"""
         self.enabled = False
-        print("❌ Hardware Input deaktiviert")
+        if VERBOSE_LOGS:
+            print("❌ Hardware Input deaktiviert")
     
     def get_movement_vector(self) -> pygame.math.Vector2:
         """Get current movement vector from hardware joystick"""
@@ -139,26 +147,32 @@ class HardwareInputAdapter:
     def test_all_buttons(self):
         """Test all hardware buttons (development helper)"""
         if not self.hardware.mock_mode:
-            print("⚠️ Button test nur im Mock-Mode verfügbar")
+            if VERBOSE_LOGS:
+                print("⚠️ Button test nur im Mock-Mode verfügbar")
             return
         
-        print("🧪 Testing all hardware buttons...")
+        if VERBOSE_LOGS:
+            print("🧪 Testing all hardware buttons...")
         
         buttons = ["FIRE", "WATER", "STONE", "CAST", "CLEAR"]
         for button in buttons:
-            print(f"  Testing {button}...")
+            if VERBOSE_LOGS:
+                print(f"  Testing {button}...")
             self.hardware.simulate_button_press(button)
             time.sleep(0.5)
         
-        print("✅ Button test abgeschlossen")
+        if VERBOSE_LOGS:
+            print("✅ Button test abgeschlossen")
     
     def test_joystick(self):
         """Test hardware joystick (development helper)"""
         if not self.hardware.mock_mode:
-            print("⚠️ Joystick test nur im Mock-Mode verfügbar")
+            if VERBOSE_LOGS:
+                print("⚠️ Joystick test nur im Mock-Mode verfügbar")
             return
         
-        print("🕹️ Testing hardware joystick...")
+        if VERBOSE_LOGS:
+            print("🕹️ Testing hardware joystick...")
         
         # Test all directions
         directions = [
@@ -170,11 +184,13 @@ class HardwareInputAdapter:
         ]
         
         for x, y, name in directions:
-            print(f"  Testing {name} ({x}, {y})...")
+            if VERBOSE_LOGS:
+                print(f"  Testing {name} ({x}, {y})...")
             self.hardware.simulate_joystick_move(x, y)
             time.sleep(0.5)
         
-        print("✅ Joystick test abgeschlossen")
+        if VERBOSE_LOGS:
+            print("✅ Joystick test abgeschlossen")
 
 # Factory function für einfache Integration
 def create_hardware_input_adapter(port='/dev/ttyUSB0', mock_mode=True) -> Optional[HardwareInputAdapter]:
@@ -196,12 +212,15 @@ def create_hardware_input_adapter(port='/dev/ttyUSB0', mock_mode=True) -> Option
         if hardware.connect():
             # Create adapter
             adapter = HardwareInputAdapter(hardware)
-            print("✅ Hardware Input Adapter erfolgreich erstellt")
+            if VERBOSE_LOGS:
+                print("✅ Hardware Input Adapter erfolgreich erstellt")
             return adapter
         else:
-            print("❌ Hardware Interface Verbindung fehlgeschlagen")
+            if VERBOSE_LOGS:
+                print("❌ Hardware Interface Verbindung fehlgeschlagen")
             return None
     
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen des Hardware Input Adapters: {e}")
+        if VERBOSE_LOGS:
+            print(f"❌ Fehler beim Erstellen des Hardware Input Adapters: {e}")
         return None

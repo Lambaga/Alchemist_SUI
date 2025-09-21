@@ -6,7 +6,7 @@ Shows the 3 elements (Fire, Water, Stone) and current combination with cooldowns
 
 import pygame
 import math
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Any
 from pathlib import Path
 
 # Import configuration
@@ -20,6 +20,12 @@ except ImportError:
         import os
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
         from core.config import config
+
+# Verbose logging toggle
+try:
+    from core.settings import VERBOSE_LOGS
+except Exception:
+    VERBOSE_LOGS = False  # type: ignore
 
 
 class ElementMixer:
@@ -71,15 +77,15 @@ class ElementMixer:
         except ImportError:
             from ui.spell_icons import SpellIcons  # fallback when run from different cwd
         self.icons = SpellIcons(base_size=self.combination_size)
-        self.element_icons = {}
-        self.combination_icons = {}
+        self.element_icons: Dict[str, pygame.Surface] = {}
+        self.combination_icons: Dict[str, pygame.Surface] = {}
         self.load_icons()
-        
+
         # Create cooldown overlays
-        self.cooldown_overlays = self.create_cooldown_overlays()
-        
+        self.cooldown_overlays: List[pygame.Surface] = self.create_cooldown_overlays()
+
         # UI surfaces
-        self.background_surface = None
+        self.background_surface: Optional[pygame.Surface] = None
         self.create_background_surface()
 
         # Cached element name lookup for display
@@ -93,7 +99,8 @@ class ElementMixer:
         self.element_animations = [0.0] * 3  # For element press feedback
         self.combination_animation = 0.0     # For combination ready/cast animation
         
-        print("✨ ElementMixer initialized with 3 elements")
+        if VERBOSE_LOGS:
+            print("✨ ElementMixer initialized with 3 elements")
     
     def load_icons(self):
         """Load element icons and combination spell icons"""
@@ -125,7 +132,12 @@ class ElementMixer:
             overlay = self.create_cooldown_overlay(progress, self.combination_size)
             overlays.append(overlay)
         
-        print("Created {} cooldown overlays for combinations".format(len(overlays)))
+        try:
+            from core.settings import VERBOSE_LOGS  # type: ignore
+        except Exception:
+            VERBOSE_LOGS = False  # type: ignore
+        if VERBOSE_LOGS:  # type: ignore[name-defined]
+            print("Created {} cooldown overlays for combinations".format(len(overlays)))
         return overlays
     
     def create_cooldown_overlay(self, progress: float, size: int) -> pygame.Surface:
@@ -160,14 +172,14 @@ class ElementMixer:
         elements_width = 3 * self.element_size + 2 * self.element_spacing
         total_width = elements_width + self.element_spacing * 2 + self.combination_size + 2 * self.background_padding
         total_height = max(self.element_size, self.combination_size) + 2 * self.background_padding
-        
+
         self.background_surface = pygame.Surface((total_width, total_height), pygame.SRCALPHA)
         background_color = (*config.colors.UI_BACKGROUND, self.background_alpha)
         self.background_surface.fill(background_color)
-        
+
         # Add rounded corners effect
-        pygame.draw.rect(self.background_surface, background_color, 
-                        self.background_surface.get_rect(), border_radius=8)
+        pygame.draw.rect(self.background_surface, background_color,
+                         self.background_surface.get_rect(), border_radius=8)
     
     def handle_element_press(self, element_id: str) -> bool:
         """
@@ -185,15 +197,17 @@ class ElementMixer:
         # Check for debounce: same element pressed within debounce_time
         if (self.last_element_press["element"] == element_id and 
             current_time - self.last_element_press["time"] < self.debounce_time):
-            print(f"🚫 DEBOUNCE: Ignoring duplicate press of '{element_id}' within {self.debounce_time}s")
+            if VERBOSE_LOGS:
+                print(f"🚫 DEBOUNCE: Ignoring duplicate press of '{element_id}' within {self.debounce_time}s")
             return False
         
         # Update debounce tracking
         self.last_element_press = {"element": element_id, "time": current_time}
         
-        print(f"🔍 DEBUG: handle_element_press called with '{element_id}'")
-        print(f"🔍 DEBUG: Current selected_elements: {self.selected_elements}")
-        print(f"🔍 DEBUG: Length before: {len(self.selected_elements)}")
+        if VERBOSE_LOGS:
+            print(f"🔍 DEBUG: handle_element_press called with '{element_id}'")
+            print(f"🔍 DEBUG: Current selected_elements: {self.selected_elements}")
+            print(f"🔍 DEBUG: Length before: {len(self.selected_elements)}")
         
         # Find element index for animation
         element_index = -1
@@ -205,47 +219,57 @@ class ElementMixer:
         if element_index >= 0:
             # If we already have 2 elements, reset first
             if len(self.selected_elements) >= 2:
-                print("🔍 DEBUG: Resetting because we already have 2 elements")
+                if VERBOSE_LOGS:
+                    print("🔍 DEBUG: Resetting because we already have 2 elements")
                 self.reset_combination()
-                print(f"� DEBUG: After reset, selected_elements: {self.selected_elements}")
+                if VERBOSE_LOGS:
+                    print(f"� DEBUG: After reset, selected_elements: {self.selected_elements}")
             
             # Add element to selection (max 2)
             if len(self.selected_elements) < 2:
-                print(f"🔍 DEBUG: Adding element '{element_id}' to selection")
+                if VERBOSE_LOGS:
+                    print(f"🔍 DEBUG: Adding element '{element_id}' to selection")
                 self.selected_elements.append(element_id)
-                print(f"🔍 DEBUG: After adding, selected_elements: {self.selected_elements}")
+                if VERBOSE_LOGS:
+                    print(f"🔍 DEBUG: After adding, selected_elements: {self.selected_elements}")
                 self.element_animations[element_index] = 1.0
                 
                 # Check if we have a valid combination (only when we have exactly 2)
                 if len(self.selected_elements) == 2:
-                    print(f"🔍 DEBUG: Have 2 elements, checking combination")
+                    if VERBOSE_LOGS:
+                        print(f"🔍 DEBUG: Have 2 elements, checking combination")
                     combination_key = tuple(self.selected_elements)
-                    print(f"🔍 DEBUG: Combination key: {combination_key}")
+                    if VERBOSE_LOGS:
+                        print(f"🔍 DEBUG: Combination key: {combination_key}")
                     if combination_key in config.spells.MAGIC_COMBINATIONS:
                         self.current_combination = config.spells.MAGIC_COMBINATIONS[combination_key]
                         self.combination_animation = 1.0
-                        print("✨ Combination ready: {} ({} + {})".format(
-                            self.current_combination["display_name"],
-                            self.selected_elements[0], self.selected_elements[1]
-                        ))
+                        if VERBOSE_LOGS:
+                            print("✨ Combination ready: {} ({} + {})".format(
+                                self.current_combination["display_name"],
+                                self.selected_elements[0], self.selected_elements[1]
+                            ))
                         return True
                     else:
                         # Invalid combination - reset and wait for new selection
-                        print("❌ Invalid combination: {} + {} - try again".format(
-                            self.selected_elements[0], self.selected_elements[1]
-                        ))
+                        if VERBOSE_LOGS:
+                            print("❌ Invalid combination: {} + {} - try again".format(
+                                self.selected_elements[0], self.selected_elements[1]
+                            ))
                         self.reset_combination()
                         return False
                 
-                print("📝 Selected element: {} (need {} more)".format(
-                    element_id, 2 - len(self.selected_elements)
-                ))
+                if VERBOSE_LOGS:
+                    print("📝 Selected element: {} (need {} more)".format(
+                        element_id, 2 - len(self.selected_elements)
+                    ))
                 return True
         
-        print(f"🔍 DEBUG: Element index not found for '{element_id}'")
+        if VERBOSE_LOGS:
+            print(f"🔍 DEBUG: Element index not found for '{element_id}'")
         return False
     
-    def handle_cast_spell(self) -> dict:
+    def handle_cast_spell(self) -> Optional[Dict[str, Any]]:
         """
         Handle spell casting - starts cooldown if combination is ready
         
@@ -253,7 +277,8 @@ class ElementMixer:
             Dict with spell data if successful, None if failed
         """
         if not self.current_combination:
-            print("🚫 No spell combination ready")
+            if VERBOSE_LOGS:
+                print("🚫 No spell combination ready")
             return None
         
         spell_id = self.current_combination["id"]
@@ -263,9 +288,10 @@ class ElementMixer:
             cooldown_duration = self.current_combination.get("cooldown", config.spells.DEFAULT_COOLDOWN)
             self.cooldown_manager.start_cooldown(spell_id, cooldown_duration)
             
-            print("✨ Cast spell: {} - cooldown started ({:.1f}s)".format(
-                self.current_combination["display_name"], cooldown_duration
-            ))
+            if VERBOSE_LOGS:
+                print("✨ Cast spell: {} - cooldown started ({:.1f}s)".format(
+                    self.current_combination["display_name"], cooldown_duration
+                ))
 
             # Play combo sound if available
             try:
@@ -329,9 +355,10 @@ class ElementMixer:
             return spell_data
         else:
             remaining = self.cooldown_manager.time_remaining(spell_id)
-            print("🚫 Spell {} on cooldown: {:.1f}s remaining".format(
-                self.current_combination["display_name"], remaining
-            ))
+            if VERBOSE_LOGS:
+                print("🚫 Spell {} on cooldown: {:.1f}s remaining".format(
+                    self.current_combination["display_name"], remaining
+                ))
             return None
     
     def reset_combination(self):
@@ -361,7 +388,11 @@ class ElementMixer:
     def get_position(self, screen_height: int) -> Tuple[int, int]:
         """Calculate position on screen"""
         x = 20  # Left margin
-        y = screen_height - 120 - self.background_surface.get_height()
+        bg = self.background_surface
+        if bg is None:
+            self.create_background_surface()
+            bg = self.background_surface
+        y = screen_height - 120 - (bg.get_height() if bg else 0)
         return (x, y)
     
     def render(self, screen: pygame.Surface, screen_height: int):
@@ -369,7 +400,12 @@ class ElementMixer:
         x, y = self.get_position(screen_height)
         
         # Draw background
-        screen.blit(self.background_surface, (x, y))
+        bg = self.background_surface
+        if bg is None:
+            self.create_background_surface()
+            bg = self.background_surface
+        if bg is not None:
+            screen.blit(bg, (x, y))
         
         # Draw elements
         element_y = y + self.background_padding
@@ -389,8 +425,12 @@ class ElementMixer:
 
     def render_selected_icons(self, screen: pygame.Surface, x: int, y: int):
         """Render the selected elements as icons with + and = visuals."""
-        bg_width = self.background_surface.get_width()
-        label_y = y + self.background_surface.get_height() + self.label_margin_top
+        bg = self.background_surface
+        if bg is None:
+            self.create_background_surface()
+            bg = self.background_surface
+        bg_width = bg.get_width() if bg else 0
+        label_y = y + (bg.get_height() if bg else 0) + self.label_margin_top
 
         size = int(self.element_size * 0.9)
         spacing = 8

@@ -62,8 +62,12 @@ class DisplayConfig:
         is_small = DisplayConfig.is_small_screen()
         
         def maybe_print(message: str, profile_id: str):
-            # Unterdrücke Spam: Nur drucken, wenn Profil sich geändert hat
-            if DisplayConfig._last_profile_printed != profile_id:
+            try:
+                from core.settings import VERBOSE_LOGS
+            except Exception:
+                VERBOSE_LOGS = False  # type: ignore
+            # Unterdrücke Spam: Nur drucken, wenn Profil sich geändert hat und verbose an ist
+            if VERBOSE_LOGS and DisplayConfig._last_profile_printed != profile_id:  # type: ignore[name-defined]
                 print(message)
                 DisplayConfig._last_profile_printed = profile_id
         
