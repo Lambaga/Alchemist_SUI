@@ -1457,7 +1457,8 @@ class GameOverMenuState(BaseMenuState):
         button_width = 300
         button_height = 55
         button_spacing = 80
-        start_y = screen_height // 2 + 50
+        # Move buttons higher (start slightly above center)
+        start_y = screen_height // 2 - 30
         
         buttons_data = [
             ("🔄 Spiel neu starten", "restart_game"),
@@ -1491,21 +1492,24 @@ class GameOverMenuState(BaseMenuState):
         title_color = (255, 50, 50)  # Red color
         title_surface = self.title_font.render(title_text, True, title_color)
         title_surface.set_alpha(alpha)
-        title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 200))
+        # Move title higher
+        title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 140))
         self.screen.blit(title_surface, title_rect)
         
         # Death message
         death_message = "Du bist gefallen, tapferer Alchemist..."
         message_surface = self.text_font.render(death_message, True, (200, 200, 200))
         message_surface.set_alpha(alpha)
-        message_rect = message_surface.get_rect(center=(self.screen.get_width() // 2, 260))
+        # Move message higher
+        message_rect = message_surface.get_rect(center=(self.screen.get_width() // 2, 200))
         self.screen.blit(message_surface, message_rect)
         
         # Subtitle
         subtitle_text = "Was möchtest du tun?"
         subtitle_surface = self.text_font.render(subtitle_text, True, (150, 150, 150))
         subtitle_surface.set_alpha(alpha)
-        subtitle_rect = subtitle_surface.get_rect(center=(self.screen.get_width() // 2, 320))
+        # Move subtitle higher
+        subtitle_rect = subtitle_surface.get_rect(center=(self.screen.get_width() // 2, 250))
         self.screen.blit(subtitle_surface, subtitle_rect)
         
         # Draw buttons (always visible for debugging)

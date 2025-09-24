@@ -99,7 +99,7 @@ ANIMATION_CONFIGS = {
 # Sound-Konfigurationen
 SOUND_CONFIGS = {
     'background_music': {
-        'file': 'korol.mp3',
+        'file': 'Mystic Brew (Cozy Battle Alchemist Remix).mp3',
         'volume': config.game.MUSIC_VOLUME,
         'loop': True
     }

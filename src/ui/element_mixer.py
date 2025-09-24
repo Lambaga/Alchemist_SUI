@@ -302,6 +302,12 @@ class ElementMixer:
                 a, b = tuple(self.current_combination.get("elements", []))[:2] if self.current_combination.get("elements") else (None, None)
                 combo_dir = sounds_dir / "spells" / "combos"
                 sound_path = None
+                # Explicit sound on combination config takes priority
+                explicit = self.current_combination.get("sound")
+                if explicit:
+                    p = sounds_dir / explicit
+                    if p.exists():
+                        sound_path = str(p)
                 # Try fireball first if spell_id matches
                 if spell_id == "fireball":
                     # common names: fireball.wav/mp3/ogg

@@ -295,16 +295,18 @@ class Paths:
         self.SPRITES = self.SPRITES_DIR
         self.MAPS = self.MAPS_DIR
         self.SOUNDS = self.SOUNDS_DIR
-        self.MUSIC_KOROL = path.join(self.SOUNDS_DIR, "korol.mp3")
+        # Legacy alias, now pointing to Mystic Brew for consistency
+        self.MUSIC_KOROL = path.join(self.SOUNDS_DIR, "Mystic Brew (Cozy Battle Alchemist Remix).mp3")
     
     @property
     def BACKGROUND_MUSIC(self):
-        return path.join(self.SOUNDS_DIR, "korol.mp3")
+        # Use Mystic Brew as default background music
+        return path.join(self.SOUNDS_DIR, "Mystic Brew (Cozy Battle Alchemist Remix).mp3")
     
     @property
     def MENU_MUSIC(self):
-        # Menü-Musikdatei im Projekt vorhanden
-        return path.join(self.SOUNDS_DIR, "plants vs zombies walnut mini game theme (trap remix).mp3")
+        # Use Mystic Brew for menu as well (consistent theme)
+        return path.join(self.SOUNDS_DIR, "Mystic Brew (Cozy Battle Alchemist Remix).mp3")
     
     @property
     def DEFAULT_MAP(self):
@@ -507,7 +509,8 @@ class SpellConfig:
             "display_name": "Wasserkugel", 
             "icon_path": "ui/spells/waterbolt.png", 
             "cooldown": 3.0,
-            "elements": ["wasser", "wasser"]
+            "elements": ["wasser", "wasser"],
+            "sound": "spells/combos/splash-by-blaukreuz-6261.mp3"
         },
         # Stone + Stone = Shield
         ('stone', 'stone'): {
@@ -515,7 +518,8 @@ class SpellConfig:
             "display_name": "Schutzschild", 
             "icon_path": "ui/spells/shield.png", 
             "cooldown": 3.0,
-            "elements": ["stein", "stein"]
+            "elements": ["stein", "stein"],
+            "sound": "spells/combos/block-6839.mp3"
         },
         # Fire + Water = Healing (both orders)
         ('fire', 'water'): {
@@ -523,14 +527,16 @@ class SpellConfig:
             "display_name": "Heilungstrank", 
             "icon_path": "ui/spells/healing.png", 
             "cooldown": 3.0,
-            "elements": ["feuer", "wasser"]
+            "elements": ["feuer", "wasser"],
+            "sound": "spells/combos/healing-magic-1-378665.mp3"
         },
         ('water', 'fire'): {
             "id": "healing", 
             "display_name": "Heilungstrank", 
             "icon_path": "ui/spells/healing.png", 
             "cooldown": 3.0,
-            "elements": ["wasser", "feuer"]
+            "elements": ["wasser", "feuer"],
+            "sound": "spells/combos/healing-magic-1-378665.mp3"
         },
         # Fire + Stone = Whirlwind (both orders)
         ('fire', 'stone'): {
@@ -538,14 +544,16 @@ class SpellConfig:
             "display_name": "Wirbelattacke", 
             "icon_path": "ui/spells/whirlwind.png", 
             "cooldown": 3.0,
-            "elements": ["feuer", "stein"]
+            "elements": ["feuer", "stein"],
+            "sound": "spells/combos/impact-109588.mp3"
         },
         ('stone', 'fire'): {
             "id": "whirlwind", 
             "display_name": "Wirbelattacke", 
             "icon_path": "ui/spells/whirlwind.png", 
             "cooldown": 3.0,
-            "elements": ["stein", "feuer"]
+            "elements": ["stein", "feuer"],
+            "sound": "spells/combos/impact-109588.mp3"
         },
         # Water + Stone = Invisibility (both orders)
         ('water', 'stone'): {
@@ -553,14 +561,16 @@ class SpellConfig:
             "display_name": "Unsichtbarkeit", 
             "icon_path": "ui/spells/invisibility.png", 
             "cooldown": 3.0,
-            "elements": ["wasser", "stein"]
+            "elements": ["wasser", "stein"],
+            "sound": "spells/combos/Deep woosh1.wav"
         },
         ('stone', 'water'): {
             "id": "invisibility", 
             "display_name": "Unsichtbarkeit", 
             "icon_path": "ui/spells/invisibility.png", 
             "cooldown": 3.0,
-            "elements": ["stein", "wasser"]
+            "elements": ["stein", "wasser"],
+            "sound": "spells/combos/Deep woosh1.wav"
         }
     }
     
