@@ -895,52 +895,48 @@ class CreditsMenuState(BaseMenuState):
         """Draw credits menu"""
         super().draw()
         
-        # Title
-        title_text = "Credits" if getattr(self, 'disable_menu_emojis', False) else "📜 Credits"
+        # Title (no emojis)
+        title_text = "Credits"
         title_surface = self.title_font.render(title_text, True, (255, 215, 0))
         title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 100))
         self.screen.blit(title_surface, title_rect)
         
-        # Credits content
+        # Credits content (simplified as requested, no emojis)
         credits_text = [
-            "",
-            "🧙‍♂️ Der Alchemist",
+            "Der Alchemist",
             "",
             "👥 Entwicklungsteam:",
-            "• Kirill Lambaga",
-            "• Jonas Dagger", 
-            "• Christian Fußmann",
-            "• Waseem Hayat",
-            "• Simon Milkyboy",
-            "",
-            "Entwickelt mit Python & Pygame",
-            "",
-            "📌 Features:",
-            "• Magisches Gameplay",
-            "• Alchemie System",
-            "• Feinde und Kämpfe",
-            "• Karten und Erkundung",
-            "",
-            "🎨 Assets:",
-            "• Sprite Sammlungen",
-            "• Tiled Map Editor",
-            "• Pygame Community",
-            "",
-            "💻 Technologie:",
-            "• Python 3.9+",
-            "• Pygame",
-            "• Tiled TMX Maps",
-            "",
-            "Vielen Dank fürs Spielen! 🎮"
+            "• Kirill: Game Design und UX",
+            "• Jonas: Kartenerstellung und Platzierung der Gegner",
+            "• Christian: Entwicklung der Spiellogik",
+            "• Waseem: Arduino-Programmierung",
+            "• Simon: Gehäusebau, Verkabelung und Löten",
         ]
         
-        y_offset = 150
+        # Background panel for readability
+        import pygame
+        screen_w = self.screen.get_width()
+        line_height = 25
+        start_y = 150
+        # Count drawn lines (skip empty draws but account for spacing)
+        lines_to_draw = [ln for ln in credits_text]
+        block_h = len(lines_to_draw) * line_height + 32
+        block_w = min(int(screen_w * 0.8), 900)
+        block_x = (screen_w - block_w) // 2
+        block_y = start_y - 16
+        bg = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 180))  # semi-transparent dark
+        self.screen.blit(bg, (block_x, block_y))
+        pygame.draw.rect(self.screen, (180, 180, 220), (block_x, block_y, block_w, block_h), 2)
+
+        # Draw text centered on panel
+        y_offset = start_y
         for line in credits_text:
             if line:  # Skip empty lines
                 text_surface = self.text_font.render(line, True, (200, 200, 200))
                 text_rect = text_surface.get_rect(center=(self.screen.get_width() // 2, y_offset))
                 self.screen.blit(text_surface, text_rect)
-            y_offset += 25
+            y_offset += line_height
 
 class LoadGameMenuState(BaseMenuState):
     """Load game menu state"""
