@@ -11,6 +11,7 @@ import os
 from typing import Dict, List, Tuple, Optional, Union, Any
 from settings import *
 from managers.asset_manager import AssetManager
+from managers.font_manager import get_font_manager
 from systems.combat_system import CombatEntity, DamageType
 
 class Enemy(pygame.sprite.Sprite, CombatEntity):
@@ -103,14 +104,22 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         self.last_attack_time = 0
         self.attack_duration_ms = 400  # attack animation hold before resuming
 
+        # Cached directional frames (Performance: avoids per-frame pygame.transform.flip)
+        self._frames_right: Dict[str, List[pygame.Surface]] = {}
+        self._frames_left: Dict[str, List[pygame.Surface]] = {}
+
         # Death fade-out handling
         self._death_time = None
         self.fade_duration_ms = 3000
         
         self.load_animations(asset_path)
+
+        # Build directional caches after animations are loaded
+        self._rebuild_directional_frames()
         
         # Set initial image and position
-        self.image = self.get_current_frames()[0] if self.get_current_frames() else self.create_placeholder()
+        current_frames = self.get_current_frames_directional()
+        self.image = current_frames[0] if current_frames else self.create_placeholder()
         self.rect = self.image.get_rect(center=(pos_x, pos_y))
         
         # Collision box (smaller for closer combat) — shrink a bit more to avoid snagging
@@ -143,7 +152,8 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
         """
         placeholder = pygame.Surface((64, 64), pygame.SRCALPHA)
         pygame.draw.circle(placeholder, (255, 0, 0), (32, 32), 30, 3)
-        font = pygame.font.Font(None, 24)
+        # 🚀 RPi-Optimierung: FontManager für gecachte Fonts
+        font = get_font_manager().get_font(24)
         text = font.render("ENEMY", True, (255, 255, 255))
         text_rect = text.get_rect(center=(32, 32))
         placeholder.blit(text, text_rect)
@@ -167,10 +177,38 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
             return self.walk_frames
         else:
             return self.idle_frames
+
+    def _rebuild_directional_frames(self) -> None:
+        """Rebuild left/right frame caches from base frame lists."""
+        def flip_frames(frames: List[pygame.Surface]) -> List[pygame.Surface]:
+            # Flip once, reuse forever
+            return [pygame.transform.flip(img, True, False) for img in frames]
+
+        # Use current lists as the canonical "right" direction
+        self._frames_right = {
+            "idle": self.idle_frames or [],
+            "walking": self.walk_frames or [],
+            "chasing": self.walk_frames or [],
+            "attacking": self.attack_frames or [],
+            "death": self.death_frames or [],
+        }
+        self._frames_left = {
+            key: flip_frames(frames) if frames else []
+            for key, frames in self._frames_right.items()
+        }
+
+    def get_current_frames_directional(self) -> List[pygame.Surface]:
+        """Return animation frames for current state and facing direction."""
+        # Prefer caches; fall back to non-cached behavior if something is missing
+        if self._frames_right:
+            frames = (self._frames_right if self.facing_right else self._frames_left).get(self.state, [])
+            if frames:
+                return frames
+        return self.get_current_frames()
     
     def update_animation(self, current_time):
         """Update animation frame based on current state"""
-        frames = self.get_current_frames()
+        frames = self.get_current_frames_directional()
         if not frames:
             return
 
@@ -181,8 +219,7 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
             self.current_frame_index = 0
             self.last_update_time = current_time  # reset timer to avoid instant skip
             # Set image immediately on switch
-            img = frames[self.current_frame_index]
-            self.image = pygame.transform.flip(img, True, False) if not self.facing_right else img
+            self.image = frames[self.current_frame_index]
             return
 
         # Regular timed frame advance
@@ -196,7 +233,7 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
                 self.last_update_time = current_time
 
             img = frames[self.current_frame_index]
-            self.image = pygame.transform.flip(img, True, False) if not self.facing_right else img
+            self.image = img
     
     def take_damage(self, amount: int, damage_type: DamageType = DamageType.PHYSICAL, 
                    source: Optional['CombatEntity'] = None) -> bool:
@@ -356,12 +393,10 @@ class Enemy(pygame.sprite.Sprite, CombatEntity):
                     alpha = max(0, min(255, int(255 * (1.0 - (elapsed / self.fade_duration_ms)))))
                     if self.image:
                         # Create a faded copy to avoid mutating shared surfaces
-                        base = self.get_current_frames()
+                        base = self.get_current_frames_directional()
                         frame = base[self.current_frame_index] if base else self.image
                         faded = frame.copy()
                         faded.set_alpha(alpha)
-                        if not self.facing_right:
-                            faded = pygame.transform.flip(faded, True, False)
                         self.image = faded
                 except Exception:
                     pass

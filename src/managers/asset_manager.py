@@ -62,34 +62,64 @@ class AssetManager:
     """Zentrales Asset-Management für bessere Performance"""
     
     _instance = None
+    # 🚀 RPi-Optimierung: LRU-Limits für Memory-Management
+    MAX_IMAGES_CACHE = 200
+    MAX_ANIMATIONS_CACHE = 50
+    MAX_SOUNDS_CACHE = 30
     
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._images = {}
+            cls._instance._images_lru = []  # LRU tracking für images
             cls._instance._sounds = {}
+            cls._instance._sounds_lru = []  # LRU tracking für sounds
             cls._instance._animations = {}
+            cls._instance._animations_lru = []  # LRU tracking für animations
             cls._instance._sprite_cache = ScaledSpriteCache(max_cache_size=150)
         return cls._instance
     
     def load_image(self, path: str, cache_key: str = None) -> pygame.Surface:
-        """Lädt ein Bild und cached es"""
+        """Lädt ein Bild und cached es mit LRU-Eviction"""
         key = cache_key or path
         
-        if key not in self._images:
-            try:
-                self._images[key] = pygame.image.load(path).convert_alpha()
-            except pygame.error as e:
-                print(f"Fehler beim Laden von {path}: {e}")
-                # Erstelle Placeholder
-                self._images[key] = self._create_placeholder()
+        if key in self._images:
+            # LRU: Move to end (most recently used)
+            if key in self._images_lru:
+                self._images_lru.remove(key)
+            self._images_lru.append(key)
+            return self._images[key]
         
+        # 🚀 RPi-Optimierung: LRU-Eviction wenn Cache voll
+        while len(self._images) >= self.MAX_IMAGES_CACHE and self._images_lru:
+            oldest_key = self._images_lru.pop(0)
+            if oldest_key in self._images:
+                del self._images[oldest_key]
+        
+        try:
+            self._images[key] = pygame.image.load(path).convert_alpha()
+        except pygame.error as e:
+            print(f"Fehler beim Laden von {path}: {e}")
+            # Erstelle Placeholder
+            self._images[key] = self._create_placeholder()
+        
+        self._images_lru.append(key)
         return self._images[key]
     
     def load_animation_set(self, config_file: str) -> Dict[str, List[pygame.Surface]]:
-        """Lädt Animationen basierend auf JSON-Konfiguration"""
+        """Lädt Animationen basierend auf JSON-Konfiguration mit LRU-Eviction"""
         if config_file in self._animations:
+            # LRU: Move to end (most recently used)
+            if config_file in self._animations_lru:
+                self._animations_lru.remove(config_file)
+            self._animations_lru.append(config_file)
             return self._animations[config_file]
+        
+        # 🚀 RPi-Optimierung: LRU-Eviction wenn Cache voll
+        while len(self._animations) >= self.MAX_ANIMATIONS_CACHE and self._animations_lru:
+            oldest_key = self._animations_lru.pop(0)
+            if oldest_key in self._animations:
+                del self._animations[oldest_key]
         
         with open(config_file, 'r') as f:
             anim_config = json.load(f)
@@ -109,19 +139,33 @@ class AssetManager:
             animations[anim_name] = frames
         
         self._animations[config_file] = animations
+        self._animations_lru.append(config_file)
         return animations
     
     def load_sound(self, path: str, cache_key: str = None) -> pygame.mixer.Sound:
-        """Lädt einen Sound und cached ihn"""
+        """Lädt einen Sound und cached ihn mit LRU-Eviction"""
         key = cache_key or path
         
-        if key not in self._sounds:
-            try:
-                self._sounds[key] = pygame.mixer.Sound(path)
-            except pygame.error as e:
-                print(f"Fehler beim Laden von Sound {path}: {e}")
-                return None
+        if key in self._sounds:
+            # LRU: Move to end (most recently used)
+            if key in self._sounds_lru:
+                self._sounds_lru.remove(key)
+            self._sounds_lru.append(key)
+            return self._sounds[key]
         
+        # 🚀 RPi-Optimierung: LRU-Eviction wenn Cache voll
+        while len(self._sounds) >= self.MAX_SOUNDS_CACHE and self._sounds_lru:
+            oldest_key = self._sounds_lru.pop(0)
+            if oldest_key in self._sounds:
+                del self._sounds[oldest_key]
+        
+        try:
+            self._sounds[key] = pygame.mixer.Sound(path)
+        except pygame.error as e:
+            print(f"Fehler beim Laden von Sound {path}: {e}")
+            return None
+        
+        self._sounds_lru.append(key)
         return self._sounds[key]
     
     def _create_placeholder(self, width: int = 32, height: int = 32) -> pygame.Surface:
@@ -139,10 +183,13 @@ class AssetManager:
         return self._sounds.get(cache_key)
     
     def clear_cache(self):
-        """Leert den gesamten Cache"""
+        """Leert den gesamten Cache inkl. LRU-Tracking"""
         self._images.clear()
+        self._images_lru.clear()
         self._sounds.clear()
+        self._sounds_lru.clear()
         self._animations.clear()
+        self._animations_lru.clear()
         self._sprite_cache.clear()
     
     def get_memory_usage(self) -> Dict[str, int]:

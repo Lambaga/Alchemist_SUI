@@ -6,6 +6,7 @@ Verwendet Klassen-basierte Organisation für bessere Struktur
 """
 
 import pygame
+import os
 from os import path
 
 # === PFAD DEFINITIONEN (ROBUST) ===
@@ -45,6 +46,13 @@ class DisplayConfig:
     @staticmethod
     def is_small_screen():
         """Erkennt ob ein kleiner Bildschirm (7-Zoll) verwendet wird"""
+        # Allow forcing 7-inch mode via launcher/env var
+        try:
+            if os.environ.get('ALCHEMIST_SMALL_SCREEN', '0') == '1':
+                return True
+        except Exception:
+            pass
+
         import pygame
         
         # Versuche die Display-Informationen zu bekommen

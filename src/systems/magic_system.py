@@ -6,9 +6,15 @@ Implementiert das Magiesystem mit Elementkombinationen für Der Alchemist
 
 import pygame
 import math
+import random
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
+
+try:
+    from core.settings import VERBOSE_LOGS as _VERBOSE_LOGS
+except Exception:
+    _VERBOSE_LOGS = False
 
 # Import MANA_SPELL_COST constant
 MANA_SPELL_COST = 10  # Default value, can be overridden by settings
@@ -86,6 +92,10 @@ class MagicEffect:
 
 class MagicProjectile(pygame.sprite.Sprite):
     """Basis-Klasse für Magie-Projektile"""
+
+    _FRAME_SIZE = (80, 80)
+    _FRAME_COUNT = 16
+    _FRAMES_CACHE: Dict[str, List[pygame.Surface]] = {}
     
     def __init__(self, start_x: int, start_y: int, target_x: int, target_y: int, 
                  speed: int = 150, damage: int = 25, element_type: str = "feuer"):  # Langsamere Geschwindigkeit für bessere Sichtbarkeit
@@ -103,61 +113,69 @@ class MagicProjectile(pygame.sprite.Sprite):
         self.direction = direction
         
         # Erstelle Sprite basierend auf Element
-        self.image = self.create_projectile_sprite(element_type)
+        self._frames = self._get_projectile_frames(element_type)
+        self._anim_frame = 0
+        self.image = self._frames[self._anim_frame]
         self.rect = self.image.get_rect(center=(start_x, start_y))
         self.hitbox = self.rect.copy()
         
         # Animation
         self.last_update = pygame.time.get_ticks()
         self.animation_speed = 100  # ms
-        self.rotation = 0
+
+    @classmethod
+    def _get_projectile_frames(cls, element_type: str) -> List[pygame.Surface]:
+        cached = cls._FRAMES_CACHE.get(element_type)
+        if cached is not None:
+            return cached
+
+        frames: List[pygame.Surface] = []
+        width, height = cls._FRAME_SIZE
+        center = (width // 2, height // 2)
+
+        for frame_index in range(cls._FRAME_COUNT):
+            sprite = pygame.Surface(cls._FRAME_SIZE, pygame.SRCALPHA)
+
+            phase = (frame_index / cls._FRAME_COUNT) * (2 * math.pi)
+            pulse = abs(math.sin(phase)) * 0.3 + 0.7
+
+            if element_type == "feuer":
+                outer_radius = int(35 * pulse)
+                inner_radius = int(25 * pulse)
+                core_radius = int(15 * pulse)
+                pygame.draw.circle(sprite, (255, 50, 0), center, outer_radius)
+                pygame.draw.circle(sprite, (255, 200, 0), center, inner_radius)
+                pygame.draw.circle(sprite, (255, 255, 100), center, core_radius)
+
+            elif element_type == "wasser":
+                outer_radius = int(35 * pulse)
+                inner_radius = int(25 * pulse)
+                core_radius = int(15 * pulse)
+                pygame.draw.circle(sprite, (0, 50, 255), center, outer_radius)
+                pygame.draw.circle(sprite, (100, 150, 255), center, inner_radius)
+                pygame.draw.circle(sprite, (200, 230, 255), center, core_radius)
+
+            elif element_type == "wirbelattacke":
+                rotation_angle = phase
+                center_x, center_y = center
+
+                for i in range(8):
+                    angle = rotation_angle + (i * math.pi / 4)
+                    radius = 30 * pulse
+                    x = center_x + int(radius * math.cos(angle))
+                    y = center_y + int(radius * math.sin(angle))
+                    pygame.draw.circle(sprite, (150 + int(50 * pulse), 50, 200), (x, y), 8)
+
+                pygame.draw.circle(sprite, (200, 100, 255), center, int(12 * pulse))
+
+            frames.append(sprite)
+
+        cls._FRAMES_CACHE[element_type] = frames
+        return frames
         
     def create_projectile_sprite(self, element_type: str) -> pygame.Surface:
         """Erstellt animiertes Sprite basierend auf Element-Typ"""
-        import math
-        size = (80, 80)  # DEUTLICH GRÖßERE Sprites für bessere Sichtbarkeit
-        sprite = pygame.Surface(size, pygame.SRCALPHA)
-        center = (40, 40)  # Neuer Mittelpunkt
-        
-        # Basis-Zeit für Animation
-        current_time = pygame.time.get_ticks()
-        pulse = abs(math.sin(current_time * 0.01)) * 0.3 + 0.7  # Pulsierender Effekt
-        
-        if element_type == "feuer":
-            # Feuerball - Orange/Rot mit Animation - DEUTLICH VERGRÖßERT
-            outer_radius = int(35 * pulse)  # Fast verdoppelt
-            inner_radius = int(25 * pulse)  # Fast verdoppelt
-            core_radius = int(15 * pulse)   # Fast verdoppelt
-            pygame.draw.circle(sprite, (255, 50, 0), center, outer_radius)
-            pygame.draw.circle(sprite, (255, 200, 0), center, inner_radius)
-            pygame.draw.circle(sprite, (255, 255, 100), center, core_radius)
-            
-        elif element_type == "wasser":
-            # Wasserkugel - Blau mit Wellenbewegung - DEUTLICH VERGRÖßERT
-            outer_radius = int(35 * pulse)  # Fast verdoppelt
-            inner_radius = int(25 * pulse)  # Fast verdoppelt
-            core_radius = int(15 * pulse)   # Fast verdoppelt
-            pygame.draw.circle(sprite, (0, 50, 255), center, outer_radius)
-            pygame.draw.circle(sprite, (100, 150, 255), center, inner_radius)
-            pygame.draw.circle(sprite, (200, 230, 255), center, core_radius)
-            
-        elif element_type == "wirbelattacke":
-            # Energiewirbel - Lila mit Rotation - DEUTLICH VERGRÖßERT
-            rotation_angle = (current_time * 0.01) % (2 * math.pi)
-            center_x, center_y = center
-            
-            # Mehrere Energiepunkte in kreisender Bewegung - VERGRÖßERT
-            for i in range(8):  # Mehr Punkte für besseren Wirbel-Effekt
-                angle = rotation_angle + (i * math.pi / 4)
-                radius = 30 * pulse  # Deutlich größer
-                x = center_x + int(radius * math.cos(angle))
-                y = center_y + int(radius * math.sin(angle))
-                pygame.draw.circle(sprite, (150 + int(50*pulse), 50, 200), (x, y), 8)  # Größere Punkte
-            
-            # Zentraler Kern - VERGRÖßERT
-            pygame.draw.circle(sprite, (200, 100, 255), center, int(12 * pulse))  # Deutlich größer
-            
-        return sprite
+        return self._get_projectile_frames(element_type)[0]
     
     def update(self, dt: float = 1.0/60.0, targets: List[Any] = None, magic_system=None):
         """Update Projektil Position und Kollision"""
@@ -179,11 +197,8 @@ class MagicProjectile(pygame.sprite.Sprite):
         # Rotation und Animation für visuellen Effekt
         current_time = pygame.time.get_ticks()
         if current_time - self.last_update >= self.animation_speed:
-            # Sprite neu generieren für Animation
-            self.image = self.create_projectile_sprite(self.element_type)
-            self.rotation += 15
-            if self.rotation >= 360:
-                self.rotation = 0
+            self._anim_frame = (self._anim_frame + 1) % len(self._frames)
+            self.image = self._frames[self._anim_frame]
             self.last_update = current_time
         
         # Kollision mit Zielen prüfen
@@ -217,14 +232,16 @@ class MagicProjectile(pygame.sprite.Sprite):
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "fire")
-                    print(f"🔥 Feuerball trifft Wasserkreatur für {damage} Schaden!")
+                    if _VERBOSE_LOGS:
+                        print(f"🔥 Feuerball trifft Wasserkreatur für {damage} Schaden!")
                 else:
                     # Gegen alle anderen (Feuerkreaturen, etc.)
                     damage = 10
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "fire")
-                    print(f"🔥 Feuerball trifft für {damage} Schaden!")
+                    if _VERBOSE_LOGS:
+                        print(f"🔥 Feuerball trifft für {damage} Schaden!")
                     
             elif self.element_type == "wasser":
                 # Wasserkugel: 50 Schaden gegen Feuerkreaturen, 10 gegen alle anderen  
@@ -236,11 +253,7 @@ class MagicProjectile(pygame.sprite.Sprite):
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "water")
-                    try:
-                        from core.settings import VERBOSE_LOGS
-                    except Exception:
-                        VERBOSE_LOGS = False  # type: ignore
-                    if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    if _VERBOSE_LOGS:
                         print(f"💧 Wasserkugel trifft Feuerkreatur für {damage} Schaden!")
                 else:
                     # Gegen alle anderen neutralen Kreaturen
@@ -248,11 +261,7 @@ class MagicProjectile(pygame.sprite.Sprite):
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "water")
-                    try:
-                        from core.settings import VERBOSE_LOGS
-                    except Exception:
-                        VERBOSE_LOGS = False  # type: ignore
-                    if VERBOSE_LOGS:  # type: ignore[name-defined]
+                    if _VERBOSE_LOGS:
                         print(f"💧 Wasserkugel trifft für {damage} Schaden!")
                     
             else:
@@ -261,11 +270,7 @@ class MagicProjectile(pygame.sprite.Sprite):
                 target.take_damage(damage)
                 if magic_system:
                     magic_system.add_floating_damage(target, damage, "normal")
-                try:
-                    from core.settings import VERBOSE_LOGS
-                except Exception:
-                    VERBOSE_LOGS = False  # type: ignore
-                if VERBOSE_LOGS:  # type: ignore[name-defined]
+                if _VERBOSE_LOGS:
                     print(f"✨ Projektil trifft für {damage} Schaden!")
         
         self.is_alive = False
@@ -285,9 +290,63 @@ class MagicSystem:
         self.projectiles: pygame.sprite.Group = pygame.sprite.Group()
         self.floating_damages: List[FloatingDamage] = []  # Liste der schwebenden Schadenszahlen
         self.is_ready = False  # Warmup-Status
+
+        # Render-Caches (Performance: vermeidet per-frame Font/Suface Erstellung)
+        self._floating_damage_font: Optional[pygame.font.Font] = None
+        self._floating_damage_shadow_font: Optional[pygame.font.Font] = None
+        self._floating_damage_surface_cache: Dict[Tuple[str, Tuple[int, int, int], bool, int], pygame.Surface] = {}
+        self._floating_damage_alpha_bucket: int = 16
+
+        self._whirlwind_font: Optional[pygame.font.Font] = None
+        self._whirlwind_range_surface: Optional[pygame.Surface] = None
         
         self._initialize_magic_effects()
         self._warmup_system()  # Sofortiges Warmup beim Start
+
+    def _get_floating_damage_font(self) -> pygame.font.Font:
+        if self._floating_damage_font is None or not pygame.font.get_init():
+            self._floating_damage_font = pygame.font.Font(None, 36)
+        return self._floating_damage_font
+
+    def _get_floating_damage_shadow_font(self) -> pygame.font.Font:
+        if self._floating_damage_shadow_font is None or not pygame.font.get_init():
+            self._floating_damage_shadow_font = pygame.font.Font(None, 36)
+        return self._floating_damage_shadow_font
+
+    def _alpha_bucket(self, alpha: int) -> int:
+        if alpha >= 255:
+            return 255
+        if alpha <= 0:
+            return 0
+        bucket = self._floating_damage_alpha_bucket
+        return max(0, min(255, (alpha // bucket) * bucket))
+
+    def _get_floating_damage_surface(
+        self,
+        text: str,
+        color: Tuple[int, int, int],
+        alpha: int,
+        is_shadow: bool,
+    ) -> pygame.Surface:
+        bucketed_alpha = self._alpha_bucket(alpha)
+        key = (text, color, is_shadow, bucketed_alpha)
+        cached = self._floating_damage_surface_cache.get(key)
+        if cached is not None:
+            return cached
+
+        font = self._get_floating_damage_shadow_font() if is_shadow else self._get_floating_damage_font()
+        surface = font.render(text, True, color)
+        if bucketed_alpha < 255:
+            surface.set_alpha(bucketed_alpha)
+        self._floating_damage_surface_cache[key] = surface
+        return surface
+
+    def _get_whirlwind_range_surface(self) -> pygame.Surface:
+        if self._whirlwind_range_surface is None or not pygame.font.get_init():
+            if self._whirlwind_font is None or not pygame.font.get_init():
+                self._whirlwind_font = pygame.font.Font(None, 24)
+            self._whirlwind_range_surface = self._whirlwind_font.render("2 Tiles Reichweite", True, (255, 255, 255))
+        return self._whirlwind_range_surface
     
     def _initialize_magic_effects(self):
         """Initialisiert alle verfügbaren Magie-Effekte"""
@@ -436,7 +495,8 @@ class MagicSystem:
         # Mana-Kosten prüfen
         if hasattr(caster, 'spend_mana') and not caster.spend_mana(MANA_SPELL_COST):
             # Optionales Feedback für nicht genug Mana
-            print("⚠️ Nicht genug Mana!")
+            if _VERBOSE_LOGS:
+                print("⚠️ Nicht genug Mana!")
             self.clear_elements()
             return None
         
@@ -521,7 +581,8 @@ class MagicSystem:
             "duration": effect.duration,
             "target": caster
         }
-        print(f"🛡️ Schutzschild aktiviert für {effect.duration/1000}s!")
+        if _VERBOSE_LOGS:
+            print(f"🛡️ Schutzschild aktiviert für {effect.duration/1000}s!")
     
     def _cast_area_attack(self, effect: MagicEffect, caster, enemies: Optional[List[Any]]):
         """Führt Flächenangriff aus"""        
@@ -564,6 +625,10 @@ class MagicSystem:
     def _create_whirlwind_effect(self, center_pos, radius):
         """Erstellt visuellen Wirbel-Effekt mit deutlicher Reichweiten-Animation"""
         current_time = pygame.time.get_ticks()
+
+        # Precompute particles once (vermeidet per-frame random)
+        rng = random.Random(current_time)
+        particles = [(rng.random() * 2 * math.pi, rng.uniform(0.5, 1.0)) for _ in range(10)]
         
         # Erstelle Whirlwind-Effekt mit verbesserter Animation
         whirlwind_effect = {
@@ -571,7 +636,12 @@ class MagicSystem:
             "radius": radius,
             "start_time": current_time,
             "duration": 3000,  # 3 Sekunden Animation für bessere Sichtbarkeit
-            "type": "whirlwind"
+            "type": "whirlwind",
+            "_particles": particles,
+            "_spiral_angles": list(range(0, 360, 20)),
+            "_scratch": None,
+            "_scratch_size": None,
+            "_scratch_pad": 8,
         }
         
         # Füge Effekt zu aktiven visuellen Effekten hinzu
@@ -618,7 +688,8 @@ class MagicSystem:
             "duration": effect.duration,
             "target": caster
         }
-        print(f"👻 Unsichtbarkeit aktiviert für {effect.duration/1000}s!")
+        if _VERBOSE_LOGS:
+            print(f"👻 Unsichtbarkeit aktiviert für {effect.duration/1000}s!")
     
     def update(self, dt: float = 1.0/60.0, enemies: Optional[List[Any]] = None):
         """Update das Magie-System"""
@@ -699,35 +770,20 @@ class MagicSystem:
             # Alpha-Wert für Fade-Out Effekt
             alpha = floating_damage.get_alpha()
             
-            # Font für Schadenszahlen
-            font = pygame.font.Font(None, 36)  # Größere Schrift für bessere Lesbarkeit
-            
             # Text basierend auf Damage-Typ
             if floating_damage.color == (100, 255, 100):  # Grün = Heilung
                 text = f"+{floating_damage.damage}"
             else:  # Schaden
                 text = f"-{floating_damage.damage}"
-            
-            # Text-Surface erstellen
-            text_surface = font.render(text, True, floating_damage.color)
-            
-            # Alpha anwenden für Fade-Out
-            if alpha < 255:
-                fade_surface = pygame.Surface(text_surface.get_size(), pygame.SRCALPHA)
-                fade_surface.set_alpha(alpha)
-                fade_surface.blit(text_surface, (0, 0))
-                text_surface = fade_surface
+
+            # Text + Shadow Surfaces (gecached, inkl. Alpha-Buckets)
+            text_surface = self._get_floating_damage_surface(text, floating_damage.color, alpha, is_shadow=False)
             
             # Zentriere den Text über dem Ziel
             text_rect = text_surface.get_rect(center=pos)
             
             # Schwarzer Schatten für bessere Lesbarkeit
-            shadow_surface = font.render(text, True, (0, 0, 0))
-            if alpha < 255:
-                shadow_fade = pygame.Surface(shadow_surface.get_size(), pygame.SRCALPHA)
-                shadow_fade.set_alpha(alpha)
-                shadow_fade.blit(shadow_surface, (0, 0))
-                shadow_surface = shadow_fade
+            shadow_surface = self._get_floating_damage_surface(text, (0, 0, 0), alpha, is_shadow=True)
             
             # Schatten leicht versetzt zeichnen
             shadow_rect = shadow_surface.get_rect(center=(pos[0] + 2, pos[1] + 2))
@@ -781,9 +837,20 @@ class MagicSystem:
         else:
             screen_center = (int(center.x), int(center.y))
             screen_radius = int(radius)
+
+        # Scratch surface für korrektes Alpha + weniger Screen-Overdraw
+        pad = int(effect.get("_scratch_pad", 8))
+        scratch_size = (max(1, screen_radius * 2 + pad), max(1, screen_radius * 2 + pad))
+        if effect.get("_scratch") is None or effect.get("_scratch_size") != scratch_size:
+            effect["_scratch"] = pygame.Surface(scratch_size, pygame.SRCALPHA)
+            effect["_scratch_size"] = scratch_size
+        scratch: pygame.Surface = effect["_scratch"]
+        scratch.fill((0, 0, 0, 0))
+
+        local_center = (scratch_size[0] // 2, scratch_size[1] // 2)
+        topleft = (screen_center[0] - local_center[0], screen_center[1] - local_center[1])
         
         # Mehrphasige Animation
-        import math
         
         # Phase 1: Reichweiten-Ring erscheint (erste 30%)
         if progress < 0.3:
@@ -792,14 +859,12 @@ class MagicSystem:
             alpha = int(200 * (progress / 0.3))
             
             # Deutlicher Reichweiten-Ring
-            pygame.draw.circle(screen, (255, 255, 0, alpha), screen_center, current_radius, 4)  # Gelber Ring
-            pygame.draw.circle(screen, (255, 150, 0, alpha), screen_center, current_radius, 2)  # Orange Akzent
+            pygame.draw.circle(scratch, (255, 255, 0, alpha), local_center, current_radius, 4)  # Gelber Ring
+            pygame.draw.circle(scratch, (255, 150, 0, alpha), local_center, current_radius, 2)  # Orange Akzent
             
             # Text-Anzeige für Reichweite
             if progress > 0.1:  # Nach kurzer Verzögerung
-                font = pygame.font.Font(None, 24)
-                text = f"2 Tiles Reichweite"
-                text_surface = font.render(text, True, (255, 255, 255))
+                text_surface = self._get_whirlwind_range_surface()
                 text_rect = text_surface.get_rect(center=(screen_center[0], screen_center[1] - screen_radius - 30))
                 screen.blit(text_surface, text_rect)
         
@@ -821,20 +886,19 @@ class MagicSystem:
             for i, color in enumerate(colors):
                 ring_r = ring_radius - (i * 20)
                 if ring_r > 0:
-                    pygame.draw.circle(screen, color, screen_center, ring_r, max(1, 4 - i))
+                    pygame.draw.circle(scratch, color, local_center, ring_r, max(1, 4 - i))
             
             # Rotierendes Spiral-Muster
             rotation_angle = phase_progress * 720  # 2 volle Umdrehungen
-            spiral_points = []
             
-            for angle_step in range(0, 360, 20):  # Alle 20 Grad
+            for angle_step in effect.get("_spiral_angles", range(0, 360, 20)):
                 angle = math.radians(angle_step + rotation_angle)
                 spiral_radius = screen_radius * 0.8
-                x = screen_center[0] + int(math.cos(angle) * spiral_radius)
-                y = screen_center[1] + int(math.sin(angle) * spiral_radius)
+                x = local_center[0] + int(math.cos(angle) * spiral_radius)
+                y = local_center[1] + int(math.sin(angle) * spiral_radius)
                 
                 # Zeichne Wirbel-Punkte
-                pygame.draw.circle(screen, (255, 255, 150), (x, y), 3)
+                pygame.draw.circle(scratch, (255, 255, 150, 255), (x, y), 3)
         
         # Phase 3: Ausklang-Effekt (70% - 100%)
         else:
@@ -844,20 +908,23 @@ class MagicSystem:
             # Schrumpfender Ring
             final_radius = int(screen_radius * (1.0 - fade_progress))
             if final_radius > 0 and alpha > 0:
-                pygame.draw.circle(screen, (255, 200, 0, alpha), screen_center, final_radius, 3)
+                pygame.draw.circle(scratch, (255, 200, 0, alpha), local_center, final_radius, 3)
                 
                 # Funkelnde Partikel-Effekte
-                import random
-                for _ in range(int(10 * (1.0 - fade_progress))):
-                    angle = random.random() * 2 * math.pi
-                    distance = random.randint(final_radius // 2, final_radius)
-                    px = screen_center[0] + int(math.cos(angle) * distance)
-                    py = screen_center[1] + int(math.sin(angle) * distance)
-                    pygame.draw.circle(screen, (255, 255, 255, alpha), (px, py), 2)
+                particle_count = int(10 * (1.0 - fade_progress))
+                particles = effect.get("_particles") or []
+                for i in range(min(particle_count, len(particles))):
+                    angle, dist_ratio = particles[i]
+                    distance = int(final_radius * dist_ratio)
+                    px = local_center[0] + int(math.cos(angle) * distance)
+                    py = local_center[1] + int(math.sin(angle) * distance)
+                    pygame.draw.circle(scratch, (255, 255, 255, alpha), (px, py), 2)
         
         # Immer sichtbare Reichweiten-Markierung (schwach)
         if screen_radius > 0:
-            pygame.draw.circle(screen, (100, 100, 100, 60), screen_center, screen_radius, 1)
+            pygame.draw.circle(scratch, (100, 100, 100, 60), local_center, screen_radius, 1)
+
+        screen.blit(scratch, topleft)
     
     def get_available_combinations(self) -> List[str]:
         """Gibt alle verfügbaren Magie-Kombinationen zurück"""

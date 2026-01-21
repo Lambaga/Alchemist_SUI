@@ -22,6 +22,8 @@ from typing import Optional, Any, Callable
 from settings import *
 from level import Level
 from asset_manager import AssetManager
+from font_manager import get_font_manager
+from memory_monitor import get_memory_monitor
 from fps_monitor import FPSMonitor, create_detailed_fps_display
 from menu_system import MenuSystem, GameState
 from save_system import save_manager
@@ -155,8 +157,26 @@ class Game:
         ))
         
         # Display-Modus basierend auf Hardware-Einstellungen
-        display_flags = pygame.FULLSCREEN if use_fullscreen else 0
-        self.game_surface = pygame.display.set_mode((window_width, window_height), display_flags)
+        display_flags = 0
+        if use_fullscreen:
+            display_flags |= pygame.FULLSCREEN
+        # Performance: double buffering can reduce tearing/overhead on some drivers
+        display_flags |= pygame.DOUBLEBUF
+        try:
+            display_flags |= pygame.HWSURFACE
+        except Exception:
+            pass
+
+        # VSYNC (pygame2 keyword; safe fallback)
+        vsync_enabled = bool(self.optimized_settings.get('VSYNC', False))
+        try:
+            self.game_surface = pygame.display.set_mode(
+                (window_width, window_height),
+                display_flags,
+                vsync=1 if vsync_enabled else 0
+            )
+        except TypeError:
+            self.game_surface = pygame.display.set_mode((window_width, window_height), display_flags)
         pygame.display.set_caption(GAME_TITLE)
         
         self.clock = pygame.time.Clock()
@@ -172,7 +192,9 @@ class Game:
         self.message_text = ""
         self.message_timer = 0
         self.message_duration = 2000  # 2 seconds in milliseconds
-        self.message_font = pygame.font.Font(None, 36)
+        # 🚀 RPi-Optimierung: FontManager für gecachte Fonts
+        self._font_manager = get_font_manager()
+        self.message_font = self._font_manager.get_font(36)
         
         # Hotkey display system
         self.hotkey_display = HotkeyDisplay(self.game_surface)
@@ -182,7 +204,11 @@ class Game:
         # FPS-Monitoring System
         self.fps_monitor = create_detailed_fps_display(position=(10, 10))
         self.fps_monitor.set_target_fps(FPS)
-        self.show_fps = True  # Toggle für FPS-Anzeige
+        # Performance-first on small screens: start with FPS overlay off (toggle with F3)
+        self.show_fps = not bool(self.optimized_settings.get('HOTKEY_DISPLAY_COMPACT', False))
+        
+        # 🚀 Memory-Monitoring System für RPi Tests (F9 zum Umschalten)
+        self.memory_monitor = get_memory_monitor()
         
         # Performance-Tracking
         self.frame_count = 0
@@ -386,6 +412,12 @@ class Game:
                     elif event.key == pygame.K_F6 and self.game_state == GameState.GAMEPLAY:
                         if VERBOSE_LOGS:
                             self._print_performance_summary()
+                    
+                    # F9: Memory Monitor Overlay ein/ausschalten (nur im Gameplay)
+                    elif event.key == pygame.K_F9 and self.game_state == GameState.GAMEPLAY:
+                        self.memory_monitor.toggle_overlay()
+                        if VERBOSE_LOGS:
+                            self.memory_monitor.log_snapshot("F9 Toggle")
                     
                     # H: Hotkey-Anzeige ein/ausschalten (nur im Gameplay)
                     elif event.key == pygame.K_h and self.game_state == GameState.GAMEPLAY:
@@ -691,8 +723,6 @@ class Game:
         
         # Element Mixer Update (für Animationen)
         self.element_mixer.update(dt)
-        if self.input_system:
-            self.input_system.update()
         
         # Update message system
         self.update_message_system()
@@ -738,22 +768,41 @@ class Game:
             screen_height = self.game_surface.get_height()
             self.element_mixer.render(self.game_surface, screen_height)
 
-            # 🔵 Draw Mana bar above the element mixer
+            # Mana bar above the element mixer with modern pixel-art style
             try:
                 player = self.level.game_logic.player if self.level and self.level.game_logic else None
                 if player:
                     mix_x, mix_y = self.element_mixer.get_position(screen_height)
-                    bar_width, bar_height = 160, 10
+                    bar_width, bar_height = 180, 14
                     bar_x = mix_x
-                    bar_y = max(0, mix_y - 16)
-                    # Background
-                    pygame.draw.rect(self.game_surface, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
-                    # Fill
+                    bar_y = max(0, mix_y - 20)
+                    
+                    # Aeusserer Rahmen (dunkel)
+                    pygame.draw.rect(self.game_surface, (25, 30, 50), (bar_x - 2, bar_y - 2, bar_width + 4, bar_height + 4))
+                    # Hintergrund mit Gradient-Effekt
+                    for row in range(bar_height):
+                        ratio = row / bar_height
+                        r = int(15 * (1 - ratio) + 8 * ratio)
+                        g = int(20 * (1 - ratio) + 12 * ratio)
+                        b = int(35 * (1 - ratio) + 25 * ratio)
+                        pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + bar_width, bar_y + row))
+                    
+                    # Mana-Fuellung mit Gradient
                     fill_w = int(bar_width * player.get_mana_percentage())
                     if fill_w > 0:
-                        pygame.draw.rect(self.game_surface, (50, 150, 255), (bar_x, bar_y, fill_w, bar_height))
-                    # Border
-                    pygame.draw.rect(self.game_surface, (200, 200, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+                        for row in range(bar_height):
+                            ratio = row / bar_height
+                            r = int(60 * (1 - ratio) + 30 * ratio)
+                            g = int(140 * (1 - ratio) + 100 * ratio)
+                            b = int(255 * (1 - ratio) + 200 * ratio)
+                            pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + fill_w, bar_y + row))
+                        # Highlight oben
+                        pygame.draw.line(self.game_surface, (120, 180, 255), (bar_x, bar_y), (bar_x + fill_w, bar_y))
+                    
+                    # Innerer Rahmen
+                    pygame.draw.rect(self.game_surface, (50, 60, 90), (bar_x, bar_y, bar_width, bar_height), 1)
+                    # Leuchtender Rahmen
+                    pygame.draw.rect(self.game_surface, (70, 90, 140), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2), 1)
             except Exception:
                 pass
             
@@ -761,8 +810,16 @@ class Game:
             if self.show_fps:
                 self.fps_monitor.draw(self.game_surface)
             
+            # 🚀 Memory Monitor Overlay (F9 zum Umschalten)
+            self.memory_monitor.update()
+            self.memory_monitor.render(self.game_surface)
+            
             # Hotkey-Display zeichnen (falls aktiviert und im Gameplay)
             self.hotkey_display.draw()
+            
+            # 💬 Dialog-Box ganz am Ende rendern (über allem anderen)
+            if self.level and self.level.dialogue_box:
+                self.level.dialogue_box.render()
         elif self.game_state == GameState.PAUSE:
             # Draw gameplay in background, then pause menu on top
             if self.level:
@@ -772,19 +829,38 @@ class Game:
             screen_height = self.game_surface.get_height()
             self.element_mixer.render(self.game_surface, screen_height)
 
-            # 🔵 Draw Mana bar above the element mixer in pause
+            # Mana bar above the element mixer in pause (same style as gameplay)
             try:
                 player = self.level.game_logic.player if self.level and self.level.game_logic else None
                 if player:
                     mix_x, mix_y = self.element_mixer.get_position(screen_height)
-                    bar_width, bar_height = 160, 10
+                    bar_width, bar_height = 180, 14
                     bar_x = mix_x
-                    bar_y = max(0, mix_y - 16)
-                    pygame.draw.rect(self.game_surface, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+                    bar_y = max(0, mix_y - 20)
+                    
+                    # Aeusserer Rahmen
+                    pygame.draw.rect(self.game_surface, (25, 30, 50), (bar_x - 2, bar_y - 2, bar_width + 4, bar_height + 4))
+                    # Hintergrund
+                    for row in range(bar_height):
+                        ratio = row / bar_height
+                        r = int(15 * (1 - ratio) + 8 * ratio)
+                        g = int(20 * (1 - ratio) + 12 * ratio)
+                        b = int(35 * (1 - ratio) + 25 * ratio)
+                        pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + bar_width, bar_y + row))
+                    
+                    # Mana-Fuellung
                     fill_w = int(bar_width * player.get_mana_percentage())
                     if fill_w > 0:
-                        pygame.draw.rect(self.game_surface, (50, 150, 255), (bar_x, bar_y, fill_w, bar_height))
-                    pygame.draw.rect(self.game_surface, (200, 200, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+                        for row in range(bar_height):
+                            ratio = row / bar_height
+                            r = int(60 * (1 - ratio) + 30 * ratio)
+                            g = int(140 * (1 - ratio) + 100 * ratio)
+                            b = int(255 * (1 - ratio) + 200 * ratio)
+                            pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + fill_w, bar_y + row))
+                        pygame.draw.line(self.game_surface, (120, 180, 255), (bar_x, bar_y), (bar_x + fill_w, bar_y))
+                    
+                    pygame.draw.rect(self.game_surface, (50, 60, 90), (bar_x, bar_y, bar_width, bar_height), 1)
+                    pygame.draw.rect(self.game_surface, (70, 90, 140), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2), 1)
             except Exception:
                 pass
             

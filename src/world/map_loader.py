@@ -22,6 +22,18 @@ class MapLoader:
         self.foreground_layer = None
         self.tile_cache = {}
 
+        # Chunk cache for tile rendering (huge speedup vs per-tile blits on RPi)
+        self._layer_chunk_cache = {}
+        self._layer_chunk_access = []  # LRU order
+        self._chunk_size_tiles = 16
+        # Max chunks is tuned by DisplayConfig (falls back to a safe default)
+        self._max_cached_chunks = 80
+        try:
+            from config import DisplayConfig
+            self._max_cached_chunks = int(DisplayConfig.get_optimized_settings().get('TILE_CACHE_SIZE', 80))
+        except Exception:
+            pass
+
         original_cwd = os.getcwd()
         maps_dir: Optional[str] = None
         try:
@@ -452,8 +464,8 @@ class MapLoader:
         if cache_key in self.tile_cache:
             return self.tile_cache[cache_key]
 
-        # ERWEITERT: Debug-Ausgabe für mehr Tiles
-        debug_this_tile = len(self.tile_cache) < 50  # Erste 50 Tiles debuggen statt nur 10
+        # Debug-Ausgabe nur bei VERBOSE_LOGS (sonst massiver I/O-Overhead, v.a. auf RPi)
+        debug_this_tile = bool(VERBOSE_LOGS) and len(self.tile_cache) < 50  # type: ignore[name-defined]
         if debug_this_tile:
             print(f"🔧 DIRECT LOAD: Versuche GID {gid} direkt zu laden")
             print(f"   Gefunden in Tileset '{target_tileset.name}', local_id={local_id}")
@@ -517,7 +529,7 @@ class MapLoader:
                 self.tile_cache[cache_key] = tile_surface
                 return tile_surface
             else:
-                if debug_this_tile or True:  # IMMER loggen wenn Bounds überschritten werden
+                if debug_this_tile:
                     print(f"   ❌ Tile außerhalb der Bildgrenzen: ({tile_x}, {tile_y}) + ({target_tileset.tilewidth}, {target_tileset.tileheight}) > {tileset_surface.get_size()}")
                     print(f"      GID {gid}, local_id {local_id}, tiles_per_row {tiles_per_row}")
         
@@ -530,44 +542,38 @@ class MapLoader:
     def _render_tile_layer(self, layer, surface, camera):
         """Rendert einen einzelnen Tile-Layer mit Debug-Informationen"""
         if not layer or not hasattr(layer, 'data'):
-            return
+            return 0
         tmx = self.tmx_data
         if not tmx:
-            return
-        
-        # Debug: Prüfe Layer-Daten (erweitert)
-        total_tiles = 0
-        non_empty_tiles = 0
-        sample_gids = []
-        
-        # Prüfe größeren Bereich: 10x10 statt 5x5
-        for y in range(min(10, layer.height)):
-            for x in range(min(10, layer.width)):
-                gid = layer.data[y][x]
-                total_tiles += 1
-                if gid != 0:
-                    non_empty_tiles += 1
-                    sample_gids.append(gid)
-        
-        # Zusätzlich: Prüfe mittleren Bereich der Map
-        if non_empty_tiles == 0 and layer.height > 20 and layer.width > 20:
-            mid_y = layer.height // 2
-            mid_x = layer.width // 2
-            mid_non_empty = 0
-            
-            for y in range(max(0, mid_y-5), min(layer.height, mid_y+5)):
-                for x in range(max(0, mid_x-5), min(layer.width, mid_x+5)):
-                    gid = layer.data[y][x]
-                    if gid != 0:
-                        mid_non_empty += 1
-                        sample_gids.append(gid)
-            
-            if VERBOSE_LOGS and mid_non_empty > 0 and not hasattr(layer, '_mid_debug_logged'):
-                print(f"🎯 Layer {layer.name} (Mitte): {mid_non_empty} nicht-leere Tiles gefunden!")
-                layer._mid_debug_logged = True
+            return 0
 
-        # Debug-Ausgabe nur einmal pro Layer
-        if VERBOSE_LOGS and not hasattr(layer, '_debug_logged'):
+        # Debug: Layer-Diagnose ist teuer -> nur bei VERBOSE_LOGS und nur einmal.
+        if VERBOSE_LOGS and not hasattr(layer, '_debug_logged'):  # type: ignore[name-defined]
+            total_tiles = 0
+            non_empty_tiles = 0
+            sample_gids = []
+
+            for y in range(min(10, layer.height)):
+                for x in range(min(10, layer.width)):
+                    gid = layer.data[y][x]
+                    total_tiles += 1
+                    if gid != 0:
+                        non_empty_tiles += 1
+                        sample_gids.append(gid)
+
+            if non_empty_tiles == 0 and layer.height > 20 and layer.width > 20:
+                mid_y = layer.height // 2
+                mid_x = layer.width // 2
+                mid_non_empty = 0
+                for y in range(max(0, mid_y-5), min(layer.height, mid_y+5)):
+                    for x in range(max(0, mid_x-5), min(layer.width, mid_x+5)):
+                        gid = layer.data[y][x]
+                        if gid != 0:
+                            mid_non_empty += 1
+                            sample_gids.append(gid)
+                if mid_non_empty > 0:
+                    print(f"🎯 Layer {layer.name} (Mitte): {mid_non_empty} nicht-leere Tiles gefunden!")
+
             print(f"🔍 Layer {layer.name}: {non_empty_tiles}/{total_tiles} nicht-leere Tiles (Sample: {sample_gids[:5]})")
             layer._debug_logged = True
         
@@ -584,7 +590,8 @@ class MapLoader:
         start_y = max(0, screen_rect.top // tile_height)
         end_x = min(layer.width, (screen_rect.right // tile_width) + 1)
         end_y = min(layer.height, (screen_rect.bottom // tile_height) + 1)
-        
+
+        # Chunked rendering: pre-render chunks of tiles into surfaces and blit chunks.
         tiles_rendered = 0
         
         # NOTFALL-MODUS: Test-Pattern deaktiviert (da Tilesets jetzt funktionieren)
@@ -609,118 +616,70 @@ class MapLoader:
         if False:  # Test-Pattern komplett deaktiviert
             pass
         else:
-            # Normale Tile-Rendering
-            for y in range(start_y, end_y):
-                for x in range(start_x, end_x):
-                    gid = layer.data[y][x]
-                    if gid == 0:
-                        continue
-                    
-                    tiles_rendered += 1
-                    tile_x = x * tile_width - camera.camera_rect.x
-                    tile_y = y * tile_height - camera.camera_rect.y
-                    
-                    # Versuche Tile-Image zu laden
+            chunk = self._chunk_size_tiles
+
+            def get_chunk_surface(chunk_x: int, chunk_y: int):
+                key = (getattr(layer, 'name', 'layer'), chunk_x, chunk_y)
+                cached = self._layer_chunk_cache.get(key)
+                if cached is not None:
                     try:
-                        tile_image = tmx.get_tile_image_by_gid(gid)
-                        if not tile_image:
-                            # Fallback: Versuche Tile direkt aus Bilddatei zu laden
-                            tile_image = self.get_tile_image_direct(gid)
-                        if tile_image:
-                            surface.blit(tile_image, (tile_x, tile_y))
-                        else:
-                            # Debug: Erweiterte Fehlerdiagnose für fehlende Tiles
-                            if VERBOSE_LOGS and not hasattr(layer, '_tile_none_logged'):
-                                print(f"❌ Layer {layer.name}: GID {gid} gibt tile_image=None zurück")
-                                print(f"   Erstes Tileset: {tmx.tilesets[0].name if (tmx and tmx.tilesets) else 'Keine Tilesets'}")
-                                if tmx and tmx.tilesets:
-                                    ts = tmx.tilesets[0]
-                                    if VERBOSE_LOGS:
-                                        print(f"   GID-Range: {ts.firstgid} bis {ts.firstgid + ts.tilecount - 1}")
-                                layer._tile_none_logged = True
-                            
-                            # ERWEITERT: Detaillierte GID-Analyse für fehlende Tiles
-                            if not hasattr(layer, '_missing_gids'):
-                                layer._missing_gids = set()
-                            
-                            if gid not in layer._missing_gids and len(layer._missing_gids) < 20:  # Erste 20 fehlende GIDs
-                                layer._missing_gids.add(gid)
-                                # Analysiere warum dieses GID fehlt
-                                found_tileset = None
-                                for ts in tmx.tilesets:
-                                    if ts.firstgid <= gid < ts.firstgid + ts.tilecount:
-                                        found_tileset = ts
-                                        break
-                                
-                                if found_tileset:
-                                    local_id = gid - found_tileset.firstgid
-                                    if VERBOSE_LOGS:
-                                        print(f"🔍 Fehlender Tile - GID {gid}: Tileset '{found_tileset.name}', local_id={local_id}")
-                                    
-                                    # ERWEITERTE DIAGNOSE
-                                    if hasattr(found_tileset, 'image') and found_tileset.image:
-                                        if hasattr(found_tileset.image, 'surface'):
-                                            surf = found_tileset.image.surface
-                                            if VERBOSE_LOGS:
-                                                print(f"   MockImage verfügbar: {surf.get_size()}, Columns: {getattr(found_tileset, 'columns', 'unknown')}")
-                                            
-                                            # Prüfe ob local_id innerhalb der erwarteten Grenzen liegt
-                                            max_tiles_in_surface = (surf.get_width() // found_tileset.tilewidth) * (surf.get_height() // found_tileset.tileheight)
-                                            if local_id >= max_tiles_in_surface:
-                                                if VERBOSE_LOGS:
-                                                    print(f"   ❌ local_id {local_id} > max_tiles {max_tiles_in_surface} in Surface!")
-                                            else:
-                                                if VERBOSE_LOGS:
-                                                    print(f"   ✅ local_id {local_id} < max_tiles {max_tiles_in_surface} - sollte funktionieren!")
-                                                
-                                        else:
-                                            if VERBOSE_LOGS:
-                                                print(f"   PyTMX Image verfügbar: {type(found_tileset.image)}")
-                                        
-                                        # Prüfe Cache
-                                        cache_key = f"{found_tileset.name}_{local_id}"
-                                        if cache_key in self.tile_cache:
-                                            cached_result = self.tile_cache[cache_key]
-                                            if VERBOSE_LOGS:
-                                                print(f"   Cache-Inhalt: {type(cached_result)} ({cached_result is not None})")
-                                        else:
-                                            if VERBOSE_LOGS:
-                                                print(f"   ❌ Nicht im Cache: '{cache_key}'")
-                                            
-                                            # ZUSÄTZLICH: Versuche das Tile JETZT direkt zu laden
-                                            if VERBOSE_LOGS:
-                                                print(f"   🔧 Versuche direktes Laden für GID {gid}...")
-                                            direct_tile = self.get_tile_image_direct(gid)
-                                            if direct_tile:
-                                                if VERBOSE_LOGS:
-                                                    print(f"   ✅ Direktes Laden erfolgreich: {direct_tile.get_size()}")
-                                            else:
-                                                if VERBOSE_LOGS:
-                                                    print(f"   ❌ Direktes Laden fehlgeschlagen!")
-                                    else:
-                                        if VERBOSE_LOGS:
-                                            print(f"   ❌ Kein Tileset-Bild verfügbar!")
-                                else:
-                                    if VERBOSE_LOGS:
-                                        print(f"🔍 Fehlender Tile - GID {gid}: ❌ Kein zuständiges Tileset gefunden!")
-                            
-                            # Fallback: Bunte Rechtecke für fehlende Tiles (DEAKTIVIERT)
-                            # color = self.get_placeholder_color(gid)
-                            # pygame.draw.rect(surface, color, (tile_x, tile_y, tile_width, tile_height))
-                            pass  # Keine Platzhalter mehr zeichnen
-                    except Exception as e:
-                        # Debug: Exception Details
-                        if VERBOSE_LOGS and not hasattr(layer, '_exception_logged'):
-                            print(f"❌ Tile-Exception Layer {layer.name}: {type(e).__name__}: {e}")
-                            layer._exception_logged = True
-                        
-                        # Fallback: Bunte Rechtecke für fehlende Tiles (DEAKTIVIERT)
-                        # color = self.get_placeholder_color(gid)
-                        # pygame.draw.rect(surface, color, (tile_x, tile_y, tile_width, tile_height))
-                        pass  # Keine Platzhalter mehr zeichnen
+                        self._layer_chunk_access.remove(key)
+                    except ValueError:
+                        pass
+                    self._layer_chunk_access.append(key)
+                    return cached
+
+                # LRU eviction
+                while len(self._layer_chunk_cache) >= self._max_cached_chunks and self._layer_chunk_access:
+                    old = self._layer_chunk_access.pop(0)
+                    self._layer_chunk_cache.pop(old, None)
+
+                chunk_w = chunk * tile_width
+                chunk_h = chunk * tile_height
+                chunk_surface = pygame.Surface((chunk_w, chunk_h), pygame.SRCALPHA).convert_alpha()
+
+                base_x = chunk_x * chunk
+                base_y = chunk_y * chunk
+                for ty in range(chunk):
+                    map_y = base_y + ty
+                    if map_y >= layer.height:
+                        break
+                    row = layer.data[map_y]
+                    for tx in range(chunk):
+                        map_x = base_x + tx
+                        if map_x >= layer.width:
+                            break
+                        gid = row[map_x]
+                        if gid == 0:
+                            continue
+                        try:
+                            tile_image = tmx.get_tile_image_by_gid(gid)
+                            if not tile_image:
+                                tile_image = self.get_tile_image_direct(gid)
+                            if tile_image:
+                                chunk_surface.blit(tile_image, (tx * tile_width, ty * tile_height))
+                        except Exception:
+                            continue
+
+                self._layer_chunk_cache[key] = chunk_surface
+                self._layer_chunk_access.append(key)
+                return chunk_surface
+
+            start_cx = start_x // chunk
+            start_cy = start_y // chunk
+            end_cx = (end_x - 1) // chunk
+            end_cy = (end_y - 1) // chunk
+
+            for cy in range(start_cy, end_cy + 1):
+                for cx in range(start_cx, end_cx + 1):
+                    chunk_surface = get_chunk_surface(cx, cy)
+                    draw_x = cx * chunk * tile_width - camera.camera_rect.x
+                    draw_y = cy * chunk * tile_height - camera.camera_rect.y
+                    surface.blit(chunk_surface, (draw_x, draw_y))
+                    tiles_rendered += 1
         
         # Ergebnis-Log mit detaillierter Tile-Statistik
-        if VERBOSE_LOGS and tiles_rendered > 0 and not hasattr(layer, '_render_logged'):
+        if VERBOSE_LOGS and tiles_rendered > 0 and not hasattr(layer, '_render_logged'):  # type: ignore[name-defined]
             print(f"  ✅ Layer {layer.name}: {tiles_rendered} Tiles gerendert")
             
             # ERWEITERT: Zeige GID-Verteilung für diesen Layer
@@ -911,7 +870,8 @@ class MapLoader:
                             'properties': dict(obj.properties) if hasattr(obj, 'properties') else {}
                         }
                         self.depth_objects.append(depth_obj)
-                        print(f"🎨 Depth-Objekt geladen: {obj.name} bei ({obj.x}, {obj.y}) - Y-Bottom: {depth_obj['y_bottom']}")
+                        if VERBOSE_LOGS:  # type: ignore[name-defined]
+                            print(f"🎨 Depth-Objekt geladen: {obj.name} bei ({obj.x}, {obj.y}) - Y-Bottom: {depth_obj['y_bottom']}")
     
     def _get_object_color(self, obj_name):
         """Gibt Fallback-Farben für verschiedene Objekttypen zurück"""

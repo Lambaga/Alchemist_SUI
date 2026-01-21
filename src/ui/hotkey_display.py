@@ -7,6 +7,7 @@ Adaptive for different screen sizes including 7-inch displays
 
 import pygame
 from typing import List, Tuple
+from managers.font_manager import get_font_manager
 
 # Import configuration
 try:
@@ -31,19 +32,22 @@ class HotkeyDisplay:
         ui_settings = config.ui.get_ui_settings()
         display_settings = config.display.get_optimized_settings()
         
+        # 🚀 RPi-Optimierung: FontManager für gecachte Fonts
+        self._font_manager = get_font_manager()
+        
         # Adaptive font sizes based on screen size
         if display_settings.get('HOTKEY_DISPLAY_COMPACT', False):
             # 7-Zoll kompakte Anzeige
-            self.font_title = pygame.font.Font(None, int(24 * ui_settings['UI_SCALE']))
-            self.font_hotkey = pygame.font.Font(None, int(20 * ui_settings['UI_SCALE']))
-            self.font_small = pygame.font.Font(None, int(16 * ui_settings['UI_SCALE']))
+            self.font_title = self._font_manager.get_font(int(24 * ui_settings['UI_SCALE']))
+            self.font_hotkey = self._font_manager.get_font(int(20 * ui_settings['UI_SCALE']))
+            self.font_small = self._font_manager.get_font(int(16 * ui_settings['UI_SCALE']))
             self.line_height = ui_settings['HOTKEY_LINE_HEIGHT']
             self.padding = ui_settings['HOTKEY_PADDING']
         else:
             # Standard Anzeige
-            self.font_title = pygame.font.Font(None, 28)
-            self.font_hotkey = pygame.font.Font(None, 24)
-            self.font_small = pygame.font.Font(None, 20)
+            self.font_title = self._font_manager.get_font(28)
+            self.font_hotkey = self._font_manager.get_font(24)
+            self.font_small = self._font_manager.get_font(20)
             self.line_height = 20
             self.padding = 8
         

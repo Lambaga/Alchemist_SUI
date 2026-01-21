@@ -35,18 +35,19 @@ class HealthBarRenderer(ABC):
 
 class StandardHealthBarRenderer(HealthBarRenderer):
     """
-    Standard Health-Bar Renderer mit konfigurierbaren Farben und Stil.
+    Moderner Pixel-Art Health-Bar Renderer mit Gradient und mehrstufigem Rahmen.
+    Passend zum UI-Design von Inventar, Manabar und Element Mixer.
     """
     
     def __init__(self, 
-                 bg_color: Tuple[int, int, int] = (60, 60, 60),
-                 border_color: Tuple[int, int, int] = (20, 20, 20),
-                 health_color_full: Tuple[int, int, int] = (0, 255, 0),
-                 health_color_medium: Tuple[int, int, int] = (255, 255, 0),
-                 health_color_low: Tuple[int, int, int] = (255, 0, 0),
-                 border_width: int = 2):
+                 bg_color: Tuple[int, int, int] = (15, 20, 35),
+                 border_color: Tuple[int, int, int] = (40, 50, 70),
+                 health_color_full: Tuple[int, int, int] = (50, 200, 80),
+                 health_color_medium: Tuple[int, int, int] = (220, 180, 50),
+                 health_color_low: Tuple[int, int, int] = (200, 50, 50),
+                 border_width: int = 1):
         """
-        Initialisiert den Standard Health-Bar Renderer.
+        Initialisiert den modernen Health-Bar Renderer.
         
         Args:
             bg_color: Hintergrundfarbe der Health-Bar
@@ -62,6 +63,10 @@ class StandardHealthBarRenderer(HealthBarRenderer):
         self.health_color_medium = health_color_medium
         self.health_color_low = health_color_low
         self.border_width = border_width
+        
+        # Moderne Farben für Rahmen (wie andere UI-Elemente)
+        self.border_outer = (25, 30, 50)
+        self.border_inner = (60, 80, 120)
     
     def get_health_color(self, health_percentage: float) -> Tuple[int, int, int]:
         """
@@ -80,10 +85,19 @@ class StandardHealthBarRenderer(HealthBarRenderer):
         else:
             return self.health_color_low
     
+    def get_health_gradient(self, health_percentage: float) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+        """Gibt Gradient-Farben für die Health-Füllung zurück."""
+        base = self.get_health_color(health_percentage)
+        # Hellere Version für oben
+        bright = tuple(min(255, c + 60) for c in base)
+        # Dunklere Version für unten
+        dark = tuple(max(0, c - 30) for c in base)
+        return (bright, dark)
+    
     def render(self, surface: pygame.Surface, rect: pygame.Rect, 
                health_percentage: float, **kwargs) -> None:
         """
-        Rendert eine Standard Health-Bar mit Rahmen und farbiger Füllung.
+        Rendert eine moderne Pixel-Art Health-Bar mit Gradient und Rahmen.
         
         Args:
             surface: Pygame Surface zum Zeichnen
@@ -91,20 +105,37 @@ class StandardHealthBarRenderer(HealthBarRenderer):
             health_percentage: Gesundheit als Prozentwert (0.0 - 1.0)
             **kwargs: Zusätzliche Parameter (wird ignoriert)
         """
-        # Rahmen zeichnen
-        pygame.draw.rect(surface, self.border_color, rect, self.border_width)
+        x, y, w, h = rect.x, rect.y, rect.width, rect.height
         
-        # Hintergrund zeichnen
-        inner_rect = rect.inflate(-self.border_width * 2, -self.border_width * 2)
-        pygame.draw.rect(surface, self.bg_color, inner_rect)
+        # Äußerer Rahmen (dunkel)
+        pygame.draw.rect(surface, self.border_outer, (x-1, y-1, w+2, h+2))
         
-        # Gesundheitsbalken zeichnen (falls Gesundheit > 0)
+        # Hintergrund mit Gradient
+        for row in range(h):
+            ratio = row / max(1, h)
+            r = int(self.bg_color[0] * (1 - ratio * 0.3))
+            g = int(self.bg_color[1] * (1 - ratio * 0.3))
+            b = int(self.bg_color[2] * (1 - ratio * 0.3))
+            pygame.draw.line(surface, (r, g, b), (x, y + row), (x + w - 1, y + row))
+        
+        # Gesundheitsbalken mit Gradient (falls Gesundheit > 0)
         if health_percentage > 0:
-            health_width = int(inner_rect.width * health_percentage)
-            health_rect = pygame.Rect(inner_rect.x, inner_rect.y, 
-                                    health_width, inner_rect.height)
-            health_color = self.get_health_color(health_percentage)
-            pygame.draw.rect(surface, health_color, health_rect)
+            health_width = max(1, int(w * health_percentage))
+            bright, dark = self.get_health_gradient(health_percentage)
+            
+            for row in range(h):
+                ratio = row / max(1, h)
+                r = int(bright[0] * (1 - ratio) + dark[0] * ratio)
+                g = int(bright[1] * (1 - ratio) + dark[1] * ratio)
+                b = int(bright[2] * (1 - ratio) + dark[2] * ratio)
+                pygame.draw.line(surface, (r, g, b), (x, y + row), (x + health_width - 1, y + row))
+            
+            # Highlight-Linie oben
+            highlight = tuple(min(255, c + 40) for c in bright)
+            pygame.draw.line(surface, highlight, (x, y), (x + health_width - 1, y))
+        
+        # Innerer Rahmen (heller)
+        pygame.draw.rect(surface, self.border_inner, rect, 1)
 
 
 class AnimatedHealthBarRenderer(StandardHealthBarRenderer):
@@ -326,11 +357,8 @@ class HealthBarManager:
         """Initialisiert den Health-Bar Manager."""
         self.health_bars: Dict[Any, HealthBar] = {}
         self.default_renderer = StandardHealthBarRenderer()
-        self.player_renderer = AnimatedHealthBarRenderer(
-            health_color_full=(0, 200, 255),  # Blau für Spieler
-            health_color_medium=(255, 200, 0),
-            health_color_low=(255, 100, 100)
-        )
+        # Spieler-Renderer erbt jetzt das moderne Design von StandardHealthBarRenderer
+        self.player_renderer = AnimatedHealthBarRenderer()
     
     def add_entity(self, entity: CombatEntity, 
                    renderer: Optional[HealthBarRenderer] = None,

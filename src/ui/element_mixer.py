@@ -94,6 +94,16 @@ class ElementMixer:
         self.label_margin_top = 6
         self.label_padding = 6
         self.label_bg_alpha = 160
+
+        # Performance caches (RPi/7-inch): avoid per-frame font/surface work
+        self._chip_font: Optional[pygame.font.Font] = None
+        self._chip_surfaces: Dict[Tuple[str, int], pygame.Surface] = {}
+        self._key_label_cache: Dict[Tuple[str, int, Tuple[int, int, int]], pygame.Surface] = {}
+        self._flash_surface_cache: Dict[Tuple[int, int, int], pygame.Surface] = {}
+        self._combo_dimmed_cache: Dict[str, pygame.Surface] = {}
+        self._combo_key_c_cache: Optional[Tuple[pygame.Surface, pygame.Surface]] = None
+        self._combo_qmark_cache: Dict[Tuple[int, int], pygame.Surface] = {}
+        self._countdown_cache: Dict[Tuple[int, int], Tuple[pygame.Surface, pygame.Surface]] = {}
         
         # Animation states
         self.element_animations = [0.0] * 3  # For element press feedback
@@ -101,6 +111,74 @@ class ElementMixer:
         
         if VERBOSE_LOGS:
             print("✨ ElementMixer initialized with 3 elements")
+
+    def _get_chip_surface(self, txt: str, size: int) -> pygame.Surface:
+        """Return cached '+'/'=' chip surface with proper vertical centering."""
+        key = (txt, size)
+        cached = self._chip_surfaces.get(key)
+        if cached is not None:
+            return cached
+        if self._chip_font is None:
+            self._chip_font = pygame.font.Font(None, max(24, size // 2))
+        # Groessere Surface fuer bessere Zentrierung
+        chip_size = size
+        surf = pygame.Surface((chip_size // 2, chip_size), pygame.SRCALPHA)
+        t = self._chip_font.render(txt, True, (180, 200, 230))
+        # Zentriere horizontal und vertikal
+        tx = (surf.get_width() - t.get_width()) // 2
+        ty = (surf.get_height() - t.get_height()) // 2
+        surf.blit(t, (tx, ty))
+        self._chip_surfaces[key] = surf
+        return surf
+
+    def _get_key_label(self, txt: str, font: pygame.font.Font, color: Tuple[int, int, int]) -> pygame.Surface:
+        """Cache label surfaces (e.g., '1','2','3','C') to avoid per-frame font.render."""
+        key = (txt, id(font), color)
+        cached = self._key_label_cache.get(key)
+        if cached is not None:
+            return cached
+        surf = font.render(txt, True, color)
+        self._key_label_cache[key] = surf
+        return surf
+
+    def _get_flash_surface(self, size: int, alpha: int) -> pygame.Surface:
+        """Cache flash overlay surfaces by size + alpha bucket."""
+        a = max(0, min(255, int(alpha)))
+        bucket = int(a / 10) * 10
+        key = (size, size, bucket)
+        cached = self._flash_surface_cache.get(key)
+        if cached is not None:
+            return cached
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        surf.fill((255, 255, 255, bucket))
+        self._flash_surface_cache[key] = surf
+        return surf
+
+    def _get_dimmed_combo_icon(self, spell_id: str) -> Optional[pygame.Surface]:
+        """Cache dimmed combo icon for cooldown state."""
+        if spell_id in self._combo_dimmed_cache:
+            return self._combo_dimmed_cache[spell_id]
+        icon = self.combination_icons.get(spell_id)
+        if not icon:
+            return None
+        dimmed = icon.copy()
+        dimmed_overlay = pygame.Surface((self.combination_size, self.combination_size), pygame.SRCALPHA)
+        dimmed_overlay.fill((0, 0, 0, 100))
+        dimmed.blit(dimmed_overlay, (0, 0))
+        self._combo_dimmed_cache[spell_id] = dimmed
+        return dimmed
+
+    def _get_countdown_surfaces(self, number: int) -> Tuple[pygame.Surface, pygame.Surface]:
+        """Cache countdown text surface + shadow."""
+        key = (number, self.combination_size)
+        cached = self._countdown_cache.get(key)
+        if cached is not None:
+            return cached
+        txt = str(max(1, int(number)))
+        main = self.font.render(txt, True, (255, 255, 255))
+        shadow = self.font.render(txt, True, (0, 0, 0))
+        self._countdown_cache[key] = (main, shadow)
+        return main, shadow
     
     def load_icons(self):
         """Load element icons and combination spell icons"""
@@ -167,19 +245,46 @@ class ElementMixer:
         return surface
     
     def create_background_surface(self):
-        """Create the background surface for the element mixer"""
+        """Create the background surface for the element mixer with modern pixel-art style"""
         # Calculate total width: 3 elements + spacing + combination slot + padding
         elements_width = 3 * self.element_size + 2 * self.element_spacing
         total_width = elements_width + self.element_spacing * 2 + self.combination_size + 2 * self.background_padding
         total_height = max(self.element_size, self.combination_size) + 2 * self.background_padding
 
         self.background_surface = pygame.Surface((total_width, total_height), pygame.SRCALPHA)
-        background_color = (*config.colors.UI_BACKGROUND, self.background_alpha)
-        self.background_surface.fill(background_color)
-
-        # Add rounded corners effect
-        pygame.draw.rect(self.background_surface, background_color,
-                         self.background_surface.get_rect(), border_radius=8)
+        
+        # Moderner Gradient-Hintergrund (dunkel nach noch dunkler)
+        for row in range(total_height):
+            ratio = row / total_height
+            r = int(20 * (1 - ratio) + 10 * ratio)
+            g = int(25 * (1 - ratio) + 15 * ratio)
+            b = int(45 * (1 - ratio) + 30 * ratio)
+            pygame.draw.line(self.background_surface, (r, g, b, self.background_alpha), 
+                           (0, row), (total_width, row))
+        
+        # Mehrstufiger Rahmen (Pixel-Art Style)
+        # Aeusserer dunkler Rahmen
+        pygame.draw.rect(self.background_surface, (30, 35, 55, 255), 
+                        (0, 0, total_width, total_height), 3)
+        # Mittlerer Rahmen
+        pygame.draw.rect(self.background_surface, (50, 60, 90, 255), 
+                        (2, 2, total_width - 4, total_height - 4), 2)
+        # Innerer leuchtender Rahmen
+        pygame.draw.rect(self.background_surface, (70, 90, 140, 255), 
+                        (4, 4, total_width - 8, total_height - 8), 1)
+        
+        # Dekorative Ecken (Gold-Akzent)
+        corner_size = 5
+        corner_color = (140, 110, 60, 255)
+        corners = [(0, 0), (total_width - corner_size, 0), 
+                   (0, total_height - corner_size), (total_width - corner_size, total_height - corner_size)]
+        for cx, cy in corners:
+            pygame.draw.rect(self.background_surface, corner_color, (cx, cy, corner_size, corner_size))
+            pygame.draw.rect(self.background_surface, (180, 150, 90, 255), (cx + 1, cy + 1, 3, 3))
+        
+        # Obere Highlight-Linie
+        pygame.draw.line(self.background_surface, (80, 100, 150, 100),
+                        (corner_size + 2, 1), (total_width - corner_size - 2, 1))
     
     def handle_element_press(self, element_id: str) -> bool:
         """
@@ -442,95 +547,160 @@ class ElementMixer:
         spacing = 8
         parts: List[pygame.Surface] = []
 
-        def text_chip(txt: str) -> pygame.Surface:
-            surf = pygame.Surface((size // 2, size // 2), pygame.SRCALPHA)
-            font = pygame.font.Font(None, max(18, size // 3))
-            t = font.render(txt, True, (255, 255, 255))
-            surf.blit(t, t.get_rect(center=surf.get_rect().center))
-            return surf
-
         if len(self.selected_elements) >= 1:
             parts.append(self.icons.get_element(self.selected_elements[0], size))
         if len(self.selected_elements) >= 2:
-            parts.append(text_chip("+"))
+            parts.append(self._get_chip_surface("+", size))
             parts.append(self.icons.get_element(self.selected_elements[1], size))
 
         # If a valid combination exists, show = and result icon
         if len(self.selected_elements) == 2:
             key = tuple(self.selected_elements)
             if key in config.spells.MAGIC_COMBINATIONS:
-                parts.append(text_chip("="))
+                parts.append(self._get_chip_surface("=", size))
                 a, b = key
                 parts.append(self.icons.get_combo(a, b, size))
 
         if not parts:
-            # Draw neutral label pill "Ausgewählt: —"
-            text_surface = self.label_font.render("Ausgewählt: —", True, (255, 255, 255))
-            pill = pygame.Surface((text_surface.get_width() + 2 * self.label_padding,
-                                   text_surface.get_height() + 2 * self.label_padding), pygame.SRCALPHA)
-            bg_color = (*config.colors.UI_BACKGROUND, self.label_bg_alpha)
-            pill.fill(bg_color)
-            pygame.draw.rect(pill, bg_color, pill.get_rect(), border_radius=8)
-            label_x = x + (bg_width - pill.get_width()) // 2
+            # Draw neutral label pill "Ausgewaehlt: -" mit modernem Style
+            text_surface = self.label_font.render("Ausgewaehlt: -", True, (180, 190, 210))
+            pill_w = text_surface.get_width() + 2 * self.label_padding + 8
+            pill_h = text_surface.get_height() + 2 * self.label_padding
+            pill = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+            
+            # Gradient-Hintergrund
+            for row in range(pill_h):
+                ratio = row / pill_h
+                r = int(20 * (1 - ratio) + 12 * ratio)
+                g = int(25 * (1 - ratio) + 16 * ratio)
+                b = int(45 * (1 - ratio) + 32 * ratio)
+                pygame.draw.line(pill, (r, g, b, self.label_bg_alpha), (0, row), (pill_w, row))
+            
+            # Rahmen
+            pygame.draw.rect(pill, (50, 60, 90), (0, 0, pill_w, pill_h), 2)
+            pygame.draw.rect(pill, (70, 85, 120), (1, 1, pill_w - 2, pill_h - 2), 1)
+            
+            label_x = x + (bg_width - pill_w) // 2
             screen.blit(pill, (label_x, label_y))
-            screen.blit(text_surface, (label_x + self.label_padding, label_y + self.label_padding))
+            screen.blit(text_surface, (label_x + self.label_padding + 4, label_y + self.label_padding))
             return
 
         total_w = sum(p.get_width() for p in parts) + spacing * (len(parts) - 1)
         total_h = max(p.get_height() for p in parts)
         label_x = x + (bg_width - total_w) // 2
 
-        # Background pill
-        pill = pygame.Surface((total_w + 2 * self.label_padding, total_h + 2 * self.label_padding), pygame.SRCALPHA)
-        bg_color = (*config.colors.UI_BACKGROUND, self.label_bg_alpha)
-        pill.fill(bg_color)
-        pygame.draw.rect(pill, bg_color, pill.get_rect(), border_radius=8)
-        screen.blit(pill, (label_x - self.label_padding, label_y - self.label_padding))
+        # Background pill mit modernem Style
+        pill_w = total_w + 2 * self.label_padding + 4
+        pill_h = total_h + 2 * self.label_padding
+        pill = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
+        
+        # Gradient-Hintergrund
+        for row in range(pill_h):
+            ratio = row / pill_h
+            r = int(22 * (1 - ratio) + 14 * ratio)
+            g = int(28 * (1 - ratio) + 18 * ratio)
+            b = int(50 * (1 - ratio) + 35 * ratio)
+            pygame.draw.line(pill, (r, g, b, self.label_bg_alpha + 20), (0, row), (pill_w, row))
+        
+        # Rahmen
+        pygame.draw.rect(pill, (55, 65, 95), (0, 0, pill_w, pill_h), 2)
+        pygame.draw.rect(pill, (75, 90, 130), (1, 1, pill_w - 2, pill_h - 2), 1)
+        
+        screen.blit(pill, (label_x - self.label_padding - 2, label_y - self.label_padding))
 
+        # Zeichne alle Teile mit vertikaler Zentrierung
         cx = label_x
         for idx, part in enumerate(parts):
-            screen.blit(part, (cx, label_y))
+            # Zentriere vertikal basierend auf maximaler Hoehe
+            part_y = label_y + (total_h - part.get_height()) // 2
+            screen.blit(part, (cx, part_y))
             cx += part.get_width()
             if idx < len(parts) - 1:
                 cx += spacing
     
     def render_element(self, screen: pygame.Surface, index: int, element: Dict, x: int, y: int):
-        """Render a single element"""
-        # Draw element icon
+        """Render a single element with modern styling"""
+        size = self.element_size
+        
+        # Element-Hintergrund mit Gradient
+        elem_bg = pygame.Surface((size, size), pygame.SRCALPHA)
+        for row in range(size):
+            ratio = row / size
+            r = int(25 * (1 - ratio) + 15 * ratio)
+            g = int(30 * (1 - ratio) + 20 * ratio)
+            b = int(50 * (1 - ratio) + 35 * ratio)
+            pygame.draw.line(elem_bg, (r, g, b, 200), (0, row), (size, row))
+        
+        # Rahmen um Element
+        pygame.draw.rect(elem_bg, (50, 60, 85), (0, 0, size, size), 2)
+        pygame.draw.rect(elem_bg, (70, 85, 120), (1, 1, size - 2, size - 2), 1)
+        
+        screen.blit(elem_bg, (x, y))
+        
+        # Draw element icon (zentriert)
         icon = self.element_icons[element["id"]]
-        screen.blit(icon, (x, y))
+        icon_x = x + (size - icon.get_width()) // 2
+        icon_y = y + (size - icon.get_height()) // 2
+        screen.blit(icon, (icon_x, icon_y))
         
-        # Add press feedback animation
+        # Add press feedback animation (Glow-Effekt)
         if self.element_animations[index] > 0:
-            flash_alpha = int(self.element_animations[index] * 100)
-            flash_surface = pygame.Surface((self.element_size, self.element_size), pygame.SRCALPHA)
-            flash_surface.fill((255, 255, 255, flash_alpha))
-            screen.blit(flash_surface, (x, y))
+            flash_alpha = int(self.element_animations[index] * 80)
+            glow = pygame.Surface((size, size), pygame.SRCALPHA)
+            glow.fill((255, 255, 200, flash_alpha))
+            screen.blit(glow, (x, y))
         
-        # Draw key label
-        key_surface = self.small_font.render(element["key"], True, (255, 255, 255))
-        key_rect = key_surface.get_rect()
-        key_rect.bottomright = (x + self.element_size - 2, y + self.element_size - 2)
+        # Draw key label mit Hintergrund
+        key_text = element["key"]
+        key_surface = self._get_key_label(key_text, self.small_font, (220, 230, 255))
         
-        # Add shadow
-        shadow_surface = self.small_font.render(element["key"], True, (0, 0, 0))
-        shadow_rect = shadow_surface.get_rect()
-        shadow_rect.bottomright = (key_rect.bottomright[0] + 1, key_rect.bottomright[1] + 1)
+        # Kleiner Hintergrund fuer die Taste
+        key_bg = pygame.Surface((14, 14), pygame.SRCALPHA)
+        key_bg.fill((20, 25, 40, 180))
+        pygame.draw.rect(key_bg, (60, 80, 120), (0, 0, 14, 14), 1)
         
-        screen.blit(shadow_surface, shadow_rect)
+        key_x = x + size - 16
+        key_y = y + size - 16
+        screen.blit(key_bg, (key_x, key_y))
+        
+        key_rect = key_surface.get_rect(center=(key_x + 7, key_y + 7))
         screen.blit(key_surface, key_rect)
         
-        # Highlight if selected
+        # Highlight if selected (leuchtender Rahmen)
         if element["id"] in self.selected_elements:
-            pygame.draw.rect(screen, (255, 255, 100), (x, y, self.element_size, self.element_size), 2)
+            # Aeusserer Glow
+            glow_rect = pygame.Surface((size + 4, size + 4), pygame.SRCALPHA)
+            pygame.draw.rect(glow_rect, (255, 220, 100, 60), (0, 0, size + 4, size + 4), 3)
+            screen.blit(glow_rect, (x - 2, y - 2))
+            # Innerer heller Rahmen
+            pygame.draw.rect(screen, (255, 230, 120), (x, y, size, size), 2)
     
     def render_combination(self, screen: pygame.Surface, x: int, y: int):
-        """Render the combination slot"""
+        """Render the combination slot with modern styling"""
+        size = self.combination_size
+        
+        # Kombinations-Hintergrund mit Gradient
+        combo_bg = pygame.Surface((size, size), pygame.SRCALPHA)
+        for row in range(size):
+            ratio = row / size
+            r = int(18 * (1 - ratio) + 10 * ratio)
+            g = int(22 * (1 - ratio) + 14 * ratio)
+            b = int(40 * (1 - ratio) + 28 * ratio)
+            pygame.draw.line(combo_bg, (r, g, b, 220), (0, row), (size, row))
+        
+        # Mehrstufiger Rahmen
+        pygame.draw.rect(combo_bg, (40, 50, 75), (0, 0, size, size), 2)
+        pygame.draw.rect(combo_bg, (60, 75, 110), (2, 2, size - 4, size - 4), 1)
+        
+        screen.blit(combo_bg, (x, y))
+        
         if not self.current_combination:
-            # Empty combination slot
-            pygame.draw.rect(screen, (100, 100, 100), (x, y, self.combination_size, self.combination_size), 2)
-            # Draw "?" placeholder
-            text_surface = self.font.render("?", True, (150, 150, 150))
+            # Empty combination slot - "?" Platzhalter
+            q_key = (id(self.font), size)
+            text_surface = self._combo_qmark_cache.get(q_key)
+            if text_surface is None:
+                text_surface = self.font.render("?", True, (100, 110, 140))
+                self._combo_qmark_cache[q_key] = text_surface
             text_rect = text_surface.get_rect(center=(x + self.combination_size // 2, y + self.combination_size // 2))
             screen.blit(text_surface, text_rect)
             return
@@ -543,12 +713,12 @@ class ElementMixer:
             icon = self.combination_icons[spell_id]
             
             if not is_ready:
-                # Dimmed version during cooldown
-                dimmed_icon = icon.copy()
-                dimmed_overlay = pygame.Surface((self.combination_size, self.combination_size), pygame.SRCALPHA)
-                dimmed_overlay.fill((0, 0, 0, 100))
-                dimmed_icon.blit(dimmed_overlay, (0, 0))
-                screen.blit(dimmed_icon, (x, y))
+                # Dimmed version during cooldown (cached)
+                dimmed_icon = self._get_dimmed_combo_icon(spell_id)
+                if dimmed_icon is not None:
+                    screen.blit(dimmed_icon, (x, y))
+                else:
+                    screen.blit(icon, (x, y))
                 
                 # Draw cooldown overlay
                 cooldown_duration = self.current_combination.get("cooldown", config.spells.DEFAULT_COOLDOWN)
@@ -560,12 +730,12 @@ class ElementMixer:
                 # Draw countdown text
                 remaining_time = self.cooldown_manager.time_remaining(spell_id)
                 countdown_text = str(max(1, int(remaining_time + 0.5)))
-                
-                text_surface = self.font.render(countdown_text, True, (255, 255, 255))
+                try:
+                    number = int(countdown_text)
+                except Exception:
+                    number = 1
+                text_surface, shadow_surface = self._get_countdown_surfaces(number)
                 text_rect = text_surface.get_rect(center=(x + self.combination_size // 2, y + self.combination_size // 2))
-                
-                # Text shadow
-                shadow_surface = self.font.render(countdown_text, True, (0, 0, 0))
                 shadow_rect = shadow_surface.get_rect(center=(x + self.combination_size // 2 + 1, y + self.combination_size // 2 + 1))
                 screen.blit(shadow_surface, shadow_rect)
                 screen.blit(text_surface, text_rect)
@@ -576,9 +746,7 @@ class ElementMixer:
                 # Add ready animation
                 if self.combination_animation > 0:
                     flash_alpha = int(self.combination_animation * 100)
-                    flash_surface = pygame.Surface((self.combination_size, self.combination_size), pygame.SRCALPHA)
-                    flash_surface.fill((255, 255, 255, flash_alpha))
-                    screen.blit(flash_surface, (x, y))
+                    screen.blit(self._get_flash_surface(self.combination_size, flash_alpha), (x, y))
         
         # Draw border
         border_color = (100, 255, 100) if is_ready else (100, 100, 100)
@@ -586,11 +754,14 @@ class ElementMixer:
         pygame.draw.rect(screen, border_color, (x, y, self.combination_size, self.combination_size), border_width)
         
         # Draw "C" key label
-        key_surface = self.small_font.render("C", True, (255, 255, 255))
+        if self._combo_key_c_cache is None:
+            key_surface = self._get_key_label("C", self.small_font, (255, 255, 255))
+            shadow_surface = self._get_key_label("C", self.small_font, (0, 0, 0))
+            self._combo_key_c_cache = (key_surface, shadow_surface)
+        else:
+            key_surface, shadow_surface = self._combo_key_c_cache
         key_rect = key_surface.get_rect()
         key_rect.bottomright = (x + self.combination_size - 2, y + self.combination_size - 2)
-        
-        shadow_surface = self.small_font.render("C", True, (0, 0, 0))
         shadow_rect = shadow_surface.get_rect()
         shadow_rect.bottomright = (key_rect.bottomright[0] + 1, key_rect.bottomright[1] + 1)
         

@@ -10,6 +10,7 @@ import pygame
 from typing import List, Tuple, Optional, Dict, Any
 import time
 from collections import deque
+from managers.font_manager import get_font_manager
 
 
 class FPSMonitor:
@@ -78,10 +79,11 @@ class FPSMonitor:
         self.show_detailed: bool = show_detailed
         self.history_size: int = history_size
         
-        # Font für Text-Rendering
+        # 🚀 RPi-Optimierung: FontManager für gecachte Fonts
         pygame.font.init()
-        self.font: pygame.font.Font = pygame.font.Font(None, self.font_size)
-        self.small_font: pygame.font.Font = pygame.font.Font(None, self.font_size - 4)
+        self._font_manager = get_font_manager()
+        self.font: pygame.font.Font = self._font_manager.get_font(self.font_size)
+        self.small_font: pygame.font.Font = self._font_manager.get_font(self.font_size - 4)
         
         # Performance-Daten
         self.current_fps: float = 0.0

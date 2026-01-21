@@ -37,9 +37,13 @@ echo
 echo "Starting game..."
 cd src
 python3 -m core.main
+game_exit_code=$?
 
 # Check if game exited with error
-if [ $? -ne 0 ]; then
+if [ $game_exit_code -ne 0 ]; then
     echo
     echo "Game exited with an error."
     read -p "Press Enter to continue..."
+fi
+
+exit $game_exit_code

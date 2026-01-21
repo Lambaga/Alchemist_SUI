@@ -10,29 +10,67 @@ from game import Game as GameLogic
 from world.camera import Camera
 from world.map_loader import MapLoader
 from managers.enemy_manager import EnemyManager
+from managers.font_manager import get_font_manager
 from ui.health_bar_py27 import HealthBarManager, create_player_health_bar, create_enemy_health_bar
 from ui.dialogue_system import DialogueBox
 from systems.input_system import get_input_system
 from core.settings import VERBOSE_LOGS
 from systems.pathfinding import GridPathfinder
+from entities.npc_beckalof import BeckalofNPC, reset_beckalof
 
 class GameRenderer:
-    """🚀 Task 6: Rendering-System mit Alpha/Transparenz-Optimierung"""
+    """Rendering-System mit Alpha/Transparenz-Optimierung"""
     
     def __init__(self, screen):
         self.screen = screen
-        # Kompaktere Fonts für kleineres Overlay
-        self.font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 22)  # Kleinere Schrift für Inventar-Items
+        # RPi-Optimierung: FontManager für gecachte Fonts
+        self._font_manager = get_font_manager()
+        self.font = self._font_manager.get_font(36)
+        self.small_font = self._font_manager.get_font(22)  # Kleinere Schrift für Inventar-Items
         self.generate_ground_stones()
         
         # Performance-Optimierung: Asset Manager für gecachte Sprite-Skalierung
         from managers.asset_manager import AssetManager
         self.asset_manager = AssetManager()
         
-        # 🚀 Task 6: Alpha-Caching für transparente Effekte (Performance-Optimierung)
+        # Item-Icons Cache für Inventar
+        self._item_icons = {}
+        self._load_item_icons()
+        
+        # Alpha-Caching für transparente Effekte (Performance-Optimierung)
         self._alpha_cache = {}  # Cache für transparente Surfaces
         self._max_alpha_cache_size = 50  # Begrenzt Memory-Verbrauch
+
+        # UI caching (RPi/7-inch performance): avoid per-frame font rendering
+        self._inventory_ui_cache_key = None
+        self._inventory_ui_cache_surface = None
+        self._controls_cache_surfaces = None
+        self._magic_title_surface = None
+        self._magic_elements_cache_key = None
+        self._magic_elements_surface = None
+        self._magic_mana_cache_key = None
+        self._magic_mana_surface = None
+    
+    def _load_item_icons(self):
+        """Lädt Item-Icons aus assets/ui/items/ falls vorhanden."""
+        import os
+        items_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                                   "assets", "ui", "items")
+        
+        item_names = ["holzstab", "stahlerz", "mondstein", "kristall", "goldreif", 
+                      "wasserkristall", "feueressenz", "erdkristall"]
+        
+        for item_name in item_names:
+            icon_path = os.path.join(items_path, f"{item_name}.png")
+            if os.path.exists(icon_path):
+                try:
+                    icon = pygame.image.load(icon_path).convert_alpha()
+                    # Skaliere auf Slot-Größe (44x44 für inneren Bereich)
+                    icon = pygame.transform.smoothscale(icon, (44, 44))
+                    self._item_icons[item_name] = icon
+                    print(f"✅ Item-Icon geladen: {item_name}")
+                except Exception as e:
+                    print(f"⚠️ Fehler beim Laden von {item_name}.png: {e}")
         
     def generate_ground_stones(self):
         """🚀 Task 5: Generiert zufällige Steine - Multi-Resolution-kompatibel"""
@@ -187,83 +225,195 @@ class GameRenderer:
             pygame.draw.rect(self.screen, (0, 255, 255), collision_transformed, 2)  # Cyan für Kollisionsobjekte
     
     def draw_ui(self, game_logic):
-        """Zeichnet das kompakte Inventar mit optionaler zweiter Zeile für gesammelte Items."""
+        """Modernes Pixel-Art Inventar-UI mit Gradient und mehrstufigem Rahmen."""
+        import math
+        
         # Ermittele zusätzliche gesammelte Items (aus Level-Referenz)
         level_ref = getattr(game_logic, '_level_ref', None)
         collected_extra = []
         try:
             if level_ref and hasattr(level_ref, 'quest_items'):
-                # Nutze Questliste als persistente Sammlung
                 collected_extra = list(level_ref.quest_items)
-                # Entferne Duplikate, die bereits in aktiven Zutaten sind
                 collected_extra = [it for it in collected_extra if it not in game_logic.aktive_zutaten]
         except Exception:
             collected_extra = []
 
-        # Kompakter UI-Hintergrund: Dynamische Höhe, falls zweite Reihe existiert
-        base_height = 140
-        extra_height = 96 if collected_extra else 0
-        ui_rect = pygame.Rect(16, 16, 520, base_height + extra_height)
-        pygame.draw.rect(self.screen, UI_BACKGROUND, ui_rect)
-        pygame.draw.rect(self.screen, TEXT_COLOR, ui_rect, 3)
+        # Alle Items zusammenführen für einheitliche Anzeige (nur oben)
+        all_items = list(game_logic.aktive_zutaten[:5]) + collected_extra[:5]
+        all_items = all_items[:5]  # Max 5 Items anzeigen
+        
+        # Animation Zeit für pulsierende Effekte
+        anim_time = pygame.time.get_ticks()
+        
+        # Cache key (ohne Animation - nur statische Elemente cachen)
+        cache_key = (
+            self.screen.get_width(),
+            self.screen.get_height(),
+            tuple(all_items),
+        )
 
-        inner_left = ui_rect.x + 20
-        inner_right = ui_rect.right - 20
-        y_offset = ui_rect.y + 20
+        # UI-Dimensionen
+        slot_size = 52
+        slot_spacing = 8
+        padding = 14
+        n_slots = 5
+        
+        # Berechne Breite basierend auf Slots
+        ui_width = n_slots * slot_size + (n_slots - 1) * slot_spacing + padding * 2 + 10
+        ui_height = 94
 
-        # Helfer für Item-Abstand
-        def compute_spacing(n_items: int, slot_size: int) -> int:
-            n = max(1, n_items)
-            total_slots = n * slot_size
-            max_width = max(0, inner_right - inner_left)
-            gaps = max(1, n - 1)
-            return max(10, min(80, (max_width - total_slots) // gaps if max_width > total_slots else 10))
-
-        # Überschrift: Inventar
-        zutaten_text = "Inventar ({}/5):".format(len(game_logic.aktive_zutaten))
-        zutaten_surface = self.font.render(zutaten_text, True, TEXT_COLOR)
-        self.screen.blit(zutaten_surface, (inner_left, y_offset))
-        y_offset += 28
-
-        # Inventar-Items (Symbole + Namen)
-        zutaten_farben = {
-            "wasserkristall": (0, 150, 255),
-            "feueressenz": (255, 100, 0),
-            "erdkristall": (139, 69, 19),
-            "holzstab": (139, 69, 19),
-            "stahlerz": (169, 169, 169),
-            "mondstein": (200, 200, 255),
-            "kristall": (160, 32, 240),
-            "goldreif": (255, 215, 0)
+        # Design-Farben (konsistent mit anderen UI-Elementen)
+        bg_color_top = (15, 20, 45)
+        bg_color_bottom = (8, 12, 28)
+        border_outer = (30, 40, 60)
+        border_middle = (60, 80, 120)
+        border_inner = (100, 130, 180)
+        border_glow = (120, 160, 255)
+        corner_accent = (180, 140, 80)  # Gold
+        title_color = (220, 200, 140)   # Warmes Gold für Titel
+        
+        # Item-Definitionen mit Farben
+        item_config = {
+            "holzstab": {"color": (139, 90, 43), "glow": (180, 120, 60), "name": "Holzstab"},
+            "stahlerz": {"color": (120, 130, 140), "glow": (180, 190, 200), "name": "Stahlerz"},
+            "mondstein": {"color": (180, 180, 255), "glow": (220, 220, 255), "name": "Mondstein"},
+            "kristall": {"color": (180, 100, 255), "glow": (220, 150, 255), "name": "Kristall"},
+            "goldreif": {"color": (255, 200, 50), "glow": (255, 230, 100), "name": "Goldreif"},
+            "wasserkristall": {"color": (60, 160, 255), "glow": (100, 200, 255), "name": "Wasser"},
+            "feueressenz": {"color": (255, 100, 30), "glow": (255, 150, 80), "name": "Feuer"},
+            "erdkristall": {"color": (139, 90, 43), "glow": (180, 120, 60), "name": "Erde"},
         }
 
-        slot_size = 40
-        n_main = max(1, min(5, len(game_logic.aktive_zutaten)))
-        item_spacing = compute_spacing(n_main, slot_size)
-        start_x = inner_left
-        for i, zutat in enumerate(game_logic.aktive_zutaten[:5]):
-            color = zutaten_farben.get(zutat, (200, 200, 200))
-            rect_x = start_x + i * (slot_size + item_spacing)
-            pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size, slot_size))
-            item_name = zutat.capitalize()
-            name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
-            name_rect = name_surface.get_rect(centerx=rect_x + slot_size // 2, top=y_offset + slot_size + 6)
-            self.screen.blit(name_surface, name_rect)
+        # Statischen Hintergrund aus Cache holen oder erstellen
+        if cache_key != self._inventory_ui_cache_key or self._inventory_ui_cache_surface is None:
+            ui_surface = pygame.Surface((ui_width, ui_height), pygame.SRCALPHA)
+            
+            # === GRADIENT HINTERGRUND ===
+            for row in range(ui_height):
+                ratio = row / ui_height
+                r = int(bg_color_top[0] * (1 - ratio) + bg_color_bottom[0] * ratio)
+                g = int(bg_color_top[1] * (1 - ratio) + bg_color_bottom[1] * ratio)
+                b = int(bg_color_top[2] * (1 - ratio) + bg_color_bottom[2] * ratio)
+                pygame.draw.line(ui_surface, (r, g, b, 240), (0, row), (ui_width, row))
+            
+            # === MEHRSTUFIGER RAHMEN (Pixel-Art Style) ===
+            # Äußerer Rahmen (dunkel)
+            pygame.draw.rect(ui_surface, border_outer, (0, 0, ui_width, ui_height), 2)
+            # Mittlerer Rahmen
+            pygame.draw.rect(ui_surface, border_middle, (2, 2, ui_width-4, ui_height-4), 2)
+            # Innerer heller Rahmen
+            pygame.draw.rect(ui_surface, border_inner, (4, 4, ui_width-8, ui_height-8), 1)
+            
+            # === DEKORATIVE GOLD-ECKEN ===
+            corner_size = 6
+            corners = [
+                (0, 0),                              # Oben links
+                (ui_width - corner_size, 0),         # Oben rechts
+                (0, ui_height - corner_size),        # Unten links
+                (ui_width - corner_size, ui_height - corner_size)  # Unten rechts
+            ]
+            for cx, cy in corners:
+                pygame.draw.rect(ui_surface, corner_accent, (cx, cy, corner_size, corner_size))
+                pygame.draw.rect(ui_surface, (255, 220, 140), (cx+2, cy+2, 2, 2))
+            
+            # === TITEL MIT DEKORATION ===
+            # Kleines Deko-Symbol vor dem Titel
+            deco_x = padding + 2
+            deco_y = 12
+            pygame.draw.polygon(ui_surface, corner_accent, [
+                (deco_x, deco_y + 4),
+                (deco_x + 6, deco_y),
+                (deco_x + 6, deco_y + 8)
+            ])
+            
+            # Titel-Text
+            title_text = "Inventar"
+            title_surface = self.small_font.render(title_text, True, title_color)
+            ui_surface.blit(title_surface, (padding + 12, 8))
+            
+            # Item-Zähler rechts
+            count_text = f"{len(all_items)}/5"
+            count_color = (100, 255, 150) if len(all_items) < 5 else (255, 200, 100)
+            count_surface = self.small_font.render(count_text, True, count_color)
+            ui_surface.blit(count_surface, (ui_width - padding - count_surface.get_width() - 4, 8))
+            
+            # Trennlinie unter Titel
+            line_y = 24
+            pygame.draw.line(ui_surface, border_middle, (padding, line_y), (ui_width - padding, line_y), 1)
 
-        # Zweite Reihe: Gesammelte Items (ohne Überschrift, minimal gehalten)
-        if collected_extra:
-            y_offset += slot_size + 34  # Abstand unter der ersten Reihe
-            n_extra = max(1, min(5, len(collected_extra)))
-            extra_spacing = compute_spacing(n_extra, slot_size)
-            start_x2 = inner_left
-            for i, item in enumerate(collected_extra[:5]):
-                color = zutaten_farben.get(item, (200, 200, 200))
-                rect_x = start_x2 + i * (slot_size + extra_spacing)
-                pygame.draw.rect(self.screen, color, (rect_x, y_offset, slot_size, slot_size))
-                item_name = item.capitalize()
-                name_surface = self.small_font.render(item_name, True, TEXT_COLOR)
-                name_rect = name_surface.get_rect(centerx=rect_x + slot_size // 2, top=y_offset + slot_size + 6)
-                self.screen.blit(name_surface, name_rect)
+            # === ITEM-SLOTS ===
+            slot_y = 34
+            start_x = padding + 3
+            
+            for i in range(n_slots):
+                slot_x = start_x + i * (slot_size + slot_spacing)
+                slot_rect = pygame.Rect(slot_x, slot_y, slot_size, slot_size)
+                
+                if i < len(all_items):
+                    # Gefüllter Slot
+                    item_key = all_items[i].lower()
+                    config = item_config.get(item_key, {"color": (150, 150, 150), "glow": (180, 180, 180), "name": item_key.capitalize()})
+                    
+                    # Slot-Hintergrund (dunkel)
+                    pygame.draw.rect(ui_surface, (20, 25, 40), slot_rect, border_radius=4)
+                    
+                    # Prüfe ob Item-Icon vorhanden ist
+                    if item_key in self._item_icons:
+                        icon = self._item_icons[item_key]
+                        icon_rect = icon.get_rect(center=slot_rect.center)
+                        ui_surface.blit(icon, icon_rect)
+                    else:
+                        # Fallback: Farbiger Platzhalter
+                        inner_rect = slot_rect.inflate(-10, -10)
+                        pygame.draw.rect(ui_surface, config["color"], inner_rect, border_radius=4)
+                        # Highlight oben
+                        highlight_rect = pygame.Rect(inner_rect.x + 2, inner_rect.y + 2, inner_rect.width - 4, inner_rect.height // 3)
+                        pygame.draw.rect(ui_surface, (*config["glow"], 100), highlight_rect, border_radius=2)
+                    
+                    # Mehrstufiger Slot-Rahmen
+                    pygame.draw.rect(ui_surface, (40, 50, 70), slot_rect, width=2, border_radius=4)
+                    pygame.draw.rect(ui_surface, config["glow"], slot_rect.inflate(-2, -2), width=1, border_radius=3)
+                    
+                else:
+                    # Leerer Slot
+                    pygame.draw.rect(ui_surface, (18, 22, 35), slot_rect, border_radius=4)
+                    pygame.draw.rect(ui_surface, (40, 50, 65), slot_rect, width=1, border_radius=4)
+                    
+                    # Plus-Symbol für leeren Slot (dezent)
+                    plus_color = (50, 60, 80)
+                    cx, cy = slot_rect.center
+                    pygame.draw.line(ui_surface, plus_color, (cx - 6, cy), (cx + 6, cy), 2)
+                    pygame.draw.line(ui_surface, plus_color, (cx, cy - 6), (cx, cy + 6), 2)
+
+            # Cache speichern
+            self._inventory_ui_cache_key = cache_key
+            self._inventory_ui_cache_surface = ui_surface
+
+        # Zeichne gecachten Hintergrund
+        self.screen.blit(self._inventory_ui_cache_surface, (12, 12))
+        
+        # === ANIMIERTE EFFEKTE (nicht gecacht) ===
+        # Pulsierender Glow-Rahmen
+        glow_alpha = int(60 + 30 * math.sin(anim_time / 350))
+        glow_surf = pygame.Surface((ui_width - 10, ui_height - 10), pygame.SRCALPHA)
+        pygame.draw.rect(glow_surf, (*border_glow, glow_alpha), (0, 0, ui_width - 10, ui_height - 10), 1, border_radius=2)
+        self.screen.blit(glow_surf, (12 + 5, 12 + 5))
+        
+        # Glow für gefüllte Slots (pulsiert leicht)
+        slot_y = 34
+        start_x = padding + 3
+        for i in range(min(len(all_items), n_slots)):
+            item_key = all_items[i].lower()
+            config = item_config.get(item_key, {"glow": (180, 180, 180)})
+            
+            slot_x = start_x + i * (slot_size + slot_spacing)
+            slot_rect = pygame.Rect(12 + slot_x, 12 + slot_y, slot_size, slot_size)
+            
+            # Äußerer Glow (pulsiert)
+            glow_intensity = int(40 + 20 * math.sin(anim_time / 400 + i * 0.5))
+            glow_surf = pygame.Surface((slot_size + 8, slot_size + 8), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surf, (*config["glow"], glow_intensity), (0, 0, slot_size + 8, slot_size + 8), border_radius=6)
+            self.screen.blit(glow_surf, (slot_rect.x - 4, slot_rect.y - 4))
     
     def draw_controls(self):
         """🚀 Task 5: Zeichnet die Steuerungshinweise - Multi-Resolution-optimiert"""
@@ -285,19 +435,22 @@ class GameRenderer:
             "ESC: Zurück zum Menü"
         ]
         
-        # 🚀 Task 5: Dynamische Screen-Größen statt Konstanten
+        # Pre-render static control text once (font.render is expensive on RPi)
+        if self._controls_cache_surfaces is None:
+            cached = []
+            for i, control in enumerate(controls):
+                color = TEXT_COLOR if i > 0 else (255, 255, 0)
+                if control.startswith("🔮"):
+                    color = (150, 255, 255)
+                elif control.startswith("💾"):
+                    color = (255, 200, 100)
+                cached.append(self.small_font.render(control, True, color))
+            self._controls_cache_surfaces = cached
+
         screen_height = self.screen.get_height()
         screen_width = self.screen.get_width()
         start_y = screen_height - 380  # Mehr Platz für zusätzliche Zeilen
-        for i, control in enumerate(controls):
-            color = TEXT_COLOR if i > 0 else (255, 255, 0)
-            # Magie-Titel hervorheben
-            if control.startswith("🔮"):
-                color = (150, 255, 255)
-            # Speicher-Titel hervorheben
-            elif control.startswith("💾"):
-                color = (255, 200, 100)
-            control_surface = self.small_font.render(control, True, color)
+        for i, control_surface in enumerate(self._controls_cache_surfaces):
             self.screen.blit(control_surface, (screen_width - 350, start_y + i * 23))
     
     def draw_magic_ui(self, player, x, y):
@@ -305,17 +458,25 @@ class GameRenderer:
         magic_system = player.magic_system
         
         # Titel
-        magic_title = self.small_font.render("🔮 Magie:", True, (150, 255, 255))
-        self.screen.blit(magic_title, (x, y))
+        if self._magic_title_surface is None:
+            self._magic_title_surface = self.small_font.render("🔮 Magie:", True, (150, 255, 255))
+        self.screen.blit(self._magic_title_surface, (x, y))
         
-        # Ausgewählte Elemente
-        if magic_system.selected_elements:
-            elements_text = f"Elemente: {magic_system.get_selected_elements_str()}"
-        else:
-            elements_text = "Elemente: Keine ausgewählt"
-            
-        elements_surface = self.small_font.render(elements_text, True, TEXT_COLOR)
-        self.screen.blit(elements_surface, (x, y + 25))
+        # Ausgewählte Elemente (nur neu rendern, wenn Auswahl sich ändert)
+        try:
+            selected_key = tuple([getattr(e, 'value', str(e)) for e in (magic_system.selected_elements or [])])
+        except Exception:
+            selected_key = ()
+
+        if selected_key != self._magic_elements_cache_key or self._magic_elements_surface is None:
+            if magic_system.selected_elements:
+                elements_text = f"Elemente: {magic_system.get_selected_elements_str()}"
+            else:
+                elements_text = "Elemente: Keine ausgewählt"
+            self._magic_elements_surface = self.small_font.render(elements_text, True, TEXT_COLOR)
+            self._magic_elements_cache_key = selected_key
+
+        self.screen.blit(self._magic_elements_surface, (x, y + 25))
         
         # Element-Symbole zeichnen
         element_colors = {
@@ -340,10 +501,13 @@ class GameRenderer:
                 # Fallback: Einfache Farbe
                 pass
         
-        # Mana-Anzeige
-        mana_text = f"Mana: {int(player.current_mana)}/{player.max_mana}"
-        mana_surface = self.small_font.render(mana_text, True, (100, 100, 255))
-        self.screen.blit(mana_surface, (x, y + 60))
+        # Mana-Anzeige (nur bei Integer-Änderung neu rendern)
+        mana_key = (int(getattr(player, 'current_mana', 0)), int(getattr(player, 'max_mana', 0)))
+        if mana_key != self._magic_mana_cache_key or self._magic_mana_surface is None:
+            mana_text = f"Mana: {mana_key[0]}/{mana_key[1]}"
+            self._magic_mana_surface = self.small_font.render(mana_text, True, (100, 100, 255))
+            self._magic_mana_cache_key = mana_key
+        self.screen.blit(self._magic_mana_surface, (x, y + 60))
         
         # Mana-Balken
         bar_width = 120
@@ -628,6 +792,9 @@ class Level:
         # Enemy Manager initialisieren (BEFORE map loading!)
         self.enemy_manager = EnemyManager()
         
+        # 🧙 The Great Beckalof NPC (MUSS VOR load_map() initialisiert werden!)
+        self.beckalof_npc = None
+        
         # Map laden
         self.load_map()
         
@@ -685,6 +852,12 @@ class Level:
         self.interaction_font = pygame.font.Font(None, 32)  # Schriftgröße angepasst für bessere Lesbarkeit
         # Schrift für Item-Namen über Sammelobjekten
         self.item_name_font = pygame.font.Font(None, 22)
+        
+        # NPC-Interaktionssystem: Welcher NPC ist gerade in Reichweite?
+        self.active_npc_zone = None  # Zone-ID des NPCs in Reichweite
+        self.npc_interaction_font = pygame.font.Font(None, 24)
+        # 🚀 RPi-Optimierung: Cache für collection_message Font (vermeidet Font-Erstellung pro Frame)
+        self.collection_message_font = pygame.font.Font(None, 28)
 
         # Modal Dialogue UI
         self.dialogue_box = DialogueBox(self.screen)
@@ -849,6 +1022,9 @@ class Level:
                 # Gegner aus der Map spawnen (ObjectGroup "Enemy" etc.)
                 # und direkt Health-Bars für die gespawnten Gegner hinzufügen
                 self.respawn_enemies_only()
+                
+                # 🧙 The Great Beckalof spawnen (nur auf Map3.tmx)
+                self._spawn_beckalof(current_map)
                 
             else:
                 if VERBOSE_LOGS:
@@ -1096,6 +1272,54 @@ class Level:
                     self.game_logic.player.update_hitbox()
                     print("✅ Player in unbekannter Map Standard-Position gespawnt (400, 300)")
 
+    def _spawn_beckalof(self, map_name: str):
+        """Spawnt The Great Beckalof NPC auf Map3.tmx (unten links)."""
+        # Beckalof erscheint nur auf Map3.tmx (Map 1)
+        if 'Map3.tmx' not in map_name:
+            self.beckalof_npc = None
+            reset_beckalof()
+            return
+        
+        try:
+            # Position: Weiter unten links auf der Map
+            beckalof_x = 150  # Weiter links
+            beckalof_y = 950  # Weiter unten
+            
+            self.beckalof_npc = BeckalofNPC(beckalof_x, beckalof_y)
+            print(f"🧙 The Great Beckalof gespawnt bei ({beckalof_x}, {beckalof_y})")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Spawnen von Beckalof: {e}")
+            import traceback
+            traceback.print_exc()
+            self.beckalof_npc = None
+
+    def _open_beckalof_dialogue(self):
+        """Öffnet einen Dialog mit The Great Beckalof über Milchschokolade."""
+        if not self.beckalof_npc or not self.dialogue_box:
+            return
+        
+        dialogue_text = self.beckalof_npc.get_next_dialogue()
+        self.dialogue_box.open(dialogue_text, speaker="The Great Beckalof")
+        print("💬 Beckalof erzählt von Milchschokolade!")
+
+    def _open_npc_dialogue(self, zone_id: str):
+        """Öffnet einen Dialog mit einem NPC basierend auf der Zone-ID."""
+        if zone_id not in self.interaction_zones:
+            return
+        
+        zone = self.interaction_zones[zone_id]
+        if not self.dialogue_box or self.dialogue_box.is_active:
+            return
+        
+        # Prüfe ob bereits abgeschlossen
+        if zone.get('completed', False):
+            return
+        
+        # Öffne den Dialog-Text
+        self.dialogue_box.open(zone.get('text', ''))
+        zone['dialogue_shown'] = True
+        print(f"💬 NPC-Dialog geöffnet: {zone_id}")
+
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
         if not self.map_loader or not self.map_loader.tmx_data:
@@ -1290,7 +1514,13 @@ class Level:
                 self.handle_magic_element('stone')
             # Magie-System Actions
             elif action == 'cast_magic':
-                self.handle_cast_magic()
+                # Prüfe erst ob ein NPC in der Nähe ist für Dialog
+                if self.beckalof_npc and self.beckalof_npc.can_interact:
+                    self._open_beckalof_dialogue()
+                elif self.active_npc_zone:
+                    self._open_npc_dialogue(self.active_npc_zone)
+                else:
+                    self.handle_cast_magic()
             elif action == 'clear_magic':
                 self.handle_clear_magic()
         
@@ -1464,6 +1694,13 @@ class Level:
         if not paused:
             self.enemy_manager.update(dt, self.game_logic.player)
 
+        # 🧙 Beckalof NPC aktualisieren (Idle + Drinking Animationen)
+        if self.beckalof_npc and not paused:
+            self.beckalof_npc.update(dt)
+            # Prüfe ob Spieler nah genug für Interaktion ist
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                self.beckalof_npc.check_player_distance(self.game_logic.player.rect)
+
         # Kamera aktualisieren
         if hasattr(self.game_logic, 'player'):
             self.camera.update(self.game_logic.player)
@@ -1491,12 +1728,13 @@ class Level:
         pygame.time.set_timer(pygame.USEREVENT + 1, 3000)  # Event in 3 Sekunden
         
     def check_interaction_zones(self):
-        """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist"""
+        """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist (ohne automatischen Dialog)"""
         if not self.game_logic or not self.game_logic.player:
             return
 
         player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
         self.show_interaction_text = False
+        self.active_npc_zone = None  # Reset aktiver NPC
         
         # Aktuelle Map ermitteln
         current_map = ""
@@ -1515,54 +1753,33 @@ class Level:
 
             if distance <= zone['radius']:
                 zone['active'] = True
+                self.active_npc_zone = zone_id  # Merke welcher NPC in Reichweite ist
                 
-                # Prüfe ob dies ein Checkpoint ist
+                # Prüfe ob dies ein Checkpoint ist und ob er abgeschlossen wurde
                 if zone.get('is_checkpoint', False) and not zone.get('completed', False):
                     required_items = set(zone.get('required_items', []))
                     collected_items = set(self.quest_items)
-
                     missing_items = required_items - collected_items
 
-                    # Nur bei Zustandsänderung (andere fehlende Items) loggen, um Spam zu vermeiden
+                    # Nur bei Zustandsänderung loggen
                     prev_missing = zone.get('last_missing_items', None)
                     if prev_missing != missing_items:
                         if VERBOSE_LOGS:
                             print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
-                        if missing_items:
-                            if VERBOSE_LOGS:
-                                print(f"Noch nicht alle Items gefunden. Fehlende Items: {missing_items}")
                         zone['last_missing_items'] = set(missing_items)
 
+                    # Bei vollständigen Items: Automatisch abschließen
                     if not missing_items:
                         print("Alle benötigten Items gefunden!")
-                        # Alle Items vorhanden - zeige Abschlusstext als Dialog
                         if self.dialogue_box and not self.dialogue_box.is_active:
                             self.dialogue_box.open(zone.get('completion_text', ''))
                         zone['completed'] = True
-                        
-                        # Speichere das Spiel und kehre zum Hauptmenü zurück
                         print("Starte Level-Abschluss...")
                         self.trigger_level_completion()
-                    else:
-                        # Nicht alle Items vorhanden - zeige normalen Dialog einmalig oder bei Zustandsänderung
-                        should_open = False
-                        if prev_missing != missing_items:
-                            should_open = True
-                        elif not zone.get('dialogue_shown', False):
-                            should_open = True
-                        if should_open and self.dialogue_box and not self.dialogue_box.is_active:
-                            self.dialogue_box.open(zone.get('text', ''))
-                            zone['dialogue_shown'] = True
-                else:
-                    # Normale Interaktionszone oder bereits abgeschlossen
-                    if not zone.get('dialogue_shown', False):
-                        if self.dialogue_box and not self.dialogue_box.is_active:
-                            self.dialogue_box.open(zone.get('text', ''))
-                            zone['dialogue_shown'] = True
+                        self.active_npc_zone = None  # Kein Interaktions-Hinweis mehr
                 break
             else:
-                # Beim Verlassen der Zone Snapshot zurücksetzen, damit beim nächsten Betreten
-                # erneut sinnvoll geloggt werden kann (ohne Spam pro Frame)
+                # Beim Verlassen der Zone zurücksetzen
                 zone['active'] = False
                 if 'last_missing_items' in zone:
                     del zone['last_missing_items']
@@ -1611,21 +1828,49 @@ class Level:
                 print(self.collection_message)
 
     def _draw_collectibles(self):
-        """Zeichnet sichtbare Sammelobjekte in die Welt."""
+        """Zeichnet sichtbare Sammelobjekte in die Welt mit Item-Icons."""
         if not self.collectible_items:
             return
+        
+        # Hole Item-Icons vom Renderer (falls vorhanden)
+        item_icons = {}
+        if self.renderer and hasattr(self.renderer, '_item_icons'):
+            item_icons = self.renderer._item_icons
+        
         for key, item in self.collectible_items.items():
             if item.get('available', True) and not item.get('collected', False):
                 world_pos: pygame.math.Vector2 = item['pos']
                 color = item.get('color', (200, 200, 200))
-                # Erzeuge ein kleines Rechteck um die Position, damit wir die Kamera anwenden können
-                size = 24
+                
+                # Größe für Item auf dem Boden (größer als vorher)
+                size = 40
                 rect = pygame.Rect(int(world_pos.x - size/2), int(world_pos.y - size/2), size, size)
                 screen_rect = self.camera.apply_rect(rect)
-                # Zeichnen (gefüllter Kreis + Rand)
                 center = (screen_rect.centerx, screen_rect.centery)
-                pygame.draw.circle(self.screen, color, center, max(6, screen_rect.width // 3))
-                pygame.draw.circle(self.screen, (255, 255, 255), center, max(7, screen_rect.width // 3), 2)
+                
+                # Prüfe ob Icon für dieses Item existiert
+                item_key = key.lower()
+                if item_key in item_icons:
+                    # Icon zeichnen
+                    icon = item_icons[item_key]
+                    # Skaliere Icon auf Bildschirmgröße (basierend auf Kamera-Zoom)
+                    icon_size = max(24, screen_rect.width)
+                    scaled_icon = pygame.transform.smoothscale(icon, (icon_size, icon_size))
+                    icon_rect = scaled_icon.get_rect(center=center)
+                    
+                    # Leichter Schatten/Glow unter dem Icon
+                    glow_color = (*color[:3], 100) if len(color) >= 3 else (200, 200, 200, 100)
+                    glow_surf = pygame.Surface((icon_size + 8, icon_size + 8), pygame.SRCALPHA)
+                    pygame.draw.ellipse(glow_surf, glow_color, glow_surf.get_rect())
+                    glow_rect = glow_surf.get_rect(center=center)
+                    self.screen.blit(glow_surf, glow_rect)
+                    
+                    # Icon zeichnen
+                    self.screen.blit(scaled_icon, icon_rect)
+                else:
+                    # Fallback: Farbiger Kreis (wie vorher)
+                    pygame.draw.circle(self.screen, color, center, max(6, screen_rect.width // 3))
+                    pygame.draw.circle(self.screen, (255, 255, 255), center, max(7, screen_rect.width // 3), 2)
 
                 # Name über dem Item anzeigen (konfigurierbar)
                 try:
@@ -1771,6 +2016,9 @@ class Level:
                 # Enemies für neue Map laden
                 self.respawn_enemies_only()
                 
+                # 🧙 The Great Beckalof spawnen
+                self._spawn_beckalof(map_name)
+                
                 # Kollisionsobjekte neu aufbauen
                 self.setup_collision_objects()
                 
@@ -1860,6 +2108,7 @@ class Level:
                 self.setup_collision_objects()
                 self.setup_health_bars()
                 self.respawn_enemies_only()
+                self._spawn_beckalof("Map3.tmx")  # Fallback spawn
 
             # Kamera auf Spieler zentrieren
             try:
@@ -1922,6 +2171,13 @@ class Level:
             self.map_loader
         )
 
+        # 🧙 The Great Beckalof NPC rendern (vor Collectibles für richtige Tiefe)
+        if self.beckalof_npc:
+            try:
+                self.beckalof_npc.render(self.screen, self.camera)
+            except Exception as e:
+                print(f"⚠️ Beckalof Render-Fehler: {e}")
+
         # Sammelobjekte über der Map aber unter UI rendern
         self._draw_collectibles()
 
@@ -1937,6 +2193,45 @@ class Level:
             self.renderer.draw_ui(self.game_logic)
         except Exception:
             pass
+
+        # 💬 Interaktions-Hinweis über dem Spieler anzeigen (wenn NPC in Reichweite)
+        npc_in_range = (self.beckalof_npc and self.beckalof_npc.can_interact) or self.active_npc_zone
+        if npc_in_range and not (self.dialogue_box and self.dialogue_box.is_active):
+            try:
+                if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                    player = self.game_logic.player
+                    # Spieler-Position auf dem Bildschirm
+                    screen_x = player.rect.centerx + self.camera.camera_rect.x
+                    screen_y = player.rect.top + self.camera.camera_rect.y
+                    
+                    # Hint-Text
+                    hint_text = "[ C ] Sprechen"
+                    hint_surf = self.npc_interaction_font.render(hint_text, True, (255, 255, 200))
+                    
+                    # Hintergrund
+                    padding = 8
+                    bg_width = hint_surf.get_width() + padding * 2
+                    bg_height = hint_surf.get_height() + padding * 2
+                    bg_x = int(screen_x - bg_width // 2)
+                    bg_y = int(screen_y - 35)
+                    
+                    # Halbtransparenter Hintergrund mit Gradient
+                    bg_surf = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
+                    for row in range(bg_height):
+                        alpha = int(200 - row * 0.5)
+                        pygame.draw.line(bg_surf, (15, 20, 45, alpha), (0, row), (bg_width, row))
+                    self.screen.blit(bg_surf, (bg_x, bg_y))
+                    
+                    # Rahmen
+                    pygame.draw.rect(self.screen, (80, 120, 180), (bg_x, bg_y, bg_width, bg_height), 2)
+                    pygame.draw.rect(self.screen, (120, 160, 255), (bg_x + 2, bg_y + 2, bg_width - 4, bg_height - 4), 1)
+                    
+                    # Text
+                    text_x = bg_x + padding
+                    text_y = bg_y + padding
+                    self.screen.blit(hint_surf, (text_x, text_y))
+            except Exception as e:
+                pass
 
         # Koordinaten anzeigen (nur in Map_Village wenn aktiviert)
         if self.show_coordinates and "Map_Village.tmx" in self.map_progression[self.current_map_index]:
@@ -2001,8 +2296,8 @@ class Level:
         # Einfache Meldungsanzeige beim Einsammeln
         if self.collection_message and pygame.time.get_ticks() < self.collection_message_timer:
             try:
-                font = pygame.font.Font(None, 28)
-                text = font.render(self.collection_message, True, (255, 255, 255))
+                # 🚀 RPi-Optimierung: Nutze gecachte Font statt per-Frame Erstellung
+                text = self.collection_message_font.render(self.collection_message, True, (255, 255, 255))
                 bg = text.get_rect()
                 bg.centerx = self.screen.get_width() // 2
                 bg.y = 80

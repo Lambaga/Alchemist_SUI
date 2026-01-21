@@ -6,7 +6,7 @@ Displays 6 spell slots with cooldown animations and key bindings
 
 import pygame
 import math
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 from pathlib import Path
 
 # Import configuration
@@ -69,6 +69,20 @@ class SpellBar:
         
         self.font = pygame.font.Font(None, font_size_normal)
         self.small_font = pygame.font.Font(None, font_size_small)
+
+        # Render caches (Performance: avoid per-frame font.render / surface allocs)
+        self._text_cache: Dict[Tuple[int, str, Tuple[int, int, int], int], pygame.Surface] = {}
+        self._dimmed_icon_cache: Dict[str, pygame.Surface] = {}
+        self._flash_surface_cache: Dict[int, pygame.Surface] = {}
+        self._key_label_cache: Dict[int, Tuple[pygame.Surface, pygame.Surface]] = {}
+        self._alpha_bucket_size: int = 16
+
+        # Pre-render key labels (1..6) + shadows once
+        for i in range(6):
+            key_text = str(i + 1)
+            main = self._render_text_cached(self.small_font, key_text, (255, 255, 255))
+            shadow = self._render_text_cached(self.small_font, key_text, (0, 0, 0))
+            self._key_label_cache[i] = (main, shadow)
         
         # Animation states
         self.slot_animations = [0.0] * 6  # For press feedback animation
@@ -78,6 +92,57 @@ class SpellBar:
         screen_info = f"({display_settings.get('WINDOW_WIDTH')}x{display_settings.get('WINDOW_HEIGHT')})"
         print(f"✨ SpellBar initialized for {screen_info} with {len(self.spells)} spells")
         print(f"   📊 Slot size: {self.slot_size}px, UI scale: {self.ui_scale}")
+
+    def _bucket_alpha(self, alpha: int) -> int:
+        if alpha >= 255:
+            return 255
+        if alpha <= 0:
+            return 0
+        bucket = self._alpha_bucket_size
+        return max(0, min(255, (alpha // bucket) * bucket))
+
+    def _render_text_cached(
+        self,
+        font: pygame.font.Font,
+        text: str,
+        color: Tuple[int, int, int],
+        alpha: int = 255,
+    ) -> pygame.Surface:
+        # Key includes font identity to avoid collisions across fonts
+        bucketed_alpha = self._bucket_alpha(alpha)
+        key = (id(font), text, color, bucketed_alpha)
+        cached = self._text_cache.get(key)
+        if cached is not None:
+            return cached
+
+        surf = font.render(text, True, color)
+        if bucketed_alpha < 255:
+            surf.set_alpha(bucketed_alpha)
+        self._text_cache[key] = surf
+        return surf
+
+    def _get_dimmed_icon(self, spell_id: str, icon: pygame.Surface) -> pygame.Surface:
+        cached = self._dimmed_icon_cache.get(spell_id)
+        if cached is not None:
+            return cached
+
+        dimmed = icon.copy()
+        overlay = pygame.Surface((self.slot_size, self.slot_size), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 100))
+        dimmed.blit(overlay, (0, 0))
+        self._dimmed_icon_cache[spell_id] = dimmed
+        return dimmed
+
+    def _get_flash_surface(self, alpha: int) -> pygame.Surface:
+        bucketed_alpha = self._bucket_alpha(alpha)
+        cached = self._flash_surface_cache.get(bucketed_alpha)
+        if cached is not None:
+            return cached
+
+        surf = pygame.Surface((self.slot_size, self.slot_size), pygame.SRCALPHA)
+        surf.fill((255, 255, 255, bucketed_alpha))
+        self._flash_surface_cache[bucketed_alpha] = surf
+        return surf
     
     def load_spell_icons(self):
         """Load spell icons or create placeholders if not found"""
@@ -385,18 +450,14 @@ class SpellBar:
             if self.slot_animations[slot_index] > 0:
                 # Create a bright flash overlay
                 flash_alpha = int(self.slot_animations[slot_index] * 100)
-                flash_surface = pygame.Surface((self.slot_size, self.slot_size), pygame.SRCALPHA)
-                flash_surface.fill((255, 255, 255, flash_alpha))
+                flash_surface = self._get_flash_surface(flash_alpha)
                 screen.blit(flash_surface, (x, y))
         
         else:
             # Spell on cooldown - render dimmed with countdown
             
             # Dim the icon
-            dimmed_icon = icon.copy()
-            dimmed_overlay = pygame.Surface((self.slot_size, self.slot_size), pygame.SRCALPHA)
-            dimmed_overlay.fill((0, 0, 0, 100))  # Dark overlay
-            dimmed_icon.blit(dimmed_overlay, (0, 0))
+            dimmed_icon = self._get_dimmed_icon(spell_id, icon)
             screen.blit(dimmed_icon, (x, y))
             
             # Get cooldown progress
@@ -411,26 +472,29 @@ class SpellBar:
             # Draw countdown text
             remaining_time = self.cooldown_manager.time_remaining(spell_id)
             countdown_text = str(max(1, int(remaining_time + 0.5)))  # Round up
-            
-            text_surface = self.font.render(countdown_text, True, (255, 255, 255))
+
+            text_surface = self._render_text_cached(self.font, countdown_text, (255, 255, 255))
+            shadow_surface = self._render_text_cached(self.font, countdown_text, (0, 0, 0))
+
             text_rect = text_surface.get_rect(center=(x + self.slot_size // 2, y + self.slot_size // 2))
-            
-            # Add text shadow for readability
-            shadow_surface = self.font.render(countdown_text, True, (0, 0, 0))
             shadow_rect = shadow_surface.get_rect(center=(x + self.slot_size // 2 + 1, y + self.slot_size // 2 + 1))
             screen.blit(shadow_surface, shadow_rect)
             screen.blit(text_surface, text_rect)
         
         # Draw key binding label
-        key_text = str(slot_index + 1)
-        key_surface = self.small_font.render(key_text, True, (255, 255, 255))
+        key_surface, shadow_surface = self._key_label_cache.get(
+            slot_index,
+            (
+                self._render_text_cached(self.small_font, str(slot_index + 1), (255, 255, 255)),
+                self._render_text_cached(self.small_font, str(slot_index + 1), (0, 0, 0)),
+            ),
+        )
         
         # Position in bottom-right corner of slot
         key_rect = key_surface.get_rect()
         key_rect.bottomright = (x + self.slot_size - 2, y + self.slot_size - 2)
         
         # Add small shadow
-        shadow_surface = self.small_font.render(key_text, True, (0, 0, 0))
         shadow_rect = shadow_surface.get_rect()
         shadow_rect.bottomright = (key_rect.bottomright[0] + 1, key_rect.bottomright[1] + 1)
         
