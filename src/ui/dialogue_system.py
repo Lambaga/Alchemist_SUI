@@ -53,17 +53,24 @@ class DialogueBox:
         self.pages: List[Tuple[Optional[str], List[str]]] = []
         self.page_index: int = 0
         self.open_time: int = 0  # Für Animationen
+        self.on_close = None  # Callback nach Dialog-Ende
 
-    def open(self, text: str, speaker: Optional[str] = None, wrap_at: Optional[int] = None):
+    def open(self, text: str, speaker: Optional[str] = None, wrap_at: Optional[int] = None, on_close=None):
         self.pages = self._paginate(text, speaker, wrap_at)
         self.page_index = 0
         self.is_active = True
         self.open_time = pygame.time.get_ticks()
+        self.on_close = on_close
 
     def close(self):
+        callback = self.on_close
         self.is_active = False
         self.pages = []
         self.page_index = 0
+        self.on_close = None
+        # Callback nach dem Reset aufrufen
+        if callback:
+            callback()
 
     def advance(self):
         if not self.is_active:
@@ -77,6 +84,10 @@ class DialogueBox:
         """Returns True if the event was consumed by the dialogue."""
         if not self.is_active:
             return False
+
+        # Kleine Verzögerung (300ms) nach Öffnen, um versehentliches Durchklicken zu verhindern
+        if pygame.time.get_ticks() - self.open_time < 300:
+            return True  # Event konsumieren aber nicht weiterleiten
 
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_c, pygame.K_SPACE, pygame.K_RETURN):

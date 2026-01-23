@@ -599,7 +599,11 @@ class MagicSystem:
                 
                 if distance <= effect.radius:
                     if hasattr(enemy, 'take_damage'):
-                        enemy.take_damage(effect.damage)
+                        # Übergebe Caster als Angreifer für Aggro-System
+                        try:
+                            enemy.take_damage(effect.damage, attacker=caster)
+                        except TypeError:
+                            enemy.take_damage(effect.damage)
                         # Floating Damage für Area Attack hinzufügen
                         self.add_floating_damage(enemy, effect.damage, "area")
                         hit_enemies.append(enemy)

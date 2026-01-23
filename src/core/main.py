@@ -222,6 +222,17 @@ class Game:
         if VERBOSE_LOGS:
             print("✨ Element mixing system initialized with 3 elements (Fire/Water/Stone)")
         
+        # 🥚 Easter Egg GIF Overlay
+        from ui.gif_overlay import GifOverlay
+        self.gif_overlay = GifOverlay((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self._load_easter_egg_gifs()
+        
+        # 🎬 Intro Cinematic System
+        from ui.video_player import IntroCinematic
+        self.intro_cinematic = IntroCinematic((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.intro_cinematic.load()  # Lädt Video falls vorhanden
+        self._intro_pending = False  # Flag für ausstehende Intro-Wiedergabe
+        
         # Falls ACTION_SYSTEM nicht verfügbar, bleibt nur Keyboard/Gamepad
         if not ACTION_SYSTEM_AVAILABLE:
             self.action_system = None
@@ -311,6 +322,29 @@ class Game:
         except Exception:
             pass
 
+    def _load_easter_egg_gifs(self):
+        """Lädt Easter Egg GIFs vor."""
+        import os
+        assets_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+        ishowspeed_gif = os.path.join(assets_path, "ishowspeed", "giphy.gif")
+        
+        if os.path.exists(ishowspeed_gif):
+            self.gif_overlay.load_gif(ishowspeed_gif, scale_to_fit=True)
+            print("🥚 Easter Egg GIF geladen: ishowspeed")
+        else:
+            print(f"⚠️ Easter Egg GIF nicht gefunden: {ishowspeed_gif}")
+
+    def _check_easter_eggs(self):
+        """Prüft ob ein Easter Egg ausgelöst wurde."""
+        if hasattr(self, 'element_mixer') and self.element_mixer.pending_easter_egg:
+            easter_egg = self.element_mixer.pending_easter_egg
+            self.element_mixer.pending_easter_egg = None
+            
+            if easter_egg == "ishowspeed":
+                print("🚀 IShowSpeed Easter Egg aktiviert!")
+                if self.gif_overlay.gif_loaded:
+                    self.gif_overlay.play(loop=False)
+
     def _apply_music_for_state(self, state: 'GameState'):
         """Switches music based on current high-level state."""
         is_menu = state in [GameState.MAIN_MENU, GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME]
@@ -327,6 +361,17 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            
+            # 🎬 Intro-Cinematic Event-Handling (blockiert alles während Wiedergabe)
+            if self.intro_cinematic.is_playing:
+                self.intro_cinematic.handle_event(event)
+                continue  # Alle anderen Events werden während Intro ignoriert
+            
+            # 🥚 Easter Egg GIF-Overlay Event-Handling (blockiert andere Events während Wiedergabe)
+            if self.gif_overlay.is_playing:
+                if self.gif_overlay.handle_event(event):
+                    continue  # Event wurde konsumiert
+            
             # Apply music volume on settings change
             if event.type == pygame.USEREVENT and getattr(event, 'name', '') == 'APPLY_MUSIC_VOLUME':
                 self.apply_current_music_volume()
@@ -436,22 +481,29 @@ class Game:
                         self._cast_heal_global()
                     
                     # ✨ ELEMENT MIXING: Handle element keys 1-3 (nur im Gameplay)
+                    # 🎰 NICHT während Blackjack!
                     elif self.game_state == GameState.GAMEPLAY:
-                        # Element selection: 1=Water, 2=Fire, 3=Stone
-                        element_handled = False
-                        if event.key == pygame.K_1:
-                            self.element_mixer.handle_element_press("water")
-                            element_handled = True
-                        elif event.key == pygame.K_2:
-                            self.element_mixer.handle_element_press("fire")
-                            element_handled = True
-                        elif event.key == pygame.K_3:
-                            self.element_mixer.handle_element_press("stone")
-                            element_handled = True
+                        # Prüfe ob Blackjack aktiv ist
+                        blackjack_active = False
+                        if self.level and hasattr(self.level, 'blackjack_game') and self.level.blackjack_game:
+                            blackjack_active = self.level.blackjack_game.is_active
                         
-                        # Wenn Element-Event behandelt wurde, nicht weiterleiten
-                        if element_handled:
-                            continue  # Skip weitere Event-Verarbeitung
+                        # Element selection: 1=Water, 2=Fire, 3=Stone (nur wenn Blackjack NICHT aktiv)
+                        if not blackjack_active:
+                            element_handled = False
+                            if event.key == pygame.K_1:
+                                self.element_mixer.handle_element_press("water")
+                                element_handled = True
+                            elif event.key == pygame.K_2:
+                                self.element_mixer.handle_element_press("fire")
+                                element_handled = True
+                            elif event.key == pygame.K_3:
+                                self.element_mixer.handle_element_press("stone")
+                                element_handled = True
+                            
+                            # Wenn Element-Event behandelt wurde, nicht weiterleiten
+                            if element_handled:
+                                continue  # Skip weitere Event-Verarbeitung
             
             # Handle events based on current game state
             if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
@@ -480,9 +532,15 @@ class Game:
             
             elif self.game_state == GameState.GAMEPLAY:
                 # Skip level handling ONLY for element keys 1-3 to prevent double processing
+                # ABER: Nicht überspringen wenn Blackjack aktiv ist!
                 skip_level = False
+                blackjack_active = False
+                if self.level and hasattr(self.level, 'blackjack_game') and self.level.blackjack_game:
+                    blackjack_active = self.level.blackjack_game.is_active
+                
                 if (event.type == pygame.KEYDOWN and 
-                    event.key in [pygame.K_1, pygame.K_2, pygame.K_3]):
+                    event.key in [pygame.K_1, pygame.K_2, pygame.K_3] and
+                    not blackjack_active):  # Nur überspringen wenn Blackjack NICHT aktiv
                     skip_level = True
                     if VERBOSE_LOGS:
                         print(f"🚫 Skipping level handling for element key: {event.key}")
@@ -493,9 +551,26 @@ class Game:
     
     
     def start_new_game(self):
-        """Startet ein neues Spiel"""
+        """Startet ein neues Spiel - optional mit Intro-Cinematic"""
         if VERBOSE_LOGS:
             print("🎮 Neues Spiel wird gestartet...")
+        
+        # 🎬 Intro-Cinematic abspielen (falls vorhanden)
+        if self.intro_cinematic.video_player.video_loaded:
+            self._intro_pending = True
+            self.intro_cinematic.play(on_complete=self._on_intro_complete)
+            print("🎬 Intro-Cinematic wird abgespielt...")
+        else:
+            # Kein Intro - direkt zum Spiel
+            self._actually_start_game()
+    
+    def _on_intro_complete(self):
+        """Wird aufgerufen wenn das Intro beendet ist."""
+        self._intro_pending = False
+        self._actually_start_game()
+    
+    def _actually_start_game(self):
+        """Startet das eigentliche Gameplay nach dem Intro."""
         self.game_state = GameState.GAMEPLAY
         self.level = Level(self.game_surface, main_game=self)
         self._apply_music_for_state(self.game_state)
@@ -724,6 +799,11 @@ class Game:
         # Element Mixer Update (für Animationen)
         self.element_mixer.update(dt)
         
+        # 🥚 Easter Egg System prüfen und GIF-Overlay updaten
+        self._check_easter_eggs()
+        if self.gif_overlay.is_playing:
+            self.gif_overlay.update(dt)
+        
         # Update message system
         self.update_message_system()
         
@@ -755,6 +835,13 @@ class Game:
     
     def draw(self) -> None:
         """Rendert das Spiel und das FPS-Display."""
+        # 🎬 Intro-Cinematic Rendering (überlagert alles)
+        if self.intro_cinematic.is_playing:
+            self.intro_cinematic.update()
+            self.intro_cinematic.render(self.game_surface)
+            pygame.display.flip()
+            return
+        
         # Render based on current game state
         if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME]:
             # Draw menu system
@@ -820,6 +907,11 @@ class Game:
             # 💬 Dialog-Box ganz am Ende rendern (über allem anderen)
             if self.level and self.level.dialogue_box:
                 self.level.dialogue_box.render()
+            
+            # 🥚 Easter Egg GIF-Overlay ganz oben (über allem)
+            if self.gif_overlay.is_playing:
+                self.gif_overlay.render(self.game_surface)
+                
         elif self.game_state == GameState.PAUSE:
             # Draw gameplay in background, then pause menu on top
             if self.level:

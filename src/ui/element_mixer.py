@@ -27,6 +27,15 @@ try:
 except Exception:
     VERBOSE_LOGS = False  # type: ignore
 
+# Easter Egg System
+try:
+    from ui.gif_overlay import EasterEggSequence
+except ImportError:
+    try:
+        from .gif_overlay import EasterEggSequence
+    except ImportError:
+        EasterEggSequence = None  # type: ignore
+
 
 class ElementMixer:
     """
@@ -58,7 +67,10 @@ class ElementMixer:
         self.last_element_press = {"element": None, "time": 0}
         self.debounce_time = 0.1  # 100ms debounce
         
-        # UI Configuration
+        # 🥚 Easter Egg Sequenz-Erkennung
+        self.easter_egg_detector = EasterEggSequence() if EasterEggSequence else None
+        self.pending_easter_egg: str = None  # Ausgelöstes Easter Egg
+                # UI Configuration
         self.element_size = 48  # 48x48 pixel elements
         self.element_spacing = 8
         self.combination_size = 64  # Larger size for the result spell
@@ -322,6 +334,15 @@ class ElementMixer:
                 break
         
         if element_index >= 0:
+            # 🥚 Easter Egg Sequenz prüfen
+            if self.easter_egg_detector:
+                easter_egg = self.easter_egg_detector.add_input(element_id)
+                if easter_egg:
+                    self.pending_easter_egg = easter_egg
+                    # Reset selection damit kein Zauber ausgelöst wird
+                    self.reset_combination()
+                    return True
+            
             # If we already have 2 elements, reset first
             if len(self.selected_elements) >= 2:
                 if VERBOSE_LOGS:

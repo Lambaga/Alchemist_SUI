@@ -112,6 +112,9 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         self.last_attack_time: int = 0
         self.attack_cooldown: int = 1000  # 1 second attack cooldown
         
+        # 💰 Münzen-System (für Blackjack etc.)
+        self.coins: int = 5  # Startet mit 5 Münzen
+        
         # Mana System Attributes
         self.max_mana: int = MANA_MAX
         self.current_mana: int = self.max_mana

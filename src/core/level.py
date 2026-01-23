@@ -17,6 +17,9 @@ from systems.input_system import get_input_system
 from core.settings import VERBOSE_LOGS
 from systems.pathfinding import GridPathfinder
 from entities.npc_beckalof import BeckalofNPC, reset_beckalof
+from entities.dragon_lord import DragonLord, reset_dragon_lord
+from entities.gambler_npc import GamblerNPC
+from ui.blackjack_game import BlackjackGame
 
 class GameRenderer:
     """Rendering-System mit Alpha/Transparenz-Optimierung"""
@@ -398,6 +401,27 @@ class GameRenderer:
         glow_surf = pygame.Surface((ui_width - 10, ui_height - 10), pygame.SRCALPHA)
         pygame.draw.rect(glow_surf, (*border_glow, glow_alpha), (0, 0, ui_width - 10, ui_height - 10), 1, border_radius=2)
         self.screen.blit(glow_surf, (12 + 5, 12 + 5))
+        
+        # 💰 Münzen-Anzeige unter dem Inventar
+        try:
+            if hasattr(game_logic, 'player') and game_logic.player:
+                coins = game_logic.player.coins
+                coin_y = 12 + ui_height + 10
+                
+                # Hintergrund für Münzen
+                coin_bg = pygame.Surface((90, 28), pygame.SRCALPHA)
+                for row in range(28):
+                    alpha = int(180 - row * 2)
+                    pygame.draw.line(coin_bg, (15, 20, 45, alpha), (0, row), (90, row))
+                self.screen.blit(coin_bg, (12, coin_y))
+                pygame.draw.rect(self.screen, (60, 80, 120), (12, coin_y, 90, 28), 1, border_radius=4)
+                
+                # Münz-Text
+                coin_font = pygame.font.Font(None, 24)
+                coin_text = coin_font.render(f"💰 {coins}", True, (255, 215, 0))
+                self.screen.blit(coin_text, (20, coin_y + 5))
+        except:
+            pass
         
         # Glow für gefüllte Slots (pulsiert leicht)
         slot_y = 34
@@ -795,6 +819,13 @@ class Level:
         # 🧙 The Great Beckalof NPC (MUSS VOR load_map() initialisiert werden!)
         self.beckalof_npc = None
         
+        # 🐉 Dragon Lord Boss (MUSS VOR load_map() initialisiert werden!)
+        self.dragon_lord = None
+        
+        # 🎰 Gambler NPC für Blackjack
+        self.gambler_npc = None
+        self.blackjack_game = None
+        
         # Map laden
         self.load_map()
         
@@ -1026,6 +1057,14 @@ class Level:
                 # 🧙 The Great Beckalof spawnen (nur auf Map3.tmx)
                 self._spawn_beckalof(current_map)
                 
+                # 🐉 Dragon Lord Boss spawnen (links vom Spieler zum Testen)
+                player_x = self.game_logic.player.rect.centerx
+                player_y = self.game_logic.player.rect.centery
+                self._spawn_dragon_lord(player_x, player_y)
+                
+                # 🎰 Gambler NPC spawnen (oben links vom Spieler)
+                self._spawn_gambler(player_x, player_y)
+                
             else:
                 if VERBOSE_LOGS:
                     print(f"❌ Map konnte nicht geladen werden: {map_path}")
@@ -1093,6 +1132,10 @@ class Level:
                         player_spawned = True
                         if VERBOSE_LOGS:
                             print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Objekt '{obj.name}'")
+                        
+                        # 🐉 Dragon Lord links neben Spieler spawnen (Testzweck)
+                        self._spawn_dragon_lord(int(spawn_x), int(spawn_y))
+                        
                         break
                     
                     elif obj.name and 'enemy' in obj.name.lower():
@@ -1293,6 +1336,121 @@ class Level:
             traceback.print_exc()
             self.beckalof_npc = None
 
+    def _spawn_dragon_lord(self, player_spawn_x: int, player_spawn_y: int):
+        """Spawnt den Dragon Lord Boss links vom Spieler-Spawnpoint."""
+        try:
+            # Position: Links vom Spieler Spawn
+            dragon_x = player_spawn_x - 200  # 200 Pixel links vom Spieler
+            dragon_y = player_spawn_y
+            
+            self.dragon_lord = DragonLord(dragon_x, dragon_y)
+            
+            # Health Bar für Dragon Lord erstellen
+            from ui.health_bar_py27 import StandardHealthBarRenderer
+            dragon_renderer = StandardHealthBarRenderer(
+                health_color_full=(200, 50, 50),     # Dunkelrot für Boss
+                health_color_medium=(255, 100, 0),   # Orange
+                health_color_low=(100, 0, 0),        # Sehr dunkelrot
+                border_width=2
+            )
+            self.health_bar_manager.add_entity(
+                self.dragon_lord,
+                renderer=dragon_renderer,
+                width=80,
+                height=8,
+                offset_y=-10
+            )
+            
+            # Intro-Dialog verzögern (dialogue_box noch nicht initialisiert)
+            # Wird in update() beim ersten Frame angezeigt
+            self._dragon_intro_pending = True
+            
+            print(f"Dragon Lord gespawnt bei ({dragon_x}, {dragon_y})")
+        except Exception as e:
+            print(f"Fehler beim Spawnen von Dragon Lord: {e}")
+            import traceback
+            traceback.print_exc()
+            self.dragon_lord = None
+
+    def _show_dragon_intro_dialog(self):
+        """Zeigt den 2-teiligen Dragon Lord Intro-Dialog."""
+        print("=== Dragon Lord Intro Dialog wird gestartet ===")
+        if not self.dragon_lord or not self.dialogue_box:
+            print(f"  Abbruch: dragon_lord={self.dragon_lord is not None}, dialogue_box={self.dialogue_box is not None}")
+            return
+            
+        level_ref = self
+        dragon_ref = self.dragon_lord
+        
+        def show_second_part():
+            """Zeigt den zweiten Teil des Dialogs."""
+            print("=== Dragon Lord Dialog Teil 2 ===")
+            def hide_dragon_after_intro():
+                if dragon_ref:
+                    dragon_ref.hide()
+                    dragon_ref.intro_shown = True
+                    # Auch Health Bar verstecken
+                    if dragon_ref in level_ref.health_bar_manager.health_bars:
+                        level_ref.health_bar_manager.health_bars[dragon_ref].visible = False
+                    print("Dragon Lord ist jetzt unsichtbar!")
+            
+            level_ref.dialogue_box.open(
+                "Du wirst ihn nie wieder sehen!",
+                speaker="Dragon Lord",
+                on_close=hide_dragon_after_intro
+            )
+        
+        # Teil 1 des Dialogs
+        print("=== Dragon Lord Dialog Teil 1 ===")
+        self.dialogue_box.open(
+            "Haha, Tobo ist bei mir!",
+            speaker="Dragon Lord",
+            on_close=show_second_part
+        )
+
+    def _spawn_gambler(self, player_spawn_x: int, player_spawn_y: int):
+        """Spawnt den Gambler NPC neben dem Dragon Lord."""
+        try:
+            # Position: Neben dem Dragon Lord (der bei player_x - 200 ist)
+            # Gambler steht links vom Dragon Lord
+            gambler_x = player_spawn_x - 300  # 300 Pixel links (neben Dragon Lord)
+            gambler_y = player_spawn_y        # Gleiche Höhe
+            
+            self.gambler_npc = GamblerNPC(gambler_x, gambler_y)
+            
+            # Blackjack-Spiel initialisieren
+            screen_size = (self.screen.get_width(), self.screen.get_height())
+            self.blackjack_game = BlackjackGame(screen_size)
+            
+            # Callback für Gewinn/Verlust
+            def on_game_end(coins_change: int):
+                if self.game_logic and self.game_logic.player:
+                    self.game_logic.player.coins += coins_change
+                    if coins_change > 0:
+                        print(f"💰 Du hast {coins_change} Münze(n) gewonnen! ({self.game_logic.player.coins} total)")
+                    elif coins_change < 0:
+                        print(f"💸 Du hast {-coins_change} Münze(n) verloren! ({self.game_logic.player.coins} total)")
+            
+            self.blackjack_game.on_game_end = on_game_end
+            
+            print(f"🎰 Gambler NPC gespawnt bei ({gambler_x}, {gambler_y})")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Spawnen von Gambler: {e}")
+            import traceback
+            traceback.print_exc()
+            self.gambler_npc = None
+            self.blackjack_game = None
+
+    def _start_blackjack(self):
+        """Startet das Blackjack-Minispiel wenn der Gambler angesprochen wird."""
+        if not self.blackjack_game or not self.game_logic or not self.game_logic.player:
+            return
+        
+        player_coins = self.game_logic.player.coins
+        self.blackjack_game.player_coins = player_coins
+        self.blackjack_game.start_invite(player_coins)
+        print(f"🎰 Blackjack-Einladung gestartet (Spieler hat {player_coins} Münzen)")
+
     def _open_beckalof_dialogue(self):
         """Öffnet einen Dialog mit The Great Beckalof über Milchschokolade."""
         if not self.beckalof_npc or not self.dialogue_box:
@@ -1464,7 +1622,12 @@ class Level:
                     # Zum Hauptmenü zurückkehren
                     if hasattr(self, 'main_game') and self.main_game:
                         self.main_game.return_to_menu()
-        # Universal Input System für Actions verwenden
+        # 🎰 Blackjack-Event-Handling (HÖCHSTE Priorität - VOR Input System!)
+        if self.blackjack_game and self.blackjack_game.is_active:
+            if self.blackjack_game.handle_event(event):
+                return  # Event wurde von Blackjack konsumiert - blockiert ALLES andere
+        
+        # Universal Input System für Actions verwenden (nur wenn Blackjack nicht aktiv)
         action = self.input_system.handle_event(event)
         
         # Wenn Dialog aktiv ist: Hardware- oder Action-System-Events für Weiter/Schließen nutzen
@@ -1514,8 +1677,14 @@ class Level:
                 self.handle_magic_element('stone')
             # Magie-System Actions
             elif action == 'cast_magic':
+                # 🎰 Blackjack-Event-Handling (höchste Priorität)
+                if self.blackjack_game and self.blackjack_game.is_active:
+                    return  # Blackjack übernimmt Events selbst
+                # 🎰 Gambler NPC Interaktion
+                elif self.gambler_npc and self.gambler_npc.can_interact:
+                    self._start_blackjack()
                 # Prüfe erst ob ein NPC in der Nähe ist für Dialog
-                if self.beckalof_npc and self.beckalof_npc.can_interact:
+                elif self.beckalof_npc and self.beckalof_npc.can_interact:
                     self._open_beckalof_dialogue()
                 elif self.active_npc_zone:
                     self._open_npc_dialogue(self.active_npc_zone)
@@ -1653,11 +1822,18 @@ class Level:
         if not self.game_logic:
             return
 
-        paused = bool(self.dialogue_box and self.dialogue_box.is_active)
+        # 🐉 Dragon Lord Intro-Dialog anzeigen (verzögert, da dialogue_box erst später initialisiert wird)
+        if getattr(self, '_dragon_intro_pending', False) and self.dragon_lord and not self.dragon_lord.intro_shown:
+            self._dragon_intro_pending = False
+            self._show_dragon_intro_dialog()
 
-        # Bewegungs-Input anwenden, es sei denn, ein Dialog blockiert
+        # Pausiert wenn Dialog ODER Blackjack aktiv ist
+        paused = bool(self.dialogue_box and self.dialogue_box.is_active)
+        blackjack_active = bool(self.blackjack_game and self.blackjack_game.is_active)
+
+        # Bewegungs-Input anwenden, es sei denn, ein Dialog oder Blackjack blockiert
         try:
-            if self.input_system and hasattr(self.game_logic, 'player') and self.game_logic.player and not paused:
+            if self.input_system and hasattr(self.game_logic, 'player') and self.game_logic.player and not paused and not blackjack_active:
                 move_vec = self.input_system.get_movement_vector()
                 self.game_logic.player.set_direction(move_vec)
                 self.game_logic.player.move(dt)
@@ -1667,7 +1843,10 @@ class Level:
         # Game Logic Update (Animationen, Magie, etc.)
         # Provide enemies to game logic so magic projectiles can damage them
         try:
-            enemies_list = self.enemy_manager.enemies.sprites() if hasattr(self.enemy_manager, 'enemies') else None
+            enemies_list = self.enemy_manager.enemies.sprites() if hasattr(self.enemy_manager, 'enemies') else []
+            # 🐉 Dragon Lord zur Enemy-Liste hinzufügen damit Magie ihn trifft
+            if self.dragon_lord and self.dragon_lord.is_alive():
+                enemies_list = list(enemies_list) + [self.dragon_lord]
         except Exception:
             enemies_list = None
         if not paused:
@@ -1700,6 +1879,22 @@ class Level:
             # Prüfe ob Spieler nah genug für Interaktion ist
             if hasattr(self.game_logic, 'player') and self.game_logic.player:
                 self.beckalof_npc.check_player_distance(self.game_logic.player.rect)
+
+        # 🐉 Dragon Lord Boss aktualisieren
+        if self.dragon_lord and not paused:
+            self.dragon_lord.update(dt, self.game_logic.player)
+
+        # 🎰 Gambler NPC aktualisieren
+        if self.gambler_npc and not paused:
+            self.gambler_npc.update(dt)
+            # Prüfe ob Spieler nah genug für Interaktion ist
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                player_pos = (self.game_logic.player.rect.centerx, self.game_logic.player.rect.centery)
+                self.gambler_npc.check_player_nearby(player_pos)
+        
+        # 🎰 Blackjack-Spiel aktualisieren
+        if self.blackjack_game and self.blackjack_game.is_active:
+            self.blackjack_game.update(dt)
 
         # Kamera aktualisieren
         if hasattr(self.game_logic, 'player'):
@@ -2178,6 +2373,21 @@ class Level:
             except Exception as e:
                 print(f"⚠️ Beckalof Render-Fehler: {e}")
 
+        # 🐉 Dragon Lord Boss rendern
+        if self.dragon_lord and not self.dragon_lord.death_animation_complete:
+            try:
+                self.dragon_lord.render(self.screen, self.camera)
+            except Exception as e:
+                print(f"⚠️ Dragon Lord Render-Fehler: {e}")
+
+        # 🎰 Gambler NPC rendern
+        if self.gambler_npc:
+            try:
+                self.gambler_npc.draw(self.screen, self.camera)
+                self.gambler_npc.draw_interaction_prompt(self.screen, self.camera)
+            except Exception as e:
+                print(f"⚠️ Gambler Render-Fehler: {e}")
+
         # Sammelobjekte über der Map aber unter UI rendern
         self._draw_collectibles()
 
@@ -2293,6 +2503,10 @@ class Level:
         if self.dialogue_box:
             self.dialogue_box.render()
 
+        # 🎰 Blackjack-Spiel rendern (ganz oben)
+        if self.blackjack_game and self.blackjack_game.is_active:
+            self.blackjack_game.render(self.screen)
+
         # Einfache Meldungsanzeige beim Einsammeln
         if self.collection_message and pygame.time.get_ticks() < self.collection_message_timer:
             try:
@@ -2376,7 +2590,10 @@ class Level:
                 if hasattr(player, 'magic_system'):
                     # Collect current enemies for projectile/area-hit processing
                     try:
-                        enemies_list = self.enemy_manager.enemies.sprites() if hasattr(self.enemy_manager, 'enemies') else None
+                        enemies_list = self.enemy_manager.enemies.sprites() if hasattr(self.enemy_manager, 'enemies') else []
+                        # 🐉 Dragon Lord zur Enemy-Liste hinzufügen
+                        if self.dragon_lord and self.dragon_lord.is_alive():
+                            enemies_list = list(enemies_list) + [self.dragon_lord]
                     except Exception:
                         enemies_list = None
                     # Prefer ElementMixer as the single source of truth and enforce cooldown
