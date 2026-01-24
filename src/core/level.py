@@ -1385,19 +1385,20 @@ class Level:
         def show_second_part():
             """Zeigt den zweiten Teil des Dialogs."""
             print("=== Dragon Lord Dialog Teil 2 ===")
-            def hide_dragon_after_intro():
+            def remove_dragon_after_intro():
                 if dragon_ref:
-                    dragon_ref.hide()
                     dragon_ref.intro_shown = True
-                    # Auch Health Bar verstecken
+                    # Health Bar entfernen
                     if dragon_ref in level_ref.health_bar_manager.health_bars:
-                        level_ref.health_bar_manager.health_bars[dragon_ref].visible = False
-                    print("Dragon Lord ist jetzt unsichtbar!")
+                        level_ref.health_bar_manager.remove_entity(dragon_ref)
+                    # Dragon Lord komplett entfernen
+                    level_ref.dragon_lord = None
+                    print("Dragon Lord ist verschwunden!")
             
             level_ref.dialogue_box.open(
                 "Du wirst ihn nie wieder sehen!",
                 speaker="Dragon Lord",
-                on_close=hide_dragon_after_intro
+                on_close=remove_dragon_after_intro
             )
         
         # Teil 1 des Dialogs
