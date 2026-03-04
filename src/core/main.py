@@ -204,8 +204,8 @@ class Game:
         # FPS-Monitoring System
         self.fps_monitor = create_detailed_fps_display(position=(10, 10))
         self.fps_monitor.set_target_fps(FPS)
-        # Performance-first on small screens: start with FPS overlay off (toggle with F3)
-        self.show_fps = not bool(self.optimized_settings.get('HOTKEY_DISPLAY_COMPACT', False))
+        # FPS-Overlay standardmäßig ausgeblendet (toggle mit F3)
+        self.show_fps = False
         
         # 🚀 Memory-Monitoring System für RPi Tests (F9 zum Umschalten)
         self.memory_monitor = get_memory_monitor()

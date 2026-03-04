@@ -19,6 +19,10 @@ class Camera:
         # Das Kamera-Rechteck repräsentiert den sichtbaren Bereich.
         self.camera_rect = pygame.Rect(0, 0, self.camera_width, self.camera_height)
         
+        # Map-Grenzen für Kamera-Clamping (optional)
+        self.map_width = 0
+        self.map_height = 0
+        
     def update_zoom_dimensions(self):
         """Aktualisiert die Kamera-Dimensionen basierend auf dem Zoom-Faktor"""
         self.camera_width = self.screen_width / self.zoom_factor
@@ -49,13 +53,40 @@ class Camera:
         world_y = screen_pos[1] / self.zoom_factor + self.camera_rect.y
         return (world_x, world_y)
 
+    def set_map_bounds(self, map_width, map_height):
+        """Setzt die Map-Grenzen für Kamera-Clamping.
+        
+        Args:
+            map_width: Breite der Map in Pixeln
+            map_height: Höhe der Map in Pixeln
+        """
+        self.map_width = map_width
+        self.map_height = map_height
+    
     def update(self, target):
         """
         Aktualisiert die Kameraposition, um das Ziel in der Mitte zu halten.
+        Kamera wird an Map-Grenzen geclampt, falls gesetzt.
         """
         # Zentriere das Ziel in der Kamera (mit Zoom berücksichtigt)
         x = target.rect.centerx - self.camera_width / 2
         y = target.rect.centery - self.camera_height / 2
+
+        # Kamera an Map-Grenzen clampen (wenn Map größer als Viewport)
+        if self.map_width > 0 and self.map_height > 0:
+            # Horizontales Clamping
+            if self.map_width > self.camera_width:
+                x = max(0, min(x, self.map_width - self.camera_width))
+            else:
+                # Map kleiner als Bildschirm -> zentrieren
+                x = (self.map_width - self.camera_width) / 2
+            
+            # Vertikales Clamping
+            if self.map_height > self.camera_height:
+                y = max(0, min(y, self.map_height - self.camera_height))
+            else:
+                # Map kleiner als Bildschirm -> zentrieren
+                y = (self.map_height - self.camera_height) / 2
 
         self.camera_rect = pygame.Rect(x, y, self.camera_width, self.camera_height)
     

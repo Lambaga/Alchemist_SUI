@@ -130,9 +130,13 @@ class GameRenderer:
         }
     
     def draw_background(self, map_loader=None, camera=None):
-        """🚀 Task 5: Zeichnet den Hintergrund - Multi-Resolution-kompatibel"""
+        """🚀 Task 5: Zeichnet den Hintergrund - Multi-Resolution-kompatibel
+        Zeichnet einen atmosphärischen Rand statt reinem Schwarz außerhalb der Map.
+        """
         if map_loader and camera and map_loader.tmx_data:
-            self.screen.fill((0, 0, 0))  # Schwarzer Hintergrund für besseren Kontrast
+            # Atmosphärischer Hintergrund statt reinem Schwarz
+            self.screen.fill((8, 6, 18))  # Sehr dunkles Blau-Lila
+            self._draw_map_border_atmosphere(map_loader, camera)
             map_loader.render(self.screen, camera)
         else:
             self.screen.fill(BACKGROUND_COLOR)
@@ -143,6 +147,89 @@ class GameRenderer:
             pygame.draw.rect(self.screen, (34, 139, 34), tree_rect)
             ground_rect = pygame.Rect(0, screen_height - 200, screen_width, 200)
             pygame.draw.rect(self.screen, (139, 69, 19), ground_rect)
+    
+    def _draw_map_border_atmosphere(self, map_loader, camera):
+        """Zeichnet einen atmosphärischen Nebel-/Dunkelheits-Gradient am Map-Rand.
+        Statt reinem Schwarz sieht man einen stimmungsvollen Übergang.
+        """
+        if not map_loader or not camera:
+            return
+        
+        screen_w = self.screen.get_width()
+        screen_h = self.screen.get_height()
+        map_w = map_loader.width
+        map_h = map_loader.height
+        cam = camera.camera_rect
+        
+        # Berechne die Map-Grenzen in Screen-Koordinaten
+        map_left = int(-cam.x * camera.zoom_factor)
+        map_top = int(-cam.y * camera.zoom_factor)
+        map_right = int((map_w - cam.x) * camera.zoom_factor)
+        map_bottom = int((map_h - cam.y) * camera.zoom_factor)
+        
+        # Breite des Nebel-Gradienten (in Pixeln auf dem Screen)
+        fog_depth = 80
+        
+        # Cache-Key für die Gradient-Streifen (werden nur einmal erzeugt)
+        cache_key = ('border_fog', screen_w, screen_h, fog_depth)
+        if cache_key not in self._alpha_cache:
+            # Horizontaler Gradient-Streifen (fog_depth breit, 1px hoch, wird gestreckt)
+            h_grad = pygame.Surface((fog_depth, 1), pygame.SRCALPHA)
+            for i in range(fog_depth):
+                # Von transparent (Mapseite) nach undurchsichtig (Außenseite)
+                alpha = int(255 * (1 - i / fog_depth) ** 1.5)
+                h_grad.set_at((i, 0), (12, 8, 28, alpha))
+            
+            # Vertikaler Gradient-Streifen (1px breit, fog_depth hoch)
+            v_grad = pygame.Surface((1, fog_depth), pygame.SRCALPHA)
+            for i in range(fog_depth):
+                alpha = int(255 * (1 - i / fog_depth) ** 1.5)
+                v_grad.set_at((0, i), (12, 8, 28, alpha))
+            
+            self._alpha_cache[cache_key] = (h_grad, v_grad)
+        
+        h_grad, v_grad = self._alpha_cache[cache_key]
+        
+        # --- Ränder außerhalb der Map füllen (dunkles Blau-Lila) ---
+        bg_color = (8, 6, 18)
+        
+        # Links
+        if map_left > 0:
+            pygame.draw.rect(self.screen, bg_color, (0, 0, map_left, screen_h))
+            # Nebel-Gradient am linken Map-Rand (nach innen)
+            grad_w = min(fog_depth, screen_w - map_left)
+            if grad_w > 0:
+                fog = pygame.transform.flip(h_grad, True, False)  # Spiegeln
+                fog_scaled = pygame.transform.scale(fog, (grad_w, screen_h))
+                self.screen.blit(fog_scaled, (map_left, 0))
+        
+        # Rechts
+        if map_right < screen_w:
+            pygame.draw.rect(self.screen, bg_color, (map_right, 0, screen_w - map_right, screen_h))
+            # Nebel-Gradient am rechten Map-Rand (nach innen)
+            grad_w = min(fog_depth, map_right)
+            if grad_w > 0:
+                fog_scaled = pygame.transform.scale(h_grad, (grad_w, screen_h))
+                self.screen.blit(fog_scaled, (map_right - grad_w, 0))
+        
+        # Oben
+        if map_top > 0:
+            pygame.draw.rect(self.screen, bg_color, (0, 0, screen_w, map_top))
+            # Nebel-Gradient am oberen Map-Rand (nach innen)
+            grad_h = min(fog_depth, screen_h - map_top)
+            if grad_h > 0:
+                fog = pygame.transform.flip(v_grad, False, True)  # Spiegeln
+                fog_scaled = pygame.transform.scale(fog, (screen_w, grad_h))
+                self.screen.blit(fog_scaled, (0, map_top))
+        
+        # Unten
+        if map_bottom < screen_h:
+            pygame.draw.rect(self.screen, bg_color, (0, map_bottom, screen_w, screen_h - map_bottom))
+            # Nebel-Gradient am unteren Map-Rand (nach innen)
+            grad_h = min(fog_depth, map_bottom)
+            if grad_h > 0:
+                fog_scaled = pygame.transform.scale(v_grad, (screen_w, grad_h))
+                self.screen.blit(fog_scaled, (0, map_bottom - grad_h))
     
     def draw_ground_stones(self, camera):
         """🚀 Task 5: Zeichnet Steine mit Kamera-Transformation - Multi-Resolution"""
@@ -392,34 +479,40 @@ class GameRenderer:
             self._inventory_ui_cache_key = cache_key
             self._inventory_ui_cache_surface = ui_surface
 
+        # Position: Unten rechts auf dem Bildschirm
+        screen_w = self.screen.get_width()
+        screen_h = self.screen.get_height()
+        ui_x = screen_w - ui_width - 12
+        ui_y = screen_h - ui_height - 12
+        
         # Zeichne gecachten Hintergrund
-        self.screen.blit(self._inventory_ui_cache_surface, (12, 12))
+        self.screen.blit(self._inventory_ui_cache_surface, (ui_x, ui_y))
         
         # === ANIMIERTE EFFEKTE (nicht gecacht) ===
         # Pulsierender Glow-Rahmen
         glow_alpha = int(60 + 30 * math.sin(anim_time / 350))
         glow_surf = pygame.Surface((ui_width - 10, ui_height - 10), pygame.SRCALPHA)
         pygame.draw.rect(glow_surf, (*border_glow, glow_alpha), (0, 0, ui_width - 10, ui_height - 10), 1, border_radius=2)
-        self.screen.blit(glow_surf, (12 + 5, 12 + 5))
+        self.screen.blit(glow_surf, (ui_x + 5, ui_y + 5))
         
-        # 💰 Münzen-Anzeige unter dem Inventar
+        # 💰 Münzen-Anzeige über dem Inventar
         try:
             if hasattr(game_logic, 'player') and game_logic.player:
                 coins = game_logic.player.coins
-                coin_y = 12 + ui_height + 10
+                coin_y = ui_y - 34
                 
                 # Hintergrund für Münzen
                 coin_bg = pygame.Surface((90, 28), pygame.SRCALPHA)
                 for row in range(28):
                     alpha = int(180 - row * 2)
                     pygame.draw.line(coin_bg, (15, 20, 45, alpha), (0, row), (90, row))
-                self.screen.blit(coin_bg, (12, coin_y))
-                pygame.draw.rect(self.screen, (60, 80, 120), (12, coin_y, 90, 28), 1, border_radius=4)
+                self.screen.blit(coin_bg, (ui_x, coin_y))
+                pygame.draw.rect(self.screen, (60, 80, 120), (ui_x, coin_y, 90, 28), 1, border_radius=4)
                 
                 # Münz-Text
                 coin_font = pygame.font.Font(None, 24)
                 coin_text = coin_font.render(f"💰 {coins}", True, (255, 215, 0))
-                self.screen.blit(coin_text, (20, coin_y + 5))
+                self.screen.blit(coin_text, (ui_x + 8, coin_y + 5))
         except:
             pass
         
@@ -431,7 +524,7 @@ class GameRenderer:
             config = item_config.get(item_key, {"glow": (180, 180, 180)})
             
             slot_x = start_x + i * (slot_size + slot_spacing)
-            slot_rect = pygame.Rect(12 + slot_x, 12 + slot_y, slot_size, slot_size)
+            slot_rect = pygame.Rect(ui_x + slot_x, ui_y + slot_y, slot_size, slot_size)
             
             # Äußerer Glow (pulsiert)
             glow_intensity = int(40 + 20 * math.sin(anim_time / 400 + i * 0.5))
@@ -1018,6 +1111,9 @@ class Level:
                 self.use_map = True
                 if VERBOSE_LOGS:
                     print(f"✅ Map geladen: {map_path}")
+                
+                # Kamera an Map-Grenzen binden
+                self.camera.set_map_bounds(self.map_loader.width, self.map_loader.height)
                 
                 # Debug: Zeige alle verfügbaren Layer UND Object Groups
                 if VERBOSE_LOGS:
