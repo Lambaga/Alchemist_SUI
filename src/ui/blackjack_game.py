@@ -135,27 +135,27 @@ class BlackjackGame:
     
     # Dealer-Phrasen
     DEALER_WIN_PHRASES = [
-        "Das Glück ist heute auf meiner Seite!",
-        "Tja, besser beim nächsten Mal!",
-        "Die Bank gewinnt... wie immer!",
-        "Haha! Deine Münzen gehören mir!",
-        "Versuch's nochmal, Anfänger!"
+        "Das Schicksal lächelt mir zu, haha!",
+        "Die Krone bleibt bei mir, Fremder!",
+        "Besser beim nächsten Mal, junger Alchemist!",
+        "Deine Münzen gehören jetzt mir!",
+        "Versuch's nochmal, wenn du dich traust!"
     ]
     
     DEALER_LOSE_PHRASES = [
-        "Verdammt! Gut gespielt...",
-        "Du hast mich erwischt!",
-        "Nimm deine Münzen und verschwinde!",
-        "Anfängerglück, nichts weiter!",
-        "Das nächste Mal gewinne ich!"
+        "Bei allen Zaubertränken... gut gespielt!",
+        "Du hast mich überlistet, Alchemist!",
+        "Nimm deine Münzen und geh... vorerst!",
+        "Anfängerglück? Oder doch Talent?",
+        "Das nächste Mal werde ich siegen!"
     ]
     
     DEALER_TIE_PHRASES = [
-        "Unentschieden... langweilig!",
-        "Wir sind gleich stark!",
-        "Niemand gewinnt, niemand verliert.",
-        "Das zählt nicht!",
-        "Nochmal von vorne?"
+        "Gleichstand... wie langweilig!",
+        "Wir sind ebenbürtig, Fremder!",
+        "Niemand gewinnt die Krone diesmal.",
+        "Das zählt nicht, nochmal!",
+        "Von vorn? Ich bin bereit!"
     ]
     
     def __init__(self, screen_size: Tuple[int, int]):
@@ -232,7 +232,7 @@ class BlackjackGame:
         """Spieler akzeptiert - startet das Spiel wenn genug Münzen."""
         if self.player_coins < self.bet:
             self.result_message = "Nicht genug Münzen!"
-            self.dealer_phrase = "Komm wieder wenn du Geld hast!"
+            self.dealer_phrase = "Komm wieder wenn dein Beutel voller ist!"
             self.state = BlackjackState.RESULT
             return False
         
@@ -525,7 +525,7 @@ class BlackjackGame:
         pygame.draw.rect(screen, (50, 40, 60), dealer_icon_rect, border_radius=40)
         pygame.draw.rect(screen, (200, 170, 50), dealer_icon_rect, 2, border_radius=40)
         # Zeichne Karten-Symbol statt Emoji
-        card_text = self.font_title.render("BJ", True, (255, 215, 0))
+        card_text = self.font_title.render("KS", True, (255, 215, 0))
         screen.blit(card_text, (center_x - card_text.get_width() // 2, center_y - 105))
         
         # Dialog-Box
@@ -533,7 +533,7 @@ class BlackjackGame:
         pygame.draw.rect(screen, (20, 20, 30, 220), dialog_rect, border_radius=10)
         pygame.draw.rect(screen, (150, 130, 80), dialog_rect, 2, border_radius=10)
         
-        invite_text = self.font_medium.render("Möchtest du Blackjack spielen?", True, (255, 255, 255))
+        invite_text = self.font_medium.render("Eine Runde Kronenschlag?", True, (255, 255, 255))
         screen.blit(invite_text, (center_x - invite_text.get_width() // 2, center_y - 15))
         
         bet_text = self.font_small.render("Einsatz: 1 Münze pro Runde", True, (180, 180, 180))

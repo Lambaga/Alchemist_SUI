@@ -18,7 +18,7 @@ class SoldierNPC(pygame.sprite.Sprite):
     INTERACTION_RADIUS = 100
     FRAME_W = 120   # Breite eines einzelnen Frames im Sheet
     FRAME_H = 80    # Höhe eines einzelnen Frames im Sheet
-    TARGET_H = 80   # Anzeigegröße (Höhe in Pixel)
+    TARGET_H = 120  # Anzeigegröße (Höhe in Pixel) – größer skaliert
 
     def __init__(self, x: int, y: int):
         super().__init__()

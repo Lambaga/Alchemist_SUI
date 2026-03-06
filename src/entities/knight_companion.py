@@ -21,7 +21,7 @@ class KnightCompanion(pygame.sprite.Sprite):
     # --- Sprite-Sheet Konfiguration ---
     FRAME_W = 120
     FRAME_H = 80
-    TARGET_H = 80
+    TARGET_H = 120  # Größer skaliert
 
     # --- Kampfwerte ---
     MAX_HEALTH = 500

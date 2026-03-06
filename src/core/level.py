@@ -975,6 +975,7 @@ class Level:
         
         # 🧙 The Great Beckalof NPC (MUSS VOR load_map() initialisiert werden!)
         self.beckalof_npc = None
+        self._beckalof_gift_given = False  # Einmalig 25 Münzen auf Map_Town
         
         # 🐉 Dragon Lord Boss (MUSS VOR load_map() initialisiert werden!)
         self.dragon_lord = None
@@ -983,11 +984,14 @@ class Level:
         # 🎰 Gambler NPC für Blackjack
         self.gambler_npc = None
         self.blackjack_game = None
+        self._gambler_introduced = False  # Einmaliger Intro-Dialog
+        self._blackjack_was_active = False  # Für Gambler end_dialog() Erkennung
         
         # � Shopkeeper NPC + Shop-System
         self.shopkeeper_npc = None
         self.shop_manager = ShopManager()
         self.shop_ui = ShopUI()
+        self._shop_was_active = False  # Für Merchant end_dialog() Erkennung
         
         # Soldat NPC (Map_Town Warnung + Kill-Gate)
         self.soldier_npc = None
@@ -1548,20 +1552,30 @@ class Level:
                     print("✅ Player in unbekannter Map Standard-Position gespawnt (400, 300)")
 
     def _spawn_beckalof(self, map_name: str):
-        """Spawnt The Great Beckalof NPC auf Map3.tmx (unten links)."""
-        # Beckalof erscheint nur auf Map3.tmx (Map 1)
-        if 'Map3.tmx' not in map_name:
+        """Spawnt The Great Beckalof NPC auf Map3.tmx und Map_Town.tmx."""
+        is_map3 = 'Map3.tmx' in map_name and 'Castle' not in map_name
+        is_town = map_name == 'Map_Town.tmx'
+
+        if not is_map3 and not is_town:
             self.beckalof_npc = None
             reset_beckalof()
             return
         
         try:
-            # Position: Weiter unten links auf der Map
-            beckalof_x = 150  # Weiter links
-            beckalof_y = 950  # Weiter unten
+            if is_town:
+                # Map_Town: rechts unten, abseits vom Soldaten / Shopkeeper
+                player_x = self.game_logic.player.rect.centerx if self.game_logic and self.game_logic.player else 400
+                player_y = self.game_logic.player.rect.centery if self.game_logic and self.game_logic.player else 400
+                beckalof_x = player_x + 350
+                beckalof_y = player_y + 120
+            else:
+                # Map3: unten links
+                beckalof_x = 150
+                beckalof_y = 950
             
+            reset_beckalof()
             self.beckalof_npc = BeckalofNPC(beckalof_x, beckalof_y)
-            print(f"🧙 The Great Beckalof gespawnt bei ({beckalof_x}, {beckalof_y})")
+            print(f"🧙 The Great Beckalof gespawnt bei ({beckalof_x}, {beckalof_y}) auf {map_name}")
         except Exception as e:
             print(f"⚠️ Fehler beim Spawnen von Beckalof: {e}")
             import traceback
@@ -1760,6 +1774,9 @@ class Level:
         if not self.shop_ui or not self.game_logic or not self.game_logic.player:
             return
         self.shop_ui.open(self.shop_manager, self.game_logic.player)
+        # Merchant-Animation in Dialog-Modus setzen
+        if self.shopkeeper_npc:
+            self.shopkeeper_npc.start_dialog()
 
     def _spawn_soldier(self, map_name: str, player_spawn_x: int, player_spawn_y: int):
         """Spawnt den Soldaten NPC – nur auf Map_Town.tmx."""
@@ -1951,20 +1968,83 @@ class Level:
             )
 
     def _start_blackjack(self):
-        """Startet das Blackjack-Minispiel wenn der Gambler angesprochen wird."""
+        """Öffnet den Gambler-Dialog – beim ersten Mal mit Intro, danach direkt Spiel."""
         if not self.blackjack_game or not self.game_logic or not self.game_logic.player:
             return
         
-        player_coins = self.game_logic.player.coins
-        self.blackjack_game.player_coins = player_coins
-        self.blackjack_game.start_invite(player_coins)
-        print(f"🎰 Blackjack-Einladung gestartet (Spieler hat {player_coins} Münzen)")
+        # Gambler-Animation in Dialog-Modus
+        if self.gambler_npc:
+            self.gambler_npc.start_dialog()
+        
+        if not self._gambler_introduced:
+            # Erster Dialog: Intro-Geschichte mit Auswahl
+            self._gambler_introduced = True
+            
+            def on_choice(choice_index: int):
+                if choice_index == 0:
+                    # Spielen!
+                    player_coins = self.game_logic.player.coins
+                    self.blackjack_game.player_coins = player_coins
+                    self.blackjack_game.start_invite(player_coins)
+                    print(f"🎰 Kronenschlag-Einladung gestartet (Spieler hat {player_coins} Münzen)")
+                else:
+                    # Weggehen
+                    if self.gambler_npc:
+                        self.gambler_npc.end_dialog()
+                    print("🎰 Spieler lehnt das Kronenschlag-Spiel ab")
+            
+            self.dialogue_box.open_with_choices(
+                text=(
+                    "Psst! Komm her, Fremder! Ich war einst Zauberbrauerin, aber "
+                    "dieses ewige Rühren und Mischen... so LANGWEILIG! "
+                    "Also hab ich etwas viel Spannenderes erfunden: "
+                    "Das Kronenschlag! Ein Kartenduell, bei dem Verstand und Glück "
+                    "entscheiden. Einsatz: eine Münze. Traust du dich?"
+                ),
+                choices=["Ja, ich fordere dich heraus!", "Nein, vielleicht später..."],
+                on_choice=on_choice,
+                speaker="Die Kartenlegerin"
+            )
+        else:
+            # Bereits vorgestellt – direkt zum Spiel
+            player_coins = self.game_logic.player.coins
+            self.blackjack_game.player_coins = player_coins
+            self.blackjack_game.start_invite(player_coins)
+            print(f"🎰 Kronenschlag-Einladung gestartet (Spieler hat {player_coins} Münzen)")
 
     def _open_beckalof_dialogue(self):
-        """Öffnet einen Dialog mit The Great Beckalof über Milchschokolade."""
+        """Öffnet einen Dialog mit The Great Beckalof."""
         if not self.beckalof_npc or not self.dialogue_box:
             return
         
+        current_map = self.map_progression[self.current_map_index]
+        
+        # Spezieller Dialog auf Map_Town: Geschenk + Glückwunsch
+        if current_map == 'Map_Town.tmx':
+            if not self._beckalof_gift_given:
+                # Erste Begegnung auf Map_Town: 25 Münzen schenken
+                self._beckalof_gift_given = True
+                if self.game_logic and self.game_logic.player:
+                    self.game_logic.player.coins += 25
+                    print(f"🪙 Beckalof schenkt 25 Münzen! Spieler hat jetzt {self.game_logic.player.coins} Münzen.")
+                self.dialogue_box.open(
+                    "Mein junger Freund! Ich habe gehört, du ziehst gegen den Dragon Lord! "
+                    "Hier, nimm diese 25 Münzen – kauf dir was Nützliches im Shop. "
+                    "Und vergiss nicht: Eine heiße Milchschokolade vor dem Kampf wirkt Wunder! "
+                    "Viel Erfolg, ich glaube an dich! 💰",
+                    speaker="The Great Beckalof"
+                )
+            else:
+                # Wiederholte Gespräche auf Map_Town
+                self.dialogue_box.open(
+                    "Du bist noch hier? Geh, besiege den Dragon Lord! "
+                    "Und denk dran: Milchschokolade macht unsterblich! "
+                    "...Naja, fast unsterblich. Viel Glück! 🍫",
+                    speaker="The Great Beckalof"
+                )
+            return
+        
+        # Standard-Dialog auf anderen Maps (Milchschokolade-Geschichten)
         dialogue_text = self.beckalof_npc.get_next_dialogue()
         self.dialogue_box.open(dialogue_text, speaker="The Great Beckalof")
         print("💬 Beckalof erzählt von Milchschokolade!")
@@ -2567,8 +2647,14 @@ class Level:
                 self.gambler_npc.check_player_nearby(player_pos)
         
         # 🎰 Blackjack-Spiel aktualisieren
-        if self.blackjack_game and self.blackjack_game.is_active:
+        bj_now_active = bool(self.blackjack_game and self.blackjack_game.is_active)
+        if bj_now_active:
             self.blackjack_game.update(dt)
+        # Blackjack wurde gerade geschlossen → Gambler zurück in Idle
+        if self._blackjack_was_active and not bj_now_active:
+            if self.gambler_npc:
+                self.gambler_npc.end_dialog()
+        self._blackjack_was_active = bj_now_active
 
         # 🏪 Shopkeeper NPC aktualisieren
         if self.shopkeeper_npc and not paused:
@@ -2578,8 +2664,14 @@ class Level:
                 self.shopkeeper_npc.check_player_nearby(player_pos)
         
         # 🏪 Shop-UI aktualisieren
-        if self.shop_ui and self.shop_ui.is_active:
+        shop_now_active = bool(self.shop_ui and self.shop_ui.is_active)
+        if shop_now_active:
             self.shop_ui.update(dt)
+        # Shop wurde gerade geschlossen → Merchant zurück in Idle
+        if self._shop_was_active and not shop_now_active:
+            if self.shopkeeper_npc:
+                self.shopkeeper_npc.end_dialog()
+        self._shop_was_active = shop_now_active
 
         # ⚔️ Soldat NPC aktualisieren
         if self.soldier_npc and not paused:

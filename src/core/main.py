@@ -853,66 +853,69 @@ class Game:
             if self.level:
                 self.level.render()
             
-            # ✨ Draw element mixer
-            screen_height = self.game_surface.get_height()
-            self.element_mixer.render(self.game_surface, screen_height)
+            # 🏆 Während Finale kein HUD anzeigen
+            finale_active = self.level and hasattr(self.level, '_finale_active') and self.level._finale_active
+            if not finale_active:
+                # ✨ Draw element mixer
+                screen_height = self.game_surface.get_height()
+                self.element_mixer.render(self.game_surface, screen_height)
 
-            # Mana bar above the element mixer with modern pixel-art style
-            try:
-                player = self.level.game_logic.player if self.level and self.level.game_logic else None
-                if player:
-                    mix_x, mix_y = self.element_mixer.get_position(screen_height)
-                    bar_width, bar_height = 180, 14
-                    bar_x = mix_x
-                    bar_y = max(0, mix_y - 20)
-                    
-                    # Aeusserer Rahmen (dunkel)
-                    pygame.draw.rect(self.game_surface, (25, 30, 50), (bar_x - 2, bar_y - 2, bar_width + 4, bar_height + 4))
-                    # Hintergrund mit Gradient-Effekt
-                    for row in range(bar_height):
-                        ratio = row / bar_height
-                        r = int(15 * (1 - ratio) + 8 * ratio)
-                        g = int(20 * (1 - ratio) + 12 * ratio)
-                        b = int(35 * (1 - ratio) + 25 * ratio)
-                        pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + bar_width, bar_y + row))
-                    
-                    # Mana-Fuellung mit Gradient
-                    fill_w = int(bar_width * player.get_mana_percentage())
-                    if fill_w > 0:
+                # Mana bar above the element mixer with modern pixel-art style
+                try:
+                    player = self.level.game_logic.player if self.level and self.level.game_logic else None
+                    if player:
+                        mix_x, mix_y = self.element_mixer.get_position(screen_height)
+                        bar_width, bar_height = 180, 14
+                        bar_x = mix_x
+                        bar_y = max(0, mix_y - 20)
+                        
+                        # Aeusserer Rahmen (dunkel)
+                        pygame.draw.rect(self.game_surface, (25, 30, 50), (bar_x - 2, bar_y - 2, bar_width + 4, bar_height + 4))
+                        # Hintergrund mit Gradient-Effekt
                         for row in range(bar_height):
                             ratio = row / bar_height
-                            r = int(60 * (1 - ratio) + 30 * ratio)
-                            g = int(140 * (1 - ratio) + 100 * ratio)
-                            b = int(255 * (1 - ratio) + 200 * ratio)
-                            pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + fill_w, bar_y + row))
-                        # Highlight oben
-                        pygame.draw.line(self.game_surface, (120, 180, 255), (bar_x, bar_y), (bar_x + fill_w, bar_y))
-                    
-                    # Innerer Rahmen
-                    pygame.draw.rect(self.game_surface, (50, 60, 90), (bar_x, bar_y, bar_width, bar_height), 1)
-                    # Leuchtender Rahmen
-                    pygame.draw.rect(self.game_surface, (70, 90, 140), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2), 1)
-            except Exception:
-                pass
+                            r = int(15 * (1 - ratio) + 8 * ratio)
+                            g = int(20 * (1 - ratio) + 12 * ratio)
+                            b = int(35 * (1 - ratio) + 25 * ratio)
+                            pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + bar_width, bar_y + row))
+                        
+                        # Mana-Fuellung mit Gradient
+                        fill_w = int(bar_width * player.get_mana_percentage())
+                        if fill_w > 0:
+                            for row in range(bar_height):
+                                ratio = row / bar_height
+                                r = int(60 * (1 - ratio) + 30 * ratio)
+                                g = int(140 * (1 - ratio) + 100 * ratio)
+                                b = int(255 * (1 - ratio) + 200 * ratio)
+                                pygame.draw.line(self.game_surface, (r, g, b), (bar_x, bar_y + row), (bar_x + fill_w, bar_y + row))
+                            # Highlight oben
+                            pygame.draw.line(self.game_surface, (120, 180, 255), (bar_x, bar_y), (bar_x + fill_w, bar_y))
+                        
+                        # Innerer Rahmen
+                        pygame.draw.rect(self.game_surface, (50, 60, 90), (bar_x, bar_y, bar_width, bar_height), 1)
+                        # Leuchtender Rahmen
+                        pygame.draw.rect(self.game_surface, (70, 90, 140), (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2), 1)
+                except Exception:
+                    pass
+                
+                # FPS-Display zeichnen (falls aktiviert und im Gameplay)
+                if self.show_fps:
+                    self.fps_monitor.draw(self.game_surface)
+                
+                # 🚀 Memory Monitor Overlay (F9 zum Umschalten)
+                self.memory_monitor.update()
+                self.memory_monitor.render(self.game_surface)
+                
+                # Hotkey-Display zeichnen (falls aktiviert und im Gameplay)
+                self.hotkey_display.draw()
             
-            # FPS-Display zeichnen (falls aktiviert und im Gameplay)
-            if self.show_fps:
-                self.fps_monitor.draw(self.game_surface)
-            
-            # 🚀 Memory Monitor Overlay (F9 zum Umschalten)
-            self.memory_monitor.update()
-            self.memory_monitor.render(self.game_surface)
-            
-            # Hotkey-Display zeichnen (falls aktiviert und im Gameplay)
-            self.hotkey_display.draw()
-            
-            # 💬 Dialog-Box ganz am Ende rendern (über allem anderen)
-            if self.level and self.level.dialogue_box:
-                self.level.dialogue_box.render()
-            
-            # 🥚 Easter Egg GIF-Overlay ganz oben (über allem)
-            if self.gif_overlay.is_playing:
-                self.gif_overlay.render(self.game_surface)
+                # 💬 Dialog-Box ganz am Ende rendern (über allem anderen)
+                if self.level and self.level.dialogue_box:
+                    self.level.dialogue_box.render()
+                
+                # 🥚 Easter Egg GIF-Overlay ganz oben (über allem)
+                if self.gif_overlay.is_playing:
+                    self.gif_overlay.render(self.game_surface)
                 
         elif self.game_state == GameState.PAUSE:
             # Draw gameplay in background, then pause menu on top
