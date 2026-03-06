@@ -781,7 +781,7 @@ class MapLoader:
                 except Exception:
                     pass
                 name = (getattr(layer, 'name', '') or '').lower()
-                return name in ('walls', 'collision')
+                return name in ('walls', 'wall', 'collision')
 
             layers = list(getattr(self.tmx_data, 'visible_layers', [])) or list(getattr(self.tmx_data, 'layers', []))
             if not layers:
@@ -808,7 +808,7 @@ class MapLoader:
 
             # Fallback: try to get specific well-known object groups if not included by filter
             if not added_from_layers:
-                for name in ('Walls', 'Collision'):
+                for name in ('Walls', 'Wall', 'Collision'):
                     try:
                         lyr = self.tmx_data.get_layer_by_name(name)
                     except Exception:

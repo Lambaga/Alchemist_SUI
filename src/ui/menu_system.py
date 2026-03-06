@@ -1456,15 +1456,16 @@ class GameOverMenuState(BaseMenuState):
         
         button_width = 300
         button_height = 55
-        button_spacing = 80
+        button_spacing = 70
         # Move buttons higher (start slightly above center)
-        start_y = screen_height // 2 - 30
+        start_y = screen_height // 2 - 60
         
         buttons_data = [
-            ("🔄 Spiel neu starten", "restart_game"),
-            ("📁 Spiel laden", GameState.LOAD_GAME),
-            ("📋 Hauptmenü", GameState.MAIN_MENU),
-            ("❌ Spiel beenden", GameState.QUIT)
+            ("Noch mal", "retry_game"),
+            ("Neues Spiel", "restart_game"),
+            ("Hauptmenue", GameState.MAIN_MENU),
+            ("Spiel laden", GameState.LOAD_GAME),
+            ("Spiel beenden", GameState.QUIT)
         ]
         
         for i, (text, action) in enumerate(buttons_data):
@@ -1488,7 +1489,7 @@ class GameOverMenuState(BaseMenuState):
         alpha = max(200, int(255 * fade_progress))  # Minimum visibility
         
         # Game Over title with dramatic effect
-        title_text = "GAME OVER" if getattr(self, 'disable_menu_emojis', False) else "💀 GAME OVER 💀"
+        title_text = "GAME OVER"
         title_color = (255, 50, 50)  # Red color
         title_surface = self.title_font.render(title_text, True, title_color)
         title_surface.set_alpha(alpha)
@@ -1505,31 +1506,22 @@ class GameOverMenuState(BaseMenuState):
         self.screen.blit(message_surface, message_rect)
         
         # Subtitle
-        subtitle_text = "Was möchtest du tun?"
+        subtitle_text = "Was moechtest du tun?"
         subtitle_surface = self.text_font.render(subtitle_text, True, (150, 150, 150))
         subtitle_surface.set_alpha(alpha)
         # Move subtitle higher
         subtitle_rect = subtitle_surface.get_rect(center=(self.screen.get_width() // 2, 250))
         self.screen.blit(subtitle_surface, subtitle_rect)
         
-        # Draw buttons (always visible for debugging)
+        # Draw buttons
         for i, button in enumerate(self.buttons):
             button.draw(self.screen)
             if i == self.selected_index:
-                # Draw a selection highlight similar to BaseMenuState
+                # Draw a selection highlight
                 pygame.draw.rect(self.screen, (255, 215, 0), button.rect.inflate(8, 6), 2)
-                if not getattr(self, 'disable_menu_emojis', False):
-                    try:
-                        arrow_surface = self.text_font.render("➤", True, (255, 215, 0))
-                        arrow_rect = arrow_surface.get_rect()
-                        arrow_rect.centery = button.rect.centery
-                        arrow_rect.right = button.rect.left - 12
-                        self.screen.blit(arrow_surface, arrow_rect)
-                    except Exception:
-                        pass
         
-        # Show controls hint (always visible)
-        hint_text = "⌨️ ESC: Hauptmenü  •  R: Neues Spiel"
+        # Show controls hint
+        hint_text = "ESC: Hauptmenue  |  R / C: Noch mal"
         hint_surface = pygame.font.Font(None, 24).render(hint_text, True, (100, 100, 100))
         hint_rect = hint_surface.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 50))
         self.screen.blit(hint_surface, hint_rect)
@@ -1543,8 +1535,8 @@ class GameOverMenuState(BaseMenuState):
             return result
         
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_r:
-                return "restart_game"  # Quick restart with specific signal
+            if event.key in (pygame.K_r, pygame.K_c):
+                return "retry_game"  # Quick retry keeping XP
             elif event.key == pygame.K_ESCAPE:
                 return GameState.MAIN_MENU
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -1629,6 +1621,8 @@ class MenuSystem:
                     return GameState.GAMEPLAY  # Start new game
                 elif result == "restart_game":
                     return "restart_game"  # Restart current game
+                elif result == "retry_game":
+                    return "retry_game"  # Retry (keep XP)
                 elif result == GameState.QUIT:
                     return GameState.QUIT
                 elif result == "save_game":

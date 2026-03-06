@@ -69,6 +69,7 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         self.speed: int = PLAYER_SPEED
         self.direction: pygame.math.Vector2 = pygame.math.Vector2(0, 0)
         self.facing_right: bool = True
+        self.last_direction: pygame.math.Vector2 = pygame.math.Vector2(1, 0)  # Letzte Bewegungsrichtung (für Projektile)
         self.status: str = "idle"
         
         # Animations-Zustände mit Type Hints
@@ -113,12 +114,24 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         self.attack_cooldown: int = 1000  # 1 second attack cooldown
         
         # 💰 Münzen-System (für Blackjack etc.)
-        self.coins: int = 5  # Startet mit 5 Münzen
+        self.coins: int = 105  # TEST: 100 extra Gold (normal: 5)
+        
+        # 🌟 Level-System
+        self.level: int = 1
+        self.xp: int = 0
+        self.xp_to_next: int = 50  # Immer 50 XP für nächstes Level
+        self.base_max_health: int = 100  # Basis-HP ohne Level-Bonus
+        self.base_attack_damage: int = 30  # Basis-Schaden ohne Level-Bonus
+        self.base_speed: int = PLAYER_SPEED  # Basis-Speed ohne Bonus
+        self.damage_reduction: float = 0.0  # 🛡️ Schadens-Reduktion (0.0 = keine, 1.0 = 100%)
         
         # Mana System Attributes
         self.max_mana: int = MANA_MAX
         self.current_mana: int = self.max_mana
         self.mana_regen_rate: int = MANA_REGEN_PER_SEC
+        
+        # 🛡️ Schadensreduktion (Shop-Upgrade "Rüstung")
+        self.damage_reduction: float = 0.0  # 0.0 = kein Schutz, 0.5 = 50% weniger Schaden
         
         # Magic System Integration
         self.magic_system: MagicSystem = MagicSystem()
@@ -314,6 +327,7 @@ class Player(pygame.sprite.Sprite, CombatEntity):
             # Richtung normalisieren (diagonal konstant)
             normalized_direction = self.direction.normalize()
             self.facing_right = normalized_direction.x > 0 if normalized_direction.x != 0 else self.facing_right
+            self.last_direction = normalized_direction.copy()  # Volle Richtung speichern (für Projektile)
 
             step = self.speed * dt * 60  # 60-FPS-Referenz
 
@@ -633,6 +647,14 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         if self.magic_system.is_shielded(self):
             print("🛡️ Schaden durch Magie-Schild blockiert!")
             return True
+
+        # Rüstungs-Reduktion anwenden
+        if self.damage_reduction > 0:
+            damage = max(1, int(damage * (1.0 - self.damage_reduction)))
+        
+        # Score-Tracking: Schaden melden
+        if hasattr(self, '_score_tracker') and self._score_tracker:
+            self._score_tracker.add_damage(damage)
             
         self.current_health -= damage
         if self.current_health <= 0:
@@ -660,9 +682,66 @@ class Player(pygame.sprite.Sprite, CombatEntity):
         if self.is_player_alive:
             self.current_health = min(self.max_health, self.current_health + heal_amount)
     
+    # === LEVEL SYSTEM METHODS ===
+    
+    def gain_xp(self, amount: int) -> bool:
+        """
+        Gibt dem Spieler XP. Gibt True zurück wenn Level-Up.
+        
+        Args:
+            amount: XP-Menge
+            
+        Returns:
+            bool: True wenn Level-Up ausgelöst wurde
+        """
+        self.xp += amount
+        leveled_up = False
+        while self.xp >= self.xp_to_next:
+            self.xp -= self.xp_to_next
+            self._level_up()
+            leveled_up = True
+        return leveled_up
+    
+    def _level_up(self):
+        """
+        Führt Level-Up durch: +10 HP, +15% Damage pro Level.
+        """
+        self.level += 1
+        # +10 max HP pro Level
+        self.base_max_health += 10
+        self.max_health = self.base_max_health
+        self.current_health = self.max_health  # Voll heilen bei Level-Up
+        # +15% Damage pro Level (kumulativ auf Basis)
+        self.attack_damage = int(self.base_attack_damage * (1 + 0.15 * (self.level - 1)))
+        print(f"🌟 LEVEL UP! Level {self.level} | HP: {self.max_health} | Damage: {self.attack_damage}")
+    
+    def get_damage_multiplier(self) -> float:
+        """Gibt den Schadens-Multiplikator basierend auf Level zurück."""
+        return 1 + 0.15 * (self.level - 1)
+    
+    def get_invis_speed_bonus(self) -> float:
+        """Gibt den Geschwindigkeits-Bonus bei Unsichtbarkeit zurück (5% pro Level)."""
+        return 0.05 * self.level
+    
+    def get_heal_bonus(self) -> int:
+        """Gibt den Heil-Bonus basierend auf Level zurück (+5 HP pro Level)."""
+        return 5 * (self.level - 1)
+    
+    def reset_level_system(self) -> None:
+        """Setzt das Level-System komplett zurueck (nur bei Neues Spiel)."""
+        self.level = 1
+        self.xp = 0
+        self.base_max_health = 100
+        self.base_attack_damage = 30
+        self.max_health = self.base_max_health
+        self.attack_damage = self.base_attack_damage
+        self.speed = self.base_speed
+        self.damage_reduction = 0.0
+
     def revive(self) -> None:
         """
         Wiederbelebt den Spieler mit voller Gesundheit und Mana.
+        Level und XP bleiben erhalten.
         """
         self.current_health = self.max_health
         self.current_mana = self.max_mana

@@ -20,6 +20,14 @@ from entities.npc_beckalof import BeckalofNPC, reset_beckalof
 from entities.dragon_lord import DragonLord, reset_dragon_lord
 from entities.gambler_npc import GamblerNPC
 from ui.blackjack_game import BlackjackGame
+from entities.shopkeeper_npc import ShopkeeperNPC
+from entities.soldier_npc import SoldierNPC
+from entities.knight_companion import KnightCompanion
+from systems.shop_system import ShopManager
+from ui.shop_ui import ShopUI
+from systems.quest_manager import QuestManager, Quest, QuestObjective
+from systems.score_system import ScoreTracker
+from ui.mission_display import MissionDisplay
 
 class GameRenderer:
     """Rendering-System mit Alpha/Transparenz-Optimierung"""
@@ -513,6 +521,59 @@ class GameRenderer:
                 coin_font = pygame.font.Font(None, 24)
                 coin_text = coin_font.render(f"💰 {coins}", True, (255, 215, 0))
                 self.screen.blit(coin_text, (ui_x + 8, coin_y + 5))
+                
+                # 🌟 Level & XP-Anzeige über den Münzen
+                player = game_logic.player
+                lvl = getattr(player, 'level', 1)
+                xp = getattr(player, 'xp', 0)
+                xp_next = getattr(player, 'xp_to_next', 50)
+                
+                lvl_bar_w = ui_width
+                lvl_bar_h = 28
+                lvl_y = coin_y - lvl_bar_h - 4
+                
+                # Hintergrund
+                lvl_bg = pygame.Surface((lvl_bar_w, lvl_bar_h), pygame.SRCALPHA)
+                for row in range(lvl_bar_h):
+                    alpha = int(180 - row * 2)
+                    pygame.draw.line(lvl_bg, (15, 20, 45, alpha), (0, row), (lvl_bar_w, row))
+                self.screen.blit(lvl_bg, (ui_x, lvl_y))
+                pygame.draw.rect(self.screen, (60, 80, 120), (ui_x, lvl_y, lvl_bar_w, lvl_bar_h), 1, border_radius=4)
+                
+                # Level-Text
+                lvl_font = pygame.font.Font(None, 22)
+                lvl_text = lvl_font.render(f"Lv.{lvl}", True, (255, 215, 0))
+                self.screen.blit(lvl_text, (ui_x + 6, lvl_y + 3))
+                
+                # XP-Balken
+                bar_x = ui_x + 48
+                bar_y = lvl_y + 6
+                bar_w = lvl_bar_w - 58
+                bar_h = 14
+                
+                # Bar-Hintergrund
+                pygame.draw.rect(self.screen, (20, 25, 40), (bar_x, bar_y, bar_w, bar_h), border_radius=3)
+                pygame.draw.rect(self.screen, (40, 50, 70), (bar_x, bar_y, bar_w, bar_h), 1, border_radius=3)
+                
+                # XP-Füllung
+                xp_ratio = xp / xp_next if xp_next > 0 else 0
+                fill_w = max(0, int((bar_w - 2) * xp_ratio))
+                if fill_w > 0:
+                    # Gradient von blau nach cyan
+                    for px in range(fill_w):
+                        ratio = px / max(1, bar_w - 2)
+                        r = int(50 + 100 * ratio)
+                        g = int(120 + 135 * ratio)
+                        b = 255
+                        pygame.draw.line(self.screen, (r, g, b),
+                                        (bar_x + 1 + px, bar_y + 1),
+                                        (bar_x + 1 + px, bar_y + bar_h - 2))
+                
+                # XP-Text auf dem Balken
+                xp_font = pygame.font.Font(None, 18)
+                xp_text = xp_font.render(f"{xp}/{xp_next}", True, (220, 220, 255))
+                xp_rect = xp_text.get_rect(center=(bar_x + bar_w // 2, bar_y + bar_h // 2))
+                self.screen.blit(xp_text, xp_rect)
         except:
             pass
         
@@ -723,16 +784,16 @@ class GameRenderer:
         for entity_data in entities:
             entity_data['render_func']()
 
-        # 2.5. Magie-Projektile und Effekte rendern (über Entities, unter Foreground)
+        # 3. Foreground-Layer rendern (über Entities)
+        if map_loader and hasattr(map_loader, 'render_foreground'):
+            map_loader.render_foreground(self.screen, camera)
+        
+        # 4. Magie-Projektile und Effekte rendern (ÜBER Foreground, immer sichtbar)
         try:
             if player and hasattr(player, 'magic_system') and player.magic_system:
                 player.magic_system.draw_projectiles(self.screen, camera)
         except Exception:
             pass
-        
-        # 3. Foreground-Layer rendern (ÜBER ALLEM!)
-        if map_loader and hasattr(map_loader, 'render_foreground'):
-            map_loader.render_foreground(self.screen, camera)
     
     def draw_depth_object(self, obj, camera):
         """Zeichnet ein Depth-Objekt aus der Map"""
@@ -879,7 +940,9 @@ class Level:
         self.current_map_index = 0  # Index 0 = Map3.tmx (START MAP)
         self.map_progression = [
             "Map3.tmx",        # 0. Map: Map3 (START MAP)
-            "Map_Village.tmx"  # 1. Map: Map_Village (nach Abschluss von Map3)
+            "Map_Village.tmx", # 1. Map: Map_Village (nach Abschluss von Map3)
+            "Map_Town.tmx",    # 2. Map: Map_Town (nach Abschluss von Map_Village)
+            "Map3Castle.tmx"   # 3. Map: Map3Castle (nach Abschluss von Map_Town)
         ]
         self.map_completed = False
 
@@ -900,6 +963,7 @@ class Level:
         try:
             if hasattr(self.game_logic, 'player') and self.game_logic.player:
                 setattr(self.game_logic.player, '_level_ref', self)
+                setattr(self.game_logic.player, '_score_tracker', None)  # wird nach init gesetzt
         except Exception:
             pass
         
@@ -914,13 +978,49 @@ class Level:
         
         # 🐉 Dragon Lord Boss (MUSS VOR load_map() initialisiert werden!)
         self.dragon_lord = None
+        self._dragon_intro_shown = False  # Persistent flag: Intro nur einmal zeigen
         
         # 🎰 Gambler NPC für Blackjack
         self.gambler_npc = None
         self.blackjack_game = None
         
+        # � Shopkeeper NPC + Shop-System
+        self.shopkeeper_npc = None
+        self.shop_manager = ShopManager()
+        self.shop_ui = ShopUI()
+        
+        # Soldat NPC (Map_Town Warnung + Kill-Gate)
+        self.soldier_npc = None
+        self._town_kill_count = 0
+        self._town_kills_required = 10
+        self._town_respawn_timer = 0.0
+        self._town_respawn_interval = 8.0
+        self._soldier_talked = False
+        self._soldier_recruited = False  # Ritter angeheuert?
+        self.knight_companion = None      # Begleiter-Ritter (nach Anheuerung)
+        
+        # 📊 Score-System
+        self.score_tracker = ScoreTracker()
+        self._score_data = None  # ScoreData nach Finale-Berechnung
+
+        # 🏆 Finale-Sequenz (Final Picture + Credits nach Boss-Kill)
+        self._finale_active = False
+        self._finale_phase = None  # 'score', 'picture' oder 'credits'
+        self._finale_picture = None  # Geladenes Bild
+        self._finale_alpha = 0  # Einblendung
+        self._credits_scroll_y = 0  # Credits-Scroll-Position
+        self._credits_start_time = 0
+        
         # Map laden
         self.load_map()
+        
+        # 📊 Score-Timer starten + an Player anbinden
+        self.score_tracker.start()
+        try:
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                self.game_logic.player._score_tracker = self.score_tracker
+        except Exception:
+            pass
         
         # Kollisionsobjekte einmalig setzen (nicht bei jeder Bewegung!)
         self.setup_collision_objects()
@@ -962,11 +1062,24 @@ class Level:
                 'active': False,
                 'is_checkpoint': True,  # Dies ist ein Checkpoint wie Elara
                 'required_items': ['mondstein', 'kristall'],  # Benötigte Gegenstände
-                'completion_text': 'Herzlichen Glückwunsch, Level erfolgreich abgeschlossen!',
+                'completion_text': 'Gut gemacht! In der nächsten Stadt wartet Ritter Konrad auf dich.\nSprich unbedingt mit ihm – er weiß, was dich erwartet!',
                 'completed': False,
                 'map_specific': True,  # Kennzeichnet, dass dieser NPC nur in Map 2 erscheint
                 'allowed_map': 'Map_Village.tmx'
-            }
+            },
+            'aldric_dialog': {
+                'pos': pygame.math.Vector2(1900, 1400),
+                'radius': 150,
+                'text': 'Wächter Aldric (Stadtwache):\n"Die Stadt wird von Dämonen belagert!\nBesiege alle Feinde, damit ich das Schutzschild aktivieren kann!"',
+                'active': False,
+                'is_checkpoint': False,
+                'required_items': [],
+                'completion_text': 'Alle Dämonen besiegt! Die Stadt ist gerettet!',
+                'completed': False,
+                'map_specific': True,
+                'allowed_map': 'Map_Town.tmx'
+            },
+
         }
         if VERBOSE_LOGS:
             print(f"Interaktionszone erstellt bei Position: {self.interaction_zones['elara_dialog']['pos']}")
@@ -985,6 +1098,10 @@ class Level:
 
         # Modal Dialogue UI
         self.dialogue_box = DialogueBox(self.screen)
+
+        # 📜 Quest / Mission System
+        self.quest_manager = QuestManager()
+        self.mission_display = MissionDisplay()
 
         # Neues System für Questgegenstände/Sammelitems
         self.quest_items = []  # Liste der gesammelten Questgegenstände
@@ -1038,11 +1155,18 @@ class Level:
         self.collection_message_timer = 0
         self.collection_message_duration = 3000  # 3 Sekunden Anzeigedauer
 
+        # 💰 Coin-Drop-System: Münzen die von besiegten Monstern fallen
+        self.dropped_coins = []  # Liste von {pos: Vector2, amount: int, spawn_time: int}
+        self._alive_enemies_set = set()  # Tracking welche Gegner am Leben sind
+        self.coin_pickup_radius = 40  # Pixel-Radius zum Aufsammeln
+
         # Map-Progression System
         self.current_map_index = 0
         self.map_progression = [
             "Map3.tmx",        # 1. Map: Map3 
-            "Map_Village.tmx"  # 2. Map: Map_Village nach Abschluss
+            "Map_Village.tmx", # 2. Map: Map_Village nach Abschluss
+            "Map_Town.tmx",    # 3. Map: Map_Town nach Abschluss
+            "Map3Castle.tmx"   # 4. Map: Map3Castle nach Abschluss
         ]
         self.map_completed = False
 
@@ -1064,6 +1188,7 @@ class Level:
                 'kristall': pygame.math.Vector2(337, 1081),
                 'goldreif': pygame.math.Vector2(2421, 356)
             }
+            # Map_Town und Map3Castle: keine Sammelobjekte
         }
         
         try:
@@ -1161,6 +1286,15 @@ class Level:
                 # 🎰 Gambler NPC spawnen (oben links vom Spieler)
                 self._spawn_gambler(player_x, player_y)
                 
+                # 🏪 Shopkeeper NPC spawnen (nur auf Map3 und Map_Town)
+                self._spawn_shopkeeper(current_map, player_x, player_y)
+                
+                # ⚔️ Soldat NPC spawnen (nur auf Map_Town)
+                self._spawn_soldier(current_map, player_x, player_y)
+                
+                # ⚔️ Ritter-Begleiter spawnen (wenn angeheuert)
+                self._spawn_knight_companion(player_x, player_y)
+                
             else:
                 if VERBOSE_LOGS:
                     print(f"❌ Map konnte nicht geladen werden: {map_path}")
@@ -1228,9 +1362,6 @@ class Level:
                         player_spawned = True
                         if VERBOSE_LOGS:
                             print(f"✅ Player gespawnt bei ({spawn_x}, {spawn_y}) von Objekt '{obj.name}'")
-                        
-                        # 🐉 Dragon Lord links neben Spieler spawnen (Testzweck)
-                        self._spawn_dragon_lord(int(spawn_x), int(spawn_y))
                         
                         break
                     
@@ -1396,13 +1527,18 @@ class Level:
                     print("✅ Player in Map_Village Mitte gespawnt (1280, 1280)")
                     
                 elif 'Map_Town.tmx' in map_filename:
-                    # Map_Town: unten rechts  
-                    map_width = self.map_loader.tmx_data.width * self.map_loader.tmx_data.tilewidth
-                    map_height = self.map_loader.tmx_data.height * self.map_loader.tmx_data.tileheight
-                    self.game_logic.player.rect.centerx = map_width - 100
-                    self.game_logic.player.rect.centery = map_height - 100
+                    # Map_Town: Kreuzung in der Mitte der Stadt
+                    self.game_logic.player.rect.centerx = 1248
+                    self.game_logic.player.rect.centery = 1024
                     self.game_logic.player.update_hitbox()
-                    print("✅ Player unten rechts auf Map_Town gespawnt")
+                    print("✅ Player an der Kreuzung auf Map_Town gespawnt (1248, 1024)")
+                    
+                elif 'Map3Castle.tmx' in map_filename:
+                    # Map3Castle: Spawn-Punkt oben rechts (aus Tiled)
+                    self.game_logic.player.rect.centerx = 2816
+                    self.game_logic.player.rect.centery = 92
+                    self.game_logic.player.update_hitbox()
+                    print("✅ Player in Map3Castle gespawnt (2816, 92)")
                     
                 else:
                     # Unbekannte Map: Allgemeine Standard-Position
@@ -1433,11 +1569,47 @@ class Level:
             self.beckalof_npc = None
 
     def _spawn_dragon_lord(self, player_spawn_x: int, player_spawn_y: int):
-        """Spawnt den Dragon Lord Boss links vom Spieler-Spawnpoint."""
+        """Spawnt den Dragon Lord - Intro-Cutscene auf Map3, Boss-Fight auf Map3Castle."""
+        current_map = self.map_progression[self.current_map_index]
+        is_first_map = 'Map3.tmx' in current_map and 'Castle' not in current_map
+        is_castle_map = 'Map3Castle' in current_map
+        
+        if not is_first_map and not is_castle_map:
+            self.dragon_lord = None
+            return
+        
+        # Intro-Map: Dragon Lord nicht erneut spawnen wenn Intro schon gezeigt wurde (Retry)
+        if is_first_map and getattr(self, '_dragon_intro_shown', False):
+            self.dragon_lord = None
+            print("Dragon Lord Intro bereits gezeigt - nicht erneut spawnen (Retry)")
+            return
+        
         try:
-            # Position: Links vom Spieler Spawn
-            dragon_x = player_spawn_x - 200  # 200 Pixel links vom Spieler
+            # Position bestimmen
+            dragon_x = player_spawn_x + 150
             dragon_y = player_spawn_y
+            
+            if is_castle_map:
+                # Feste Fallback-Position für Map3Castle (Boss-Arena Mitte)
+                dragon_x = 1800
+                dragon_y = 1700
+            
+            # Versuche Position aus TMX Boss-Objektgruppe zu lesen
+            if self.map_loader and self.map_loader.tmx_data:
+                try:
+                    from pytmx import TiledObjectGroup
+                except ImportError:
+                    TiledObjectGroup = None
+                for layer in self.map_loader.tmx_data.layers:
+                    is_obj_group = isinstance(layer, TiledObjectGroup) if TiledObjectGroup else hasattr(layer, '__iter__')
+                    if (getattr(layer, 'name', '') or '').lower() == 'boss' and is_obj_group:
+                        for obj in layer:
+                            obj_name = (getattr(obj, 'name', '') or '').lower()
+                            if obj_name in ('dragonlord', 'dragon_lord', 'dragon lord', 'dragon'):
+                                dragon_x = int(float(getattr(obj, 'x', 0) or 0))
+                                dragon_y = int(float(getattr(obj, 'y', 0) or 0))
+                                break
+                        break
             
             self.dragon_lord = DragonLord(dragon_x, dragon_y)
             
@@ -1459,9 +1631,17 @@ class Level:
             
             # Intro-Dialog verzögern (dialogue_box noch nicht initialisiert)
             # Wird in update() beim ersten Frame angezeigt
-            self._dragon_intro_pending = True
+            # Bei Retry (Noch mal) wird der Dialog NICHT erneut gezeigt
+            if not getattr(self, '_dragon_intro_shown', False):
+                self._dragon_intro_pending = True
+            else:
+                self._dragon_intro_pending = False
+                # Dragon Lord direkt kampfbereit machen
+                self.dragon_lord.intro_shown = True
+            # Merken ob es ein Intro-Cutscene ist (Dragon Lord verschwindet danach)
+            self._dragon_intro_only = is_first_map
             
-            print(f"Dragon Lord gespawnt bei ({dragon_x}, {dragon_y})")
+            print(f"Dragon Lord gespawnt bei ({dragon_x}, {dragon_y}) [{'Intro' if is_first_map else 'Boss-Fight'}]")
         except Exception as e:
             print(f"Fehler beim Spawnen von Dragon Lord: {e}")
             import traceback
@@ -1469,7 +1649,7 @@ class Level:
             self.dragon_lord = None
 
     def _show_dragon_intro_dialog(self):
-        """Zeigt den 2-teiligen Dragon Lord Intro-Dialog."""
+        """Zeigt den Dragon Lord Dialog - Intro-Cutscene (Map1) oder Boss-Fight (Castle)."""
         print("=== Dragon Lord Intro Dialog wird gestartet ===")
         if not self.dragon_lord or not self.dialogue_box:
             print(f"  Abbruch: dragon_lord={self.dragon_lord is not None}, dialogue_box={self.dialogue_box is not None}")
@@ -1477,33 +1657,52 @@ class Level:
             
         level_ref = self
         dragon_ref = self.dragon_lord
+        is_intro_only = getattr(self, '_dragon_intro_only', False)
         
-        def show_second_part():
-            """Zeigt den zweiten Teil des Dialogs."""
-            print("=== Dragon Lord Dialog Teil 2 ===")
-            def remove_dragon_after_intro():
-                if dragon_ref:
-                    dragon_ref.intro_shown = True
-                    # Health Bar entfernen
-                    if dragon_ref in level_ref.health_bar_manager.health_bars:
-                        level_ref.health_bar_manager.remove_entity(dragon_ref)
-                    # Dragon Lord komplett entfernen
-                    level_ref.dragon_lord = None
-                    print("Dragon Lord ist verschwunden!")
+        if is_intro_only:
+            # === INTRO-CUTSCENE auf der ersten Map ===
+            def show_part2():
+                def show_part3():
+                    def remove_dragon():
+                        if dragon_ref:
+                            dragon_ref.intro_shown = True
+                            if dragon_ref in level_ref.health_bar_manager.health_bars:
+                                level_ref.health_bar_manager.remove_entity(dragon_ref)
+                            level_ref.dragon_lord = None
+                            print("Dragon Lord ist nach Intro verschwunden!")
+                    level_ref.dialogue_box.open(
+                        "Versuch es gar nicht erst... HAHAHA!",
+                        speaker="Dragon Lord",
+                        on_close=remove_dragon
+                    )
+                level_ref.dialogue_box.open(
+                    "Du wirst ihn niemals wiedersehen!",
+                    speaker="Dragon Lord",
+                    on_close=show_part3
+                )
             
-            level_ref.dialogue_box.open(
-                "Du wirst ihn nie wieder sehen!",
+            print("=== Dragon Lord Intro-Cutscene ===")
+            self.dialogue_box.open(
+                "HAHA! Dobo ist bei mir!",
                 speaker="Dragon Lord",
-                on_close=remove_dragon_after_intro
+                on_close=show_part2
             )
-        
-        # Teil 1 des Dialogs
-        print("=== Dragon Lord Dialog Teil 1 ===")
-        self.dialogue_box.open(
-            "Haha, Tobo ist bei mir!",
-            speaker="Dragon Lord",
-            on_close=show_second_part
-        )
+        else:
+            # === BOSS-FIGHT Dialog auf Map3Castle ===
+            def show_second_part():
+                print("=== Dragon Lord Boss Dialog Teil 2 ===")
+                level_ref.dialogue_box.open(
+                    "Jetzt wirst du fallen!",
+                    speaker="Dragon Lord",
+                    on_close=lambda: setattr(dragon_ref, 'intro_shown', True)
+                )
+            
+            print("=== Dragon Lord Boss-Fight Dialog ===")
+            self.dialogue_box.open(
+                "Du hast es also bis hierher geschafft... Beeindruckend.",
+                speaker="Dragon Lord",
+                on_close=show_second_part
+            )
 
     def _spawn_gambler(self, player_spawn_x: int, player_spawn_y: int):
         """Spawnt den Gambler NPC neben dem Dragon Lord."""
@@ -1538,6 +1737,219 @@ class Level:
             self.gambler_npc = None
             self.blackjack_game = None
 
+    def _spawn_shopkeeper(self, map_name: str, player_spawn_x: int, player_spawn_y: int):
+        """Spawnt den Shopkeeper NPC – nur auf Map3.tmx und Map_Town.tmx."""
+        # Nur auf erster und vorletzter Map
+        if map_name not in ("Map3.tmx", "Map_Town.tmx"):
+            self.shopkeeper_npc = None
+            return
+        try:
+            # Rechts vom Spieler (gegenüber vom Gambler)
+            shop_x = player_spawn_x + 250
+            shop_y = player_spawn_y - 50
+            self.shopkeeper_npc = ShopkeeperNPC(shop_x, shop_y)
+            print(f"🏪 Shopkeeper NPC gespawnt bei ({shop_x}, {shop_y}) auf {map_name}")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Spawnen von Shopkeeper: {e}")
+            import traceback
+            traceback.print_exc()
+            self.shopkeeper_npc = None
+
+    def _open_shop(self):
+        """Öffnet das Shop-UI."""
+        if not self.shop_ui or not self.game_logic or not self.game_logic.player:
+            return
+        self.shop_ui.open(self.shop_manager, self.game_logic.player)
+
+    def _spawn_soldier(self, map_name: str, player_spawn_x: int, player_spawn_y: int):
+        """Spawnt den Soldaten NPC – nur auf Map_Town.tmx."""
+        if map_name != "Map_Town.tmx":
+            self.soldier_npc = None
+            return
+        try:
+            # Soldat steht am Eingang der Stadt (links vom Spieler)
+            soldier_x = player_spawn_x - 200
+            soldier_y = player_spawn_y + 80
+            self.soldier_npc = SoldierNPC(soldier_x, soldier_y)
+            self._town_kill_count = 0
+            self._soldier_talked = False
+            self._town_respawn_timer = 0.0
+            print(f"⚔️ Soldat NPC gespawnt bei ({soldier_x}, {soldier_y}) auf {map_name}")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Spawnen von Soldat: {e}")
+            import traceback
+            traceback.print_exc()
+            self.soldier_npc = None
+
+    def _spawn_knight_companion(self, player_x: int, player_y: int):
+        """Spawnt den Ritter-Begleiter wenn er angeheuert wurde."""
+        if not self._soldier_recruited:
+            self.knight_companion = None
+            return
+        try:
+            # Begleiter rechts hinter dem Spieler spawnen
+            comp_x = player_x + 60
+            comp_y = player_y + 10
+            self.knight_companion = KnightCompanion(comp_x, comp_y)
+            # Hindernisse setzen falls vorhanden
+            if hasattr(self, 'obstacle_sprites') and self.obstacle_sprites:
+                self.knight_companion.set_obstacles(self.obstacle_sprites)
+            print(f"⚔️ Ritter-Begleiter gespawnt bei ({comp_x}, {comp_y})")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Spawnen des Ritter-Begleiters: {e}")
+            import traceback
+            traceback.print_exc()
+            self.knight_companion = None
+
+    def _open_soldier_dialogue(self):
+        """Öffnet den Dialog mit dem Soldaten (mehrstufig beim ersten Mal)."""
+        if not self.soldier_npc or not self.dialogue_box:
+            return
+
+        kills = self._town_kill_count
+        needed = self._town_kills_required
+
+        # --- Erstes Gespräch: Spieler fragt, Ritter erklärt, dann Auftrag ---
+        if not self._soldier_talked:
+            # Schritt 1: Spieler fragt
+            step1_text = (
+                'Zauberer:\n'
+                '"Was ist hier passiert?! Der Wald... alles ist verwüstet!\n'
+                'Wer hat das getan?"'
+            )
+
+            def _step2():
+                # Schritt 2: Ritter antwortet – Dragon Lord Erklärung
+                step2_text = (
+                    'Ritter Konrad (Stadtwache):\n'
+                    '"Das war der Dragon Lord. Er versucht unsere Welt\n'
+                    'zu zerstören – Dorf für Dorf, Wald für Wald.\n'
+                    'Wir müssen ihn aufhalten, bevor es zu spät ist!"'
+                )
+                self.dialogue_box.open(
+                    text=step2_text,
+                    speaker="Ritter Konrad",
+                    on_close=_step3
+                )
+
+            def _step3():
+                # Schritt 3: Ritter gibt Auftrag
+                step3_text = (
+                    f'Ritter Konrad:\n'
+                    f'"Aber du bist noch nicht bereit, Zauberer.\n'
+                    f'Trainiere zuerst – besiege {needed} Kreaturen hier\n'
+                    f'und kauf dir bessere Ausrüstung beim Händler.\n'
+                    f'Erst dann hast du eine Chance gegen den Dragon Lord."\n\n'
+                    f'⚔️ Besiegte Gegner: {kills}/{needed}'
+                )
+                self._soldier_talked = True
+                self.dialogue_box.open(
+                    text=step3_text,
+                    speaker="Ritter Konrad"
+                )
+
+            self.dialogue_box.open(
+                text=step1_text,
+                speaker="Zauberer",
+                on_close=_step2
+            )
+
+        # --- Folge-Gespräche: Kills noch nicht genug ---
+        elif kills < needed:
+            text = (
+                f'Ritter Konrad:\n'
+                f'"Du brauchst noch mehr Training, Zauberer.\n'
+                f'Besiege die Kreaturen und komm wieder!"\n\n'
+                f'⚔️ Besiegte Gegner: {kills}/{needed}'
+            )
+            self.dialogue_box.open(
+                text=text,
+                speaker="Ritter Konrad"
+            )
+
+        # --- Bereits angeheuert → nur Weiterziehen oder Trainieren ---
+        elif self._soldier_recruited:
+            text = (
+                f'Ritter Konrad:\n'
+                f'"Mein neues Schwert ist bereit, Zauberer!\n'
+                f'Ich kämpfe an deiner Seite.\n'
+                f'Willst du weiterziehen oder noch trainieren?"'
+            )
+            def on_choice_recruited(idx):
+                if idx == 0:
+                    print("⚔️ Spieler zieht mit Ritter Konrad weiter!")
+                    self.trigger_level_completion()
+                else:
+                    print("⚔️ Spieler bleibt zum Trainieren")
+
+            self.dialogue_box.open_with_choices(
+                text=text,
+                choices=["Ja, vorwärts!", "Noch etwas trainieren..."],
+                on_choice=on_choice_recruited,
+                speaker="Ritter Konrad"
+            )
+
+        # --- Genug Kills – Wahl anbieten (mit Anheuer-Option) ---
+        else:
+            player_coins = 0
+            if self.game_logic and self.game_logic.player:
+                player_coins = self.game_logic.player.coins
+
+            text = (
+                f'Ritter Konrad:\n'
+                f'"Beeindruckend, Zauberer! Du hast {kills} Feinde bezwungen.\n'
+                f'Du bist bereit für den Dragon Lord.\n'
+                f'Allerdings... der Dragon Lord hat mein Schwert zerstört.\n'
+                f'Für 100 Gold könnte ich mir ein neues kaufen\n'
+                f'und an deiner Seite kämpfen!"\n\n'
+                f'💰 Dein Gold: {player_coins}'
+            )
+            def on_choice(idx):
+                if idx == 0:
+                    print("⚔️ Spieler entscheidet sich weiterzuziehen (ohne Ritter)!")
+                    self.trigger_level_completion()
+                elif idx == 1:
+                    # Ritter anheuern
+                    if self.game_logic and self.game_logic.player:
+                        if self.game_logic.player.coins >= 100:
+                            self.game_logic.player.coins -= 100
+                            self._soldier_recruited = True
+                            print(f"⚔️ Ritter Konrad angeheuert! (-100 Gold, verbleibend: {self.game_logic.player.coins})")
+                            self.dialogue_box.open(
+                                text=(
+                                    'Ritter Konrad:\n'
+                                    '"Ausgezeichnet! Mit einem neuen Schwert\n'
+                                    'werde ich den Dragon Lord in Stücke hauen!\n'
+                                    'Lass uns gemeinsam kämpfen, Zauberer!"'
+                                ),
+                                speaker="Ritter Konrad"
+                            )
+                            self.show_styled_message("⚔️ Ritter Konrad schließt sich dir an! (-100 Gold)")
+                        else:
+                            print("⚔️ Nicht genug Gold für den Ritter")
+                            self.dialogue_box.open(
+                                text=(
+                                    'Ritter Konrad:\n'
+                                    '"Du hast leider nicht genug Gold, Zauberer.\n'
+                                    'Ich brauche 100 Gold für ein neues Schwert.\n'
+                                    'Besiege mehr Gegner oder finde Schätze!"'
+                                ),
+                                speaker="Ritter Konrad"
+                            )
+                else:
+                    print("⚔️ Spieler bleibt zum Trainieren")
+
+            self.dialogue_box.open_with_choices(
+                text=text,
+                choices=[
+                    "Ja, ich gehe allein weiter!",
+                    "Ritter anheuern (100 Gold) ⚔️",
+                    "Noch etwas trainieren..."
+                ],
+                on_choice=on_choice,
+                speaker="Ritter Konrad"
+            )
+
     def _start_blackjack(self):
         """Startet das Blackjack-Minispiel wenn der Gambler angesprochen wird."""
         if not self.blackjack_game or not self.game_logic or not self.game_logic.player:
@@ -1570,10 +1982,105 @@ class Level:
         if zone.get('completed', False):
             return
         
-        # Öffne den Dialog-Text
+        # Alle Items gesammelt → Abschluss-Dialog mit Bestätigung
+        if zone.get('items_ready', False):
+            self._open_completion_dialogue(zone_id, zone)
+            return
+        
+        # Normaler Auftrags-Dialog
         self.dialogue_box.open(zone.get('text', ''))
         zone['dialogue_shown'] = True
         print(f"💬 NPC-Dialog geöffnet: {zone_id}")
+
+        # 📜 Quest aktivieren wenn dieser NPC eine Sammel-Aufgabe hat
+        self._activate_quest_for_zone(zone_id, zone)
+
+    def _open_completion_dialogue(self, zone_id: str, zone: dict):
+        """Öffnet den Abschluss-Dialog wenn alle Gegenstände gesammelt wurden.
+        Der NPC fragt, ob der Spieler weiterreisen möchte (Ja/Warte)."""
+        # NPC-Name ableiten
+        npc_name = zone_id.replace('_dialog', '').replace('_', ' ').title()
+        raw_text = zone.get('text', '')
+        if ':' in raw_text.split('\n')[0]:
+            npc_name = raw_text.split('\n')[0].split(':')[0].strip()
+
+        # Abschluss-Text zusammenbauen
+        completion = zone.get('completion_text', 'Alle Gegenstände gefunden!')
+        dialogue_text = (
+            f"{npc_name}:\n"
+            f"\"{completion}\n"
+            f"Bist du bereit, weiterzuziehen?\""
+        )
+
+        def _on_choice(choice_index: int):
+            """Wird aufgerufen wenn der Spieler eine Auswahl trifft."""
+            if choice_index == 0:
+                # "Ja, weiter!" gewählt
+                zone['completed'] = True
+                zone['items_ready'] = False
+                self.quest_manager.complete_quest(zone_id)
+                print(f"📜 Quest abgeschlossen: {zone_id}")
+                print("Starte Level-Abschluss...")
+                self.trigger_level_completion()
+            else:
+                # "Warte..." gewählt - Dialog schließt sich, Spieler bleibt
+                print(f"⏳ Spieler wartet noch auf Map ({zone_id})")
+
+        self.dialogue_box.open_with_choices(
+            dialogue_text,
+            choices=["Ja, weiter!", "Warte..."],
+            on_choice=_on_choice
+        )
+        print(f"💬 Abschluss-Dialog mit Auswahl geöffnet: {zone_id}")
+
+    def _activate_quest_for_zone(self, zone_id: str, zone: dict):
+        """Erstellt und aktiviert eine Quest basierend auf den Daten einer Interaktionszone."""
+        if not zone.get('is_checkpoint', False):
+            return
+        if zone.get('completed', False):
+            return
+
+        required = zone.get('required_items', [])
+        if not required:
+            return
+
+        # Quest nicht doppelt anlegen
+        if self.quest_manager.has_quest(zone_id):
+            return
+
+        # NPC-Name aus dem Dialog-Text ableiten (erster Teil vor dem Doppelpunkt)
+        npc_name = zone_id.replace('_dialog', '').replace('_', ' ').title()
+        raw_text = zone.get('text', '')
+        if ':' in raw_text.split('\n')[0]:
+            npc_name = raw_text.split('\n')[0].split(':')[0].strip()
+
+        # Freundliche Item-Namen aus collectible_items holen
+        item_labels = {}
+        if hasattr(self, 'collectible_items'):
+            for k, v in self.collectible_items.items():
+                item_labels[k] = v.get('name', k.title())
+
+        objectives = []
+        for item_key in required:
+            label = item_labels.get(item_key, item_key.title())
+            already_done = item_key in self.quest_items
+            objectives.append(QuestObjective(key=item_key, label=f"{label} finden", done=already_done))
+
+        # Titel aus der completion_text oder generisch
+        title = "Gegenstände sammeln"
+        if zone_id == 'elara_dialog':
+            title = "Brücke reparieren"
+        elif zone_id == 'brann_dialog':
+            title = "Elixier brauen"
+
+        quest = Quest(
+            id=zone_id,
+            title=title,
+            npc_name=npc_name,
+            objectives=objectives,
+        )
+        self.quest_manager.add_quest(quest)
+        print(f"📜 Quest aktiviert: {quest.title} ({quest.progress_text})")
 
     def respawn_enemies_only(self):
         """Spawnt nur die Feinde neu, ohne die Spieler-Position zu verändern"""
@@ -1692,6 +2199,11 @@ class Level:
     
     def handle_event(self, event):
         """Behandelt Input-Events - Erweitert für Joystick-Support"""
+        # 🏆 Finale-Sequenz konsumiert alle Events
+        if self._finale_active:
+            self._handle_finale_event(event)
+            return
+        
         # If dialogue is active, consume advance keys and block gameplay events
         if self.dialogue_box and self.dialogue_box.is_active:
             if self.dialogue_box.handle_event(event):
@@ -1704,22 +2216,36 @@ class Level:
         # Timer für styled message
         if event.type == pygame.USEREVENT + 1:
             self.show_interaction_text = False
+            self._styled_message_active = False
             pygame.time.set_timer(pygame.USEREVENT + 1, 0)  # Timer deaktivieren
         # Timer für Countdown und Rückkehr zum Hauptmenü
         elif event.type == pygame.USEREVENT + 2:
-            # Prüfe ob Meister Brann's Quest wirklich abgeschlossen wurde
-            brann_quest = self.interaction_zones.get('brann_dialog', {})
-            if self.current_map_index == 1 and brann_quest.get('completed', False) and self.countdown_active:
-                self.countdown_timer -= 1
-                if self.countdown_timer <= 0:
-                    pygame.time.set_timer(pygame.USEREVENT + 2, 0)  # Timer deaktivieren
-                    self.countdown_active = False
-                    # Spiel speichern
-                    self.trigger_save_game(1)  # In Slot 1 speichern
-                    # Zum Hauptmenü zurückkehren
-                    if hasattr(self, 'main_game') and self.main_game:
-                        self.main_game.return_to_menu()
-        # 🎰 Blackjack-Event-Handling (HÖCHSTE Priorität - VOR Input System!)
+            if self.countdown_active:
+                # Map3Castle (finale Map) - Countdown nach Spielabschluss
+                if self.current_map_index == 3 and self.map_completed:
+                    self.countdown_timer -= 1
+                    if self.countdown_timer <= 0:
+                        pygame.time.set_timer(pygame.USEREVENT + 2, 0)
+                        self.countdown_active = False
+                        self.trigger_save_game(1)
+                        if hasattr(self, 'main_game') and self.main_game:
+                            self.main_game.return_to_menu()
+                # Map_Village - Countdown nach Brann Quest
+                else:
+                    brann_quest = self.interaction_zones.get('brann_dialog', {})
+                    if self.current_map_index == 1 and brann_quest.get('completed', False):
+                        self.countdown_timer -= 1
+                        if self.countdown_timer <= 0:
+                            pygame.time.set_timer(pygame.USEREVENT + 2, 0)
+                            self.countdown_active = False
+                            self.trigger_save_game(1)
+                            if hasattr(self, 'main_game') and self.main_game:
+                                self.main_game.return_to_menu()
+        # � Shop-Event-Handling (HÖCHSTE Priorität)
+        if self.shop_ui and self.shop_ui.is_active:
+            if self.shop_ui.handle_event(event):
+                return  # Event wurde von Shop konsumiert
+        # �🎰 Blackjack-Event-Handling (HÖCHSTE Priorität - VOR Input System!)
         if self.blackjack_game and self.blackjack_game.is_active:
             if self.blackjack_game.handle_event(event):
                 return  # Event wurde von Blackjack konsumiert - blockiert ALLES andere
@@ -1774,9 +2300,18 @@ class Level:
                 self.handle_magic_element('stone')
             # Magie-System Actions
             elif action == 'cast_magic':
+                # � Shop-Event-Handling (höchste Priorität)
+                if self.shop_ui and self.shop_ui.is_active:
+                    return  # Shop übernimmt Events selbst
                 # 🎰 Blackjack-Event-Handling (höchste Priorität)
-                if self.blackjack_game and self.blackjack_game.is_active:
+                elif self.blackjack_game and self.blackjack_game.is_active:
                     return  # Blackjack übernimmt Events selbst
+                # 🏪 Shopkeeper NPC Interaktion
+                elif self.shopkeeper_npc and self.shopkeeper_npc.can_interact:
+                    self._open_shop()
+                # ⚔️ Soldat NPC Interaktion
+                elif self.soldier_npc and self.soldier_npc.can_interact:
+                    self._open_soldier_dialogue()
                 # 🎰 Gambler NPC Interaktion
                 elif self.gambler_npc and self.gambler_npc.can_interact:
                     self._start_blackjack()
@@ -1826,10 +2361,15 @@ class Level:
             elif event.key == pygame.K_F2:
                 # Toggle Health-Bars ein/aus
                 self.toggle_health_bars()
-            elif event.key == pygame.K_k and "Map_Village.tmx" in self.map_progression[self.current_map_index]:
-                # Koordinatenanzeige nur in Map_Village
-                self.show_coordinates = not self.show_coordinates
-                print(f"🎯 Koordinatenanzeige: {'An' if self.show_coordinates else 'Aus'}")
+            elif event.key == pygame.K_k:
+                # 🔧 DEBUG: K-Taste zum Überspringen zum nächsten Level
+                if self.current_map_index < len(self.map_progression) - 1:
+                    next_index = self.current_map_index + 1
+                    next_map = self.map_progression[next_index]
+                    print(f"⏭️ DEBUG: Überspringe zu Map {next_index}: {next_map}")
+                    self.load_next_map(next_map, next_index)
+                else:
+                    print("⏭️ DEBUG: Bereits auf der letzten Map!")
             # DIREKTER MAGIC-TEST
             elif event.key == pygame.K_h:  # H für direkten Heilungstest
                 if self.game_logic and self.game_logic.player:
@@ -1846,9 +2386,33 @@ class Level:
                     magic_system.add_element(ElementType.FEUER)
                     magic_system.add_element(ElementType.WASSER)
                     magic_system.cast_magic(self.game_logic.player)
+            elif event.key == pygame.K_j:
+                # 🔧 DEBUG: J-Taste für 200 Damage-Modus
+                if self.game_logic and self.game_logic.player:
+                    p = self.game_logic.player
+                    if p.base_attack_damage == 200:
+                        p.base_attack_damage = 30
+                        p.attack_damage = int(p.base_attack_damage * p.get_damage_multiplier())
+                        self.show_styled_message("🔧 Debug-Schaden AUS (normal)")
+                        print("🔧 DEBUG: Schaden zurück auf normal (30)")
+                    else:
+                        p.base_attack_damage = 200
+                        p.attack_damage = int(p.base_attack_damage * p.get_damage_multiplier())
+                        self.show_styled_message("🔧 Debug-Schaden AN (200)")
+                        print("🔧 DEBUG: Schaden auf 200 gesetzt!")
             elif event.key == pygame.K_F5:
                 self.show_coordinates = not self.show_coordinates
                 print(f"Koordinatenanzeige: {'An' if self.show_coordinates else 'Aus'}")
+            
+            # 🔧 DEBUG: U-Taste zum Überspringen der aktuellen Map
+            elif event.key == pygame.K_u:
+                if self.current_map_index < len(self.map_progression) - 1:
+                    next_index = self.current_map_index + 1
+                    next_map = self.map_progression[next_index]
+                    print(f"⏭️ DEBUG: Überspringe zu Map {next_index}: {next_map}")
+                    self.load_next_map(next_map, next_index)
+                else:
+                    print("⏭️ DEBUG: Bereits auf der letzten Map!")
 
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
@@ -1916,21 +2480,28 @@ class Level:
     
     def update(self, dt):
         """Aktualisiert das Level und alle Entities"""
+        # 🏆 Finale-Sequenz hat Vorrang
+        if self._finale_active:
+            self._update_finale(dt)
+            return
+        
         if not self.game_logic:
             return
 
         # 🐉 Dragon Lord Intro-Dialog anzeigen (verzögert, da dialogue_box erst später initialisiert wird)
         if getattr(self, '_dragon_intro_pending', False) and self.dragon_lord and not self.dragon_lord.intro_shown:
             self._dragon_intro_pending = False
+            self._dragon_intro_shown = True
             self._show_dragon_intro_dialog()
 
-        # Pausiert wenn Dialog ODER Blackjack aktiv ist
-        paused = bool(self.dialogue_box and self.dialogue_box.is_active)
+        # Pausiert wenn Dialog ODER Blackjack ODER Shop aktiv ist
         blackjack_active = bool(self.blackjack_game and self.blackjack_game.is_active)
+        shop_active = bool(self.shop_ui and self.shop_ui.is_active)
+        paused = bool(self.dialogue_box and self.dialogue_box.is_active) or blackjack_active or shop_active
 
-        # Bewegungs-Input anwenden, es sei denn, ein Dialog oder Blackjack blockiert
+        # Bewegungs-Input anwenden, es sei denn, ein Dialog oder Blackjack oder Shop blockiert
         try:
-            if self.input_system and hasattr(self.game_logic, 'player') and self.game_logic.player and not paused and not blackjack_active:
+            if self.input_system and hasattr(self.game_logic, 'player') and self.game_logic.player and not paused:
                 move_vec = self.input_system.get_movement_vector()
                 self.game_logic.player.set_direction(move_vec)
                 self.game_logic.player.move(dt)
@@ -1968,7 +2539,13 @@ class Level:
 
         # Feinde aktualisieren
         if not paused:
-            self.enemy_manager.update(dt, self.game_logic.player)
+            # Ritter-Begleiter als mögliches Ziel für Gegner übergeben
+            companions = []
+            if self.knight_companion and self.knight_companion.is_alive():
+                companions.append(self.knight_companion)
+            self.enemy_manager.update(dt, self.game_logic.player, companions if companions else None)
+            # 💰 Coin-Drops: Prüfe ob Gegner gestorben sind
+            self._check_enemy_deaths()
 
         # 🧙 Beckalof NPC aktualisieren (Idle + Drinking Animationen)
         if self.beckalof_npc and not paused:
@@ -1993,6 +2570,43 @@ class Level:
         if self.blackjack_game and self.blackjack_game.is_active:
             self.blackjack_game.update(dt)
 
+        # 🏪 Shopkeeper NPC aktualisieren
+        if self.shopkeeper_npc and not paused:
+            self.shopkeeper_npc.update(dt)
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                player_pos = (self.game_logic.player.rect.centerx, self.game_logic.player.rect.centery)
+                self.shopkeeper_npc.check_player_nearby(player_pos)
+        
+        # 🏪 Shop-UI aktualisieren
+        if self.shop_ui and self.shop_ui.is_active:
+            self.shop_ui.update(dt)
+
+        # ⚔️ Soldat NPC aktualisieren
+        if self.soldier_npc and not paused:
+            self.soldier_npc.update(dt)
+            if hasattr(self.game_logic, 'player') and self.game_logic.player:
+                player_pos = (self.game_logic.player.rect.centerx, self.game_logic.player.rect.centery)
+                self.soldier_npc.check_player_nearby(player_pos)
+        
+        # ⚔️ Ritter-Begleiter aktualisieren
+        if self.knight_companion and self.knight_companion.is_alive() and not paused:
+            try:
+                enemies_for_knight = list(self.enemy_manager.enemies.sprites()) if hasattr(self.enemy_manager, 'enemies') else []
+                if self.dragon_lord and self.dragon_lord.is_alive():
+                    enemies_for_knight.append(self.dragon_lord)
+                self.knight_companion.update(dt, self.game_logic.player, enemies_for_knight)
+            except Exception as e:
+                print(f"⚠️ KnightCompanion Update-Fehler: {e}")
+
+        # ⚔️ Map_Town: Gegner respawnen wenn wenige übrig
+        if self.current_map_index == 2 and not paused and not self.map_completed:
+            self._town_respawn_timer += dt
+            alive_enemies = sum(1 for e in self.enemy_manager.enemies if getattr(e, 'alive_status', True))
+            if alive_enemies <= 1 and self._town_respawn_timer >= self._town_respawn_interval:
+                self._town_respawn_timer = 0.0
+                self.respawn_enemies_only()
+                print(f"🔄 Gegner respawnen auf Map_Town! (Kills: {self._town_kill_count}/{self._town_kills_required})")
+
         # Kamera aktualisieren
         if hasattr(self.game_logic, 'player'):
             self.camera.update(self.game_logic.player)
@@ -2007,6 +2621,7 @@ class Level:
         # Sammelobjekte prüfen (Quest-Gegenstände einsammeln)
         if not paused:
             self.check_collectibles()
+            self._check_coin_pickups()
 
         # Level-Abschluss prüfen
         if not paused:
@@ -2016,8 +2631,9 @@ class Level:
         """Zeigt eine Nachricht im gleichen Stil wie der Elara-Dialog an"""
         self.show_interaction_text = True
         self.interaction_text = message
-        # Zeitverzögerte Ausblendung nach 3 Sekunden
-        pygame.time.set_timer(pygame.USEREVENT + 1, 3000)  # Event in 3 Sekunden
+        self._styled_message_active = True  # Verhindert Überschreibung durch check_interaction_zones
+        # Zeitverzögerte Ausblendung nach 8 Sekunden
+        pygame.time.set_timer(pygame.USEREVENT + 1, 8000)  # Event in 8 Sekunden
         
     def check_interaction_zones(self):
         """Überprüft ob der Spieler in der Nähe einer Interaktionszone ist (ohne automatischen Dialog)"""
@@ -2025,7 +2641,9 @@ class Level:
             return
 
         player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
-        self.show_interaction_text = False
+        # Styled message nicht überschreiben (z.B. Dragon Lord besiegt Hinweis)
+        if not getattr(self, '_styled_message_active', False):
+            self.show_interaction_text = False
         self.active_npc_zone = None  # Reset aktiver NPC
         
         # Aktuelle Map ermitteln
@@ -2060,15 +2678,9 @@ class Level:
                             print(f"Prüfe Items - Benötigt: {required_items}, Gesammelt: {collected_items}")
                         zone['last_missing_items'] = set(missing_items)
 
-                    # Bei vollständigen Items: Automatisch abschließen
+                    # Bei vollständigen Items: Bereit zum Abgeben (kein Auto-Teleport)
                     if not missing_items:
-                        print("Alle benötigten Items gefunden!")
-                        if self.dialogue_box and not self.dialogue_box.is_active:
-                            self.dialogue_box.open(zone.get('completion_text', ''))
-                        zone['completed'] = True
-                        print("Starte Level-Abschluss...")
-                        self.trigger_level_completion()
-                        self.active_npc_zone = None  # Kein Interaktions-Hinweis mehr
+                        zone['items_ready'] = True  # NPC wartet auf Gespräch
                 break
             else:
                 # Beim Verlassen der Zone zurücksetzen
@@ -2107,6 +2719,9 @@ class Level:
                 item_name = key.lower()
                 if item_name not in self.quest_items:
                     self.quest_items.append(item_name)
+
+                # 📜 Quest-Fortschritt aktualisieren
+                self.quest_manager.mark_item_collected(item_name)
 
                 # Füge auch der Alchemie/Inventar-Liste hinzu (Kompatibilität)
                 try:
@@ -2186,6 +2801,459 @@ class Level:
                 except Exception:
                     pass
     
+    def _check_enemy_deaths(self):
+        """Prüft ob Gegner gestorben sind und spawnt Coin-Drops + XP."""
+        import random
+        current_enemies = set()
+        for enemy in self.enemy_manager.enemies:
+            enemy_id = id(enemy)
+            current_enemies.add(enemy_id)
+            if enemy_id not in self._alive_enemies_set and getattr(enemy, 'alive_status', True):
+                # Neuer lebender Gegner → merken
+                self._alive_enemies_set.add(enemy_id)
+        
+        # Finde Gegner die gerade gestorben sind (waren alive, jetzt dead oder entfernt)
+        for enemy in self.enemy_manager.enemies:
+            enemy_id = id(enemy)
+            if enemy_id in self._alive_enemies_set and not getattr(enemy, 'alive_status', True):
+                # Gegner ist gerade gestorben → Coins droppen
+                coin_amount = random.randint(1, 3)
+                drop_pos = pygame.math.Vector2(enemy.rect.centerx, enemy.rect.centery)
+                self.dropped_coins.append({
+                    'pos': drop_pos,
+                    'amount': coin_amount,
+                    'spawn_time': pygame.time.get_ticks()
+                })
+                
+                # 🌟 XP vergeben (5-10 pro Gegner)
+                if self.game_logic and self.game_logic.player:
+                    xp_amount = random.randint(5, 10)
+                    leveled_up = self.game_logic.player.gain_xp(xp_amount)
+                    if leveled_up:
+                        self.show_styled_message(f"LEVEL UP! Level {self.game_logic.player.level}!")
+                    if VERBOSE_LOGS:
+                        print(f"🌟 +{xp_amount} XP! ({self.game_logic.player.xp}/{self.game_logic.player.xp_to_next})")
+                
+                # 📊 Score: Kill zählen
+                self.score_tracker.add_kill()
+                
+                # ⚔️ Kill-Counter für Map_Town
+                if self.current_map_index == 2:
+                    self._town_kill_count += 1
+                    if self._town_kill_count == self._town_kills_required:
+                        self.show_styled_message(f"⚔️ {self._town_kills_required} Gegner besiegt! Sprich mit Ritter Konrad.")
+                        print(f"⚔️ Kill-Ziel erreicht: {self._town_kill_count}/{self._town_kills_required}")
+                
+                self._alive_enemies_set.discard(enemy_id)
+                if VERBOSE_LOGS:
+                    print(f"💰 {coin_amount} Münze(n) gedroppt bei ({int(drop_pos.x)}, {int(drop_pos.y)})")
+        
+        # Entfernte Gegner aus dem Tracking entfernen
+        self._alive_enemies_set &= current_enemies
+
+    def _check_coin_pickups(self):
+        """Prüft ob der Spieler gedropte Münzen aufsammelt."""
+        if not self.dropped_coins or not self.game_logic or not self.game_logic.player:
+            return
+        
+        player_pos = pygame.math.Vector2(self.game_logic.player.rect.center)
+        picked_up = 0
+        
+        remaining = []
+        for coin in self.dropped_coins:
+            dist = player_pos.distance_to(coin['pos'])
+            if dist <= self.coin_pickup_radius:
+                # Münzen dem Spieler gutschreiben
+                self.game_logic.player.coins += coin['amount']
+                picked_up += coin['amount']
+            else:
+                remaining.append(coin)
+        
+        if picked_up > 0:
+            self.dropped_coins = remaining
+            self.collection_message = f"💰 +{picked_up} Münze{'n' if picked_up > 1 else ''} aufgesammelt!"
+            self.collection_message_timer = pygame.time.get_ticks() + 2000
+
+    def _start_finale(self):
+        """Startet die Finale-Sequenz: Score → Final Picture → Credits → Hauptmenü."""
+        print("🏆 Finale-Sequenz gestartet!")
+        self.score_tracker.stop()
+        self._score_data = self.score_tracker.calculate()
+        print(f"📊 Score: {self._score_data.final_score} ({self._score_data.grade}) "
+              f"Zeit={ScoreTracker.format_time(self._score_data.total_time)} "
+              f"Kills={self._score_data.total_kills} "
+              f"Schaden={self._score_data.total_damage_taken}")
+        self._finale_active = True
+        self._finale_phase = 'score'
+        self._finale_alpha = 0
+        self._score_display_start = 0
+        self._credits_scroll_y = 0
+        self._credits_start_time = 0
+        
+        # Bild laden
+        try:
+            img_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'assets', 'FinalPicture.jpeg')
+            img_path = os.path.normpath(img_path)
+            self._finale_picture = pygame.image.load(img_path).convert()
+            # Skalieren auf Bildschirmgröße (Aspect Ratio beibehalten)
+            sw, sh = self.screen.get_size()
+            iw, ih = self._finale_picture.get_size()
+            scale = max(sw / iw, sh / ih)
+            new_w, new_h = int(iw * scale), int(ih * scale)
+            self._finale_picture = pygame.transform.smoothscale(self._finale_picture, (new_w, new_h))
+            # Zentrieren
+            crop_x = (new_w - sw) // 2
+            crop_y = (new_h - sh) // 2
+            self._finale_picture = self._finale_picture.subsurface((crop_x, crop_y, sw, sh)).copy()
+            print(f"✅ FinalPicture geladen: {img_path}")
+        except Exception as e:
+            print(f"⚠️ FinalPicture konnte nicht geladen werden: {e}")
+            # Fallback: schwarzer Bildschirm
+            self._finale_picture = pygame.Surface(self.screen.get_size())
+            self._finale_picture.fill((0, 0, 0))
+    
+    def _handle_finale_event(self, event):
+        """Behandelt Input während der Finale-Sequenz."""
+        if not self._finale_active:
+            return False
+        
+        # Tastendruck oder Mausklick
+        if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+            if self._finale_phase == 'score' and self._finale_alpha >= 255:
+                # Score-Screen → Weiter zum Bild
+                self._finale_phase = 'picture'
+                self._finale_alpha = 0
+                print("🖼️ Final Picture gestartet")
+                return True
+            elif self._finale_phase == 'picture' and self._finale_alpha >= 255:
+                # Weiter zu Credits
+                self._finale_phase = 'credits'
+                self._credits_scroll_y = self.screen.get_height()
+                self._credits_start_time = pygame.time.get_ticks()
+                print("📜 Credits gestartet")
+                return True
+            elif self._finale_phase == 'credits':
+                # Credits überspringen → zurück zum Menü
+                self._finale_active = False
+                if hasattr(self, 'main_game') and self.main_game:
+                    self.main_game.return_to_menu()
+                return True
+        return True  # Alle Events konsumieren während Finale
+    
+    def _update_finale(self, dt):
+        """Aktualisiert die Finale-Sequenz."""
+        if not self._finale_active:
+            return
+        
+        if self._finale_phase == 'score':
+            # Score-Screen Fade-In
+            if self._finale_alpha < 255:
+                self._finale_alpha = min(255, self._finale_alpha + 5)
+            if self._score_display_start == 0:
+                self._score_display_start = pygame.time.get_ticks()
+        
+        elif self._finale_phase == 'picture':
+            # Einblendung (Fade-In)
+            if self._finale_alpha < 255:
+                self._finale_alpha = min(255, self._finale_alpha + 3)
+        
+        elif self._finale_phase == 'credits':
+            # Credits scrollen nach oben
+            self._credits_scroll_y -= 1.2  # Scroll-Geschwindigkeit
+            
+            # Credits-Zeilen berechnen für Auto-Ende
+            credit_lines = self._get_credit_lines()
+            total_height = len(credit_lines) * 40 + 200
+            if self._credits_scroll_y < -total_height:
+                # Credits sind fertig → zurück zum Menü
+                self._finale_active = False
+                if hasattr(self, 'main_game') and self.main_game:
+                    self.main_game.return_to_menu()
+    
+    def _get_credit_lines(self):
+        """Gibt die Credits-Zeilen zurück."""
+        return [
+            ("DAS ALCHEMIST SPIEL", 60, (255, 215, 0)),
+            ("", 30, None),
+            ("Du hast den Dragon Lord besiegt!", 36, (255, 255, 255)),
+            ("Die Welt ist gerettet.", 36, (200, 200, 200)),
+            ("", 30, None),
+            ("", 30, None),
+            ("--- CREDITS ---", 48, (255, 215, 0)),
+            ("", 30, None),
+            ("Programmierung", 32, (180, 180, 255)),
+            ("Kirill", 28, (255, 255, 255)),
+            ("", 30, None),
+            ("Game Design", 32, (180, 180, 255)),
+            ("Jonas", 28, (255, 255, 255)),
+            ("", 30, None),
+            ("Spiellogik & Testing", 32, (180, 180, 255)),
+            ("Christian", 28, (255, 255, 255)),
+            ("", 30, None),
+            ("Hardware & Gehaeusebau", 32, (180, 180, 255)),
+            ("Simon", 28, (255, 255, 255)),
+            ("Loeten, Verkabelung, Arduino,", 24, (200, 200, 200)),
+            ("Mainboard & Raspberry Pi", 24, (200, 200, 200)),
+            ("", 30, None),
+            ("Hardware-Assistent", 32, (180, 180, 255)),
+            ("Wassem", 28, (255, 255, 255)),
+            ("", 30, None),
+            ("Grafik & Assets", 32, (180, 180, 255)),
+            ("Beckalof Pack / Demon Pack", 28, (255, 255, 255)),
+            ("Dragon Lord / Wizard Pack", 28, (255, 255, 255)),
+            ("", 30, None),
+            ("Musik & Sound", 32, (180, 180, 255)),
+            ("Kirill", 28, (255, 255, 255)),
+            ("", 30, None),
+            ("", 30, None),
+            ("Danke fuers Spielen!", 44, (255, 215, 0)),
+            ("", 30, None),
+            ("", 30, None),
+            ("2026", 36, (200, 200, 200)),
+        ]
+    
+    def _render_finale(self):
+        """Rendert die Finale-Sequenz (Score, Final Picture oder Credits)."""
+        if not self._finale_active:
+            return
+        
+        sw, sh = self.screen.get_size()
+        
+        if self._finale_phase == 'score':
+            self._render_score_screen(sw, sh)
+        
+        elif self._finale_phase == 'picture':
+            # Schwarzer Hintergrund
+            self.screen.fill((0, 0, 0))
+            
+            # Bild mit Fade-In
+            if self._finale_picture:
+                pic = self._finale_picture.copy()
+                pic.set_alpha(self._finale_alpha)
+                self.screen.blit(pic, (0, 0))
+            
+            # "Drücke eine Taste" Hinweis (erst wenn voll eingeblendet)
+            if self._finale_alpha >= 255:
+                try:
+                    import math
+                    t = pygame.time.get_ticks() / 1000
+                    alpha = int(128 + 127 * math.sin(t * 2))
+                    font = pygame.font.Font(None, 28)
+                    hint = font.render("Drücke eine Taste...", True, (255, 255, 255))
+                    hint.set_alpha(alpha)
+                    hint_rect = hint.get_rect(centerx=sw // 2, bottom=sh - 30)
+                    self.screen.blit(hint, hint_rect)
+                except Exception:
+                    pass
+        
+        elif self._finale_phase == 'credits':
+            # Schwarzer Hintergrund
+            self.screen.fill((0, 0, 0))
+            
+            # Credits scrollen
+            y = self._credits_scroll_y
+            credit_lines = self._get_credit_lines()
+            
+            for text, size, color in credit_lines:
+                if color is None or text == "":
+                    y += 30
+                    continue
+                try:
+                    font = pygame.font.Font(None, size)
+                    surf = font.render(text, True, color)
+                    rect = surf.get_rect(centerx=sw // 2, top=y)
+                    # Nur zeichnen wenn im sichtbaren Bereich
+                    if -50 < rect.bottom and rect.top < sh + 50:
+                        self.screen.blit(surf, rect)
+                    y += size + 12
+                except Exception:
+                    y += size + 12
+            
+            # Hinweis unten
+            try:
+                font_sm = pygame.font.Font(None, 22)
+                skip = font_sm.render("Drücke eine Taste zum Überspringen", True, (120, 120, 120))
+                self.screen.blit(skip, skip.get_rect(centerx=sw // 2, bottom=sh - 10))
+            except Exception:
+                pass
+
+    def _render_score_screen(self, sw: int, sh: int):
+        """Rendert den Score-Screen mit Statistiken und Rang."""
+        import math as _math
+        
+        self.screen.fill((5, 8, 20))
+        
+        sd = self._score_data
+        if not sd:
+            return
+        
+        alpha = min(self._finale_alpha, 255)
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        
+        # ---- Titel ----
+        title_font = pygame.font.Font(None, 64)
+        title = title_font.render("ERGEBNIS", True, (255, 215, 0))
+        overlay.blit(title, title.get_rect(centerx=sw // 2, top=60))
+        
+        # ---- Trennlinie ----
+        pygame.draw.line(overlay, (255, 215, 0, 150),
+                         (sw // 2 - 200, 130), (sw // 2 + 200, 130), 2)
+        
+        # ---- Statistik-Zeilen ----
+        stat_font = pygame.font.Font(None, 36)
+        label_font = pygame.font.Font(None, 30)
+        
+        stats = [
+            ("⏱  Zeit", ScoreTracker.format_time(sd.total_time), sd.time_score, (180, 220, 255)),
+            ("⚔  Besiegte Gegner", str(sd.total_kills), sd.kill_score, (255, 180, 80)),
+            ("🛡  Erhaltener Schaden", str(sd.total_damage_taken), sd.damage_score, (255, 100, 100)),
+        ]
+        
+        y = 170
+        bar_w = 300
+        bar_h = 18
+        bar_x = sw // 2 - bar_w // 2
+        
+        for label, value, sub_score, color in stats:
+            # Label + Wert
+            lbl = stat_font.render(label, True, (220, 220, 230))
+            val = stat_font.render(value, True, color)
+            overlay.blit(lbl, (sw // 2 - 250, y))
+            overlay.blit(val, (sw // 2 + 180, y))
+            y += 40
+            
+            # Fortschrittsbalken
+            ratio = sub_score / 10000.0
+            # Hintergrund
+            pygame.draw.rect(overlay, (30, 35, 50, 200), (bar_x, y, bar_w, bar_h), 0, 6)
+            # Füllung (Farbe je nach Score)
+            if sub_score >= 8000:
+                fill_col = (80, 220, 80)
+            elif sub_score >= 5000:
+                fill_col = (220, 200, 60)
+            elif sub_score >= 3000:
+                fill_col = (220, 140, 40)
+            else:
+                fill_col = (200, 60, 60)
+            fill_w = int(bar_w * ratio)
+            if fill_w > 0:
+                pygame.draw.rect(overlay, fill_col, (bar_x, y, fill_w, bar_h), 0, 6)
+            pygame.draw.rect(overlay, (80, 90, 110), (bar_x, y, bar_w, bar_h), 1, 6)
+            
+            # Punkte rechts neben Balken
+            pts = label_font.render(f"{sub_score}", True, (160, 160, 180))
+            overlay.blit(pts, (bar_x + bar_w + 12, y - 2))
+            y += bar_h + 25
+        
+        # ---- Trennlinie vor Gesamtscore ----
+        pygame.draw.line(overlay, (100, 110, 140, 150),
+                         (sw // 2 - 200, y), (sw // 2 + 200, y), 1)
+        y += 20
+        
+        # ---- Gesamtscore ----
+        score_font = pygame.font.Font(None, 48)
+        score_text = score_font.render(f"Gesamtscore:  {sd.final_score}", True, (255, 255, 255))
+        overlay.blit(score_text, score_text.get_rect(centerx=sw // 2, top=y))
+        y += 60
+        
+        # ---- Rang (groß, mit Glow) ----
+        grade_colors = {
+            'S': (255, 215, 0),    # Gold
+            'A': (100, 255, 100),  # Grün
+            'B': (100, 180, 255),  # Blau
+            'C': (220, 200, 60),   # Gelb
+            'D': (200, 100, 100),  # Rot
+        }
+        grade_names = {
+            'S': 'Meister', 'A': 'Exzellent', 'B': 'Gut',
+            'C': 'Durchschnitt', 'D': 'Anfänger',
+        }
+        gc = grade_colors.get(sd.grade, (255, 255, 255))
+        
+        # Glow-Effekt
+        t = pygame.time.get_ticks() / 1000
+        glow = int(30 + 20 * _math.sin(t * 3))
+        glow_surf = pygame.Surface((200, 120), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow_surf, (gc[0], gc[1], gc[2], glow), (0, 0, 200, 120))
+        overlay.blit(glow_surf, glow_surf.get_rect(centerx=sw // 2, centery=y + 40))
+        
+        grade_font = pygame.font.Font(None, 100)
+        grade_surf = grade_font.render(sd.grade, True, gc)
+        overlay.blit(grade_surf, grade_surf.get_rect(centerx=sw // 2, top=y))
+        y += 100
+        
+        # Rang-Name
+        name_font = pygame.font.Font(None, 32)
+        name_surf = name_font.render(f"Rang: {grade_names.get(sd.grade, '')}", True, gc)
+        overlay.blit(name_surf, name_surf.get_rect(centerx=sw // 2, top=y))
+        
+        # ---- Hinweis ----
+        if self._finale_alpha >= 255:
+            pulse = int(128 + 127 * _math.sin(t * 2))
+            hint_font = pygame.font.Font(None, 26)
+            hint = hint_font.render("Drücke eine Taste...", True, (255, 255, 255))
+            hint.set_alpha(pulse)
+            overlay.blit(hint, hint.get_rect(centerx=sw // 2, bottom=sh - 30))
+        
+        # Overlay mit Fade anwenden
+        overlay.set_alpha(alpha)
+        self.screen.blit(overlay, (0, 0))
+
+    def _draw_dropped_coins(self):
+        """Zeichnet gedropte Münzen in die Welt mit Animation."""
+        if not self.dropped_coins:
+            return
+        
+        import math
+        now = pygame.time.get_ticks()
+        
+        for coin in self.dropped_coins:
+            world_pos = coin['pos']
+            amount = coin['amount']
+            age = now - coin['spawn_time']
+            
+            # Leichtes Auf-und-Ab-Schweben
+            bob = int(3 * math.sin(now / 300 + world_pos.x * 0.1))
+            
+            # Einblend-Animation (erste 300ms)
+            if age < 300:
+                scale = age / 300
+            else:
+                scale = 1.0
+            
+            # Münz-Größe (mehr Münzen = etwas größer)
+            base_size = 10 + amount * 2
+            size = int(base_size * scale)
+            if size < 2:
+                continue
+            
+            rect = pygame.Rect(int(world_pos.x - size), int(world_pos.y - size + bob), size * 2, size * 2)
+            screen_rect = self.camera.apply_rect(rect)
+            cx, cy = screen_rect.centerx, screen_rect.centery
+            r = max(4, screen_rect.width // 2)
+            
+            # Goldener Glow
+            glow_surf = pygame.Surface((r * 4, r * 4), pygame.SRCALPHA)
+            glow_alpha = int(60 + 30 * math.sin(now / 250 + world_pos.y * 0.1))
+            pygame.draw.circle(glow_surf, (255, 200, 50, glow_alpha), (r * 2, r * 2), r * 2)
+            self.screen.blit(glow_surf, (cx - r * 2, cy - r * 2))
+            
+            # Münze (goldener Kreis)
+            pygame.draw.circle(self.screen, (218, 165, 32), (cx, cy), r)  # Dunkles Gold
+            pygame.draw.circle(self.screen, (255, 215, 0), (cx, cy), r - 2)  # Helles Gold
+            pygame.draw.circle(self.screen, (255, 235, 100), (cx, cy), max(1, r // 3))  # Highlight
+            pygame.draw.circle(self.screen, (180, 130, 20), (cx, cy), r, 1)  # Rand
+            
+            # Anzahl anzeigen wenn > 1
+            if amount > 1:
+                try:
+                    font = getattr(self, 'item_name_font', None) or pygame.font.Font(None, 20)
+                    num_surf = font.render(str(amount), True, (255, 255, 220))
+                    num_rect = num_surf.get_rect(center=(cx, cy - r - 8))
+                    self.screen.blit(num_surf, num_rect)
+                except Exception:
+                    pass
+
     def trigger_level_completion(self):
         """Wird aufgerufen wenn ein Level abgeschlossen ist - lädt nächste Map"""
         print("🎉 Level abgeschlossen!")
@@ -2199,12 +3267,10 @@ class Level:
         except Exception as e:
             print(f"⚠️ Fehler beim Aufräumen der Gegner vor Map-Wechsel: {e}")
 
-        # Prüfe ob Meister Brann's Quest abgeschlossen wurde
+        # Prüfe ob die finale Quest abgeschlossen wurde
         is_final_completion = False
-        if self.current_map_index == 1:  # Map_Village.tmx
-            brann_quest = self.interaction_zones.get('brann_dialog', {})
-            if brann_quest.get('completed', False):
-                is_final_completion = True
+        if self.current_map_index == 3:  # Map3Castle.tmx (letzte Map)
+            is_final_completion = True
 
         # Zeige entsprechende Level-Abschluss Nachricht an
         if is_final_completion:
@@ -2259,9 +3325,10 @@ class Level:
             if map_index is not None:
                 self.current_map_index = map_index
             
-            # Wenn wir zu Map_Village wechseln (Level 2), setzen wir alles zurück
-            if "Map_Village.tmx" in map_name:
-                print("🔄 Wechsel zu Level 2 - Setze Spielzustand zurück...")
+            # Bei Map-Wechsel Spielzustand zurücksetzen
+            if "Map_Village.tmx" in map_name or "Map_Town.tmx" in map_name or "Map3Castle.tmx" in map_name:
+                level_num = 4 if "Map3Castle" in map_name else (3 if "Map_Town" in map_name else 2)
+                print(f"🔄 Wechsel zu Level {level_num} - Setze Spielzustand zurück...")
                 
                 # Inventar zurücksetzen
                 if hasattr(self.game_logic, 'inventory'):
@@ -2299,11 +3366,18 @@ class Level:
                 # Level-Status zurücksetzen
                 self.map_completed = False
                 
+                # Coin-Drops zurücksetzen
+                self.dropped_coins = []
+                self._alive_enemy_ids = set()
+                
                 # Konfiguriere Sammelobjekte für diese Map
                 self._configure_collectibles_for_map(map_name)
                 
                 # Spieler-Position für neue Map setzen (nutzt die neue Spawn-Erkennung!)
                 self.spawn_entities_from_map()
+                
+                # Alte Gegner entfernen
+                self.clear_enemies()
                 
                 # Enemies für neue Map laden
                 self.respawn_enemies_only()
@@ -2311,11 +3385,31 @@ class Level:
                 # 🧙 The Great Beckalof spawnen
                 self._spawn_beckalof(map_name)
                 
+                # 🐉 Dragon Lord Boss spawnen (nur auf Map3Castle)
+                player_x = self.game_logic.player.rect.centerx
+                player_y = self.game_logic.player.rect.centery
+                self._spawn_dragon_lord(player_x, player_y)
+                
+                # 🎰 Gambler NPC spawnen
+                self._spawn_gambler(player_x, player_y)
+                
+                # 🏪 Shopkeeper NPC spawnen (nur auf Map3 und Map_Town)
+                self._spawn_shopkeeper(map_name, player_x, player_y)
+                
+                # ⚔️ Soldat NPC spawnen (nur auf Map_Town)
+                self._spawn_soldier(map_name, player_x, player_y)
+                
+                # ⚔️ Ritter-Begleiter spawnen (wenn angeheuert)
+                self._spawn_knight_companion(player_x, player_y)
+                
                 # Kollisionsobjekte neu aufbauen
                 self.setup_collision_objects()
                 
                 # Health-Bars neu einrichten
                 self.setup_health_bars()
+                
+                # Kameragrenzen aktualisieren
+                self.camera.set_map_bounds(self.map_loader.width, self.map_loader.height)
                 
                 # Kamera zentrieren
                 if hasattr(self.game_logic, 'player'):
@@ -2448,9 +3542,38 @@ class Level:
             if enemies_defeated and village_task_completed:
                 print("🎯 Map_Village Abschluss-Bedingungen erfüllt!")
                 self.trigger_level_completion()
+        
+        # Map_Town Abschluss-Bedingungen (Level 3)
+        # → Progression wird über Soldat NPC gesteuert (min. 10 Kills + Dialog)
+        elif current_map == "Map_Town.tmx":
+            pass  # Kein Auto-Complete – Spieler muss mit Ritter Konrad sprechen
+        
+        # Map3Castle Abschluss-Bedingungen (Level 4 - Final)
+        elif current_map == "Map3Castle.tmx":
+            # 1. Alle regulären Enemies besiegt
+            enemies_defeated = len(self.enemy_manager.enemies) == 0
+            
+            # 2. Dragon Lord Boss besiegt
+            dragon_lord_defeated = (
+                self.dragon_lord is not None and not self.dragon_lord.is_alive()
+            )
+            
+            # Wenn Dragon Lord besiegt: Bonus-XP + Finale-Sequenz starten
+            if dragon_lord_defeated and not self._finale_active:
+                # 🌟 Boss-XP (50 XP für Dragon Lord)
+                if self.game_logic and self.game_logic.player:
+                    self.game_logic.player.gain_xp(50)
+                    print("🌟 +50 XP für Dragon Lord Kill!")
+                print("🏆 Dragon Lord besiegt! Starte Finale...")
+                self._start_finale()
 
     def render(self):
         """Hauptrender-Methode für das Level"""
+        # 🏆 Finale-Sequenz überlagert alles
+        if self._finale_active:
+            self._render_finale()
+            return
+        
         if not self.renderer:
             return
         
@@ -2485,8 +3608,34 @@ class Level:
             except Exception as e:
                 print(f"⚠️ Gambler Render-Fehler: {e}")
 
+        # 🏪 Shopkeeper NPC rendern
+        if self.shopkeeper_npc:
+            try:
+                self.shopkeeper_npc.draw(self.screen, self.camera)
+                self.shopkeeper_npc.draw_interaction_prompt(self.screen, self.camera)
+            except Exception as e:
+                print(f"⚠️ Shopkeeper Render-Fehler: {e}")
+
+        # ⚔️ Soldat NPC rendern
+        if self.soldier_npc:
+            try:
+                self.soldier_npc.draw(self.screen, self.camera)
+                self.soldier_npc.draw_interaction_prompt(self.screen, self.camera)
+            except Exception as e:
+                print(f"⚠️ Soldat Render-Fehler: {e}")
+
+        # ⚔️ Ritter-Begleiter rendern
+        if self.knight_companion and self.knight_companion.is_alive():
+            try:
+                self.knight_companion.draw(self.screen, self.camera)
+            except Exception as e:
+                print(f"⚠️ KnightCompanion Render-Fehler: {e}")
+
         # Sammelobjekte über der Map aber unter UI rendern
         self._draw_collectibles()
+
+        # 💰 Gedropte Münzen rendern
+        self._draw_dropped_coins()
 
         # Health-Bars über der Welt rendern
         try:
@@ -2501,26 +3650,42 @@ class Level:
         except Exception:
             pass
 
-        # 💬 Interaktions-Hinweis über dem Spieler anzeigen (wenn NPC in Reichweite)
+        # 💬 Interaktions-Hinweis über dem NPC anzeigen (wenn NPC in Reichweite)
         npc_in_range = (self.beckalof_npc and self.beckalof_npc.can_interact) or self.active_npc_zone
         if npc_in_range and not (self.dialogue_box and self.dialogue_box.is_active):
             try:
-                if hasattr(self.game_logic, 'player') and self.game_logic.player:
-                    player = self.game_logic.player
-                    # Spieler-Position auf dem Bildschirm
-                    screen_x = player.rect.centerx + self.camera.camera_rect.x
-                    screen_y = player.rect.top + self.camera.camera_rect.y
+                # NPC-Weltposition ermitteln
+                npc_world_pos = None
+                
+                if self.active_npc_zone and self.active_npc_zone in self.interaction_zones:
+                    zone = self.interaction_zones[self.active_npc_zone]
+                    npc_world_pos = zone['pos']
+                elif self.beckalof_npc and self.beckalof_npc.can_interact:
+                    npc_world_pos = pygame.math.Vector2(
+                        self.beckalof_npc.rect.centerx,
+                        self.beckalof_npc.rect.top
+                    )
+                
+                if npc_world_pos:
+                    # NPC-Position auf dem Bildschirm (Welt → Screen)
+                    cam = self.camera.camera_rect
+                    screen_x = int((npc_world_pos.x - cam.x) * self.camera.zoom_factor)
+                    screen_y = int((npc_world_pos.y - cam.y) * self.camera.zoom_factor)
                     
                     # Hint-Text
                     hint_text = "[ C ] Sprechen"
                     hint_surf = self.npc_interaction_font.render(hint_text, True, (255, 255, 200))
+                    
+                    # Pulsierende Animation
+                    anim_time = pygame.time.get_ticks()
+                    bob_offset = int(3 * math.sin(anim_time / 400))
                     
                     # Hintergrund
                     padding = 8
                     bg_width = hint_surf.get_width() + padding * 2
                     bg_height = hint_surf.get_height() + padding * 2
                     bg_x = int(screen_x - bg_width // 2)
-                    bg_y = int(screen_y - 35)
+                    bg_y = int(screen_y - 50 + bob_offset)
                     
                     # Halbtransparenter Hintergrund mit Gradient
                     bg_surf = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
@@ -2532,6 +3697,17 @@ class Level:
                     # Rahmen
                     pygame.draw.rect(self.screen, (80, 120, 180), (bg_x, bg_y, bg_width, bg_height), 2)
                     pygame.draw.rect(self.screen, (120, 160, 255), (bg_x + 2, bg_y + 2, bg_width - 4, bg_height - 4), 1)
+                    
+                    # Kleines Dreieck nach unten (Sprechblase)
+                    tri_x = bg_x + bg_width // 2
+                    tri_y = bg_y + bg_height
+                    pygame.draw.polygon(self.screen, (15, 20, 45), [
+                        (tri_x - 6, tri_y),
+                        (tri_x + 6, tri_y),
+                        (tri_x, tri_y + 8)
+                    ])
+                    pygame.draw.line(self.screen, (80, 120, 180), (tri_x - 6, tri_y), (tri_x, tri_y + 8), 1)
+                    pygame.draw.line(self.screen, (80, 120, 180), (tri_x + 6, tri_y), (tri_x, tri_y + 8), 1)
                     
                     # Text
                     text_x = bg_x + padding
@@ -2604,6 +3780,10 @@ class Level:
         if self.blackjack_game and self.blackjack_game.is_active:
             self.blackjack_game.render(self.screen)
 
+        # 🏪 Shop-UI rendern (ganz oben)
+        if self.shop_ui and self.shop_ui.is_active:
+            self.shop_ui.render(self.screen)
+
         # Einfache Meldungsanzeige beim Einsammeln
         if self.collection_message and pygame.time.get_ticks() < self.collection_message_timer:
             try:
@@ -2617,6 +3797,19 @@ class Level:
                 self.screen.blit(text, (bg.x, bg.y))
             except Exception:
                 pass
+
+        # 📜 Missions-Anzeige oben rechts rendern
+        try:
+            # Kill-Counter an Mission-Display übergeben (erst nach Gespräch mit Ritter)
+            if self.current_map_index == 2 and self._soldier_talked:
+                self.mission_display.set_kill_counter(self._town_kill_count, self._town_kills_required)
+            else:
+                self.mission_display.clear_kill_counter()
+            self.mission_display.update(self.quest_manager)
+            self.mission_display.render(self.screen, self.quest_manager)
+        except Exception as e:
+            if VERBOSE_LOGS:
+                print(f"⚠️ Mission-Display Fehler: {e}")
 
         # Countdown-Timer anzeigen wenn aktiv
         if self.countdown_active and self.countdown_timer > 0:

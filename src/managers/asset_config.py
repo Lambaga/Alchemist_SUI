@@ -12,6 +12,9 @@ ASSET_PATHS = {
     'player': config.paths.SPRITES_DIR,
     'demon': config.paths.ASSETS_DIR + '/Demon Pack',
     'fireworm': config.paths.ASSETS_DIR + '/fireWorm',
+    'skeleton': config.paths.ASSETS_DIR + '/Skeleton',
+    'goblin': config.paths.ASSETS_DIR + '/Goblin',
+    'castle_boss': config.paths.ASSETS_DIR + '/Skeleton',  # Boss uses Skeleton sprites (larger)
     'maps': config.paths.MAPS_DIR,
     'sounds': config.paths.SOUNDS_DIR,
 }
@@ -93,7 +96,79 @@ ANIMATION_CONFIGS = {
             'frames': 1,  # Single frame
             'scale_factor': 1.0
         }
-    }
+    },
+
+    'skeleton': {
+        'idle': {
+            'file': 'Attack3.png',
+            'frames': 6,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+        'walk': {
+            'file': 'Attack3.png',
+            'frames': 6,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+        'attack': {
+            'file': 'Attack3.png',
+            'frames': 6,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+    },
+
+    'goblin': {
+        'idle': {
+            'file': 'Attack3.png',
+            'frames': 12,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+        'walk': {
+            'file': 'Attack3.png',
+            'frames': 12,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+        'attack': {
+            'file': 'Attack3.png',
+            'frames': 12,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+    },
+
+    'castle_boss': {
+        'idle': {
+            'file': 'Attack3.png',
+            'frames': 6,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+        'walk': {
+            'file': 'Attack3.png',
+            'frames': 6,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+        'attack': {
+            'file': 'Attack3.png',
+            'frames': 6,
+            'frame_width': 150,
+            'frame_height': 150,
+            'scale_factor': 1.0
+        },
+    },
 }
 
 # Sound-Konfigurationen

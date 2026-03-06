@@ -527,6 +527,8 @@ class Game:
                     elif result == GameState.QUIT:
                         self.running = False
                     elif result == "restart_game":
+                        self.start_new_game()
+                    elif result == "retry_game":
                         self.restart_current_game()
                     # Other state changes are handled by menu_system internally
             

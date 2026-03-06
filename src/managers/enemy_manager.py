@@ -4,6 +4,9 @@
 import pygame
 from entities.demon import Demon
 from entities.fireworm import FireWorm
+from entities.skeleton import Skeleton
+from entities.goblin import Goblin
+from entities.castle_boss import CastleBoss
 import os
 from settings import ASSETS_DIR
 from managers.settings_manager import SettingsManager
@@ -15,6 +18,9 @@ class EnemyManager:
         self.enemies = pygame.sprite.Group()
         self.demon_asset_path = os.path.join(ASSETS_DIR, "Demon Pack")
         self.fireworm_asset_path = os.path.join(ASSETS_DIR, "fireWorm")
+        self.skeleton_asset_path = os.path.join(ASSETS_DIR, "Skeleton")
+        self.goblin_asset_path = os.path.join(ASSETS_DIR, "Goblin")
+        self.castle_boss_asset_path = os.path.join(ASSETS_DIR, "Skeleton")  # Boss uses Skeleton sprites
         self.pathfinder = None
         
         try:
@@ -61,9 +67,51 @@ class EnemyManager:
             pass
         self.enemies.add(fireworm)
         return fireworm
+
+    def add_skeleton(self, x, y, scale=1.0, facing_right=True):
+        """Add a skeleton at specified position"""
+        skeleton = Skeleton(self.skeleton_asset_path, x, y, scale)
+        skeleton.set_facing_direction(facing_right)
+        if hasattr(self, 'obstacle_sprites') and self.obstacle_sprites:
+            if hasattr(skeleton, 'set_obstacle_sprites'):
+                skeleton.set_obstacle_sprites(self.obstacle_sprites)
+        try:
+            self._apply_difficulty(skeleton)
+        except Exception:
+            pass
+        self.enemies.add(skeleton)
+        return skeleton
+
+    def add_goblin(self, x, y, scale=1.0, facing_right=True):
+        """Add a goblin at specified position"""
+        goblin = Goblin(self.goblin_asset_path, x, y, scale)
+        goblin.set_facing_direction(facing_right)
+        if hasattr(self, 'obstacle_sprites') and self.obstacle_sprites:
+            if hasattr(goblin, 'set_obstacle_sprites'):
+                goblin.set_obstacle_sprites(self.obstacle_sprites)
+        try:
+            self._apply_difficulty(goblin)
+        except Exception:
+            pass
+        self.enemies.add(goblin)
+        return goblin
+
+    def add_castle_boss(self, x, y, scale=1.0, facing_right=True):
+        """Add a castle boss at specified position"""
+        boss = CastleBoss(self.castle_boss_asset_path, x, y, scale)
+        boss.set_facing_direction(facing_right)
+        if hasattr(self, 'obstacle_sprites') and self.obstacle_sprites:
+            if hasattr(boss, 'set_obstacle_sprites'):
+                boss.set_obstacle_sprites(self.obstacle_sprites)
+        try:
+            self._apply_difficulty(boss)
+        except Exception:
+            pass
+        self.enemies.add(boss)
+        return boss
         
     def add_enemies_from_map(self, map_loader):
-        """Spawn enemies from Tiled object layer 'Enemy' (name: demon/fireworm). Falls pytmx-Objekte nicht verfügbar sind, XML-Fallback."""
+        """Spawn enemies from Tiled object layers: 'Enemy', 'Skeleton', 'Goblin', 'Boss'. Falls pytmx-Objekte nicht verfügbar sind, XML-Fallback."""
         try:
             from core.settings import VERBOSE_LOGS
         except Exception:
@@ -78,28 +126,39 @@ class EnemyManager:
         enemy_count = 0
         pytmx_found = False
 
-        # 1) Bevorzugt: pytmx – nur ObjectGroup 'Enemy'
+        # Mapping of object group names to spawn methods
+        # Each entry: (group_name_lower, default_spawn_method, name_overrides)
+        group_configs = [
+            ('enemy', '_spawn_enemy_by_name'),
+            ('skeleton', '_spawn_skeleton'),
+            ('goblin', '_spawn_goblin'),
+            ('boss', '_spawn_boss'),
+        ]
+
+        # 1) Bevorzugt: pytmx
         try:
+            from pytmx import TiledObjectGroup
             for layer in map_loader.tmx_data.layers:
-                if getattr(layer, 'name', '') and layer.name.lower() == 'enemy' and hasattr(layer, 'objects'):
-                    for obj in layer.objects:
-                        name = (getattr(obj, 'name', '') or '').lower()
-                        x = float(getattr(obj, 'x', 0) or 0)
-                        y = float(getattr(obj, 'y', 0) or 0)
-                        if name in ('demon', 'enemy', 'monster', 'fireworm'):
-                            if VERBOSE_LOGS:
-                                print(f"✅ PYTMX: {name} @ ({x:.0f},{y:.0f})")
-                            if name == 'fireworm':
-                                self.add_fireworm(x, y, 2.0, True)
-                            else:
-                                self.add_demon(x, y, 2.0, True)
-                            enemy_count += 1
-                            pytmx_found = True
+                layer_name = (getattr(layer, 'name', '') or '').lower()
+                if not isinstance(layer, TiledObjectGroup):
+                    continue
+                
+                for group_name, spawn_method in group_configs:
+                    if layer_name == group_name:
+                        for obj in layer:
+                            x = float(getattr(obj, 'x', 0) or 0)
+                            y = float(getattr(obj, 'y', 0) or 0)
+                            name = (getattr(obj, 'name', '') or '').lower()
+                            
+                            spawned = getattr(self, spawn_method)(name, x, y, VERBOSE_LOGS)
+                            if spawned:
+                                enemy_count += 1
+                                pytmx_found = True
         except Exception as e:
             if VERBOSE_LOGS:
                 print(f"⚠️ PYTMX Spawn-Fehler: {e}")
 
-        # 2) Fallback: Direktes XML für aktuelle Map (nur wenn pytmx nichts fand)
+        # 2) Fallback: Direktes XML (nur wenn pytmx nichts fand)
         if not pytmx_found:
             try:
                 import xml.etree.ElementTree as ET
@@ -112,25 +171,65 @@ class EnemyManager:
                     root = tree.getroot()
                     if root is not None:
                         for objectgroup in root.findall('objectgroup'):
-                            if (objectgroup.get('name') or '').lower() == 'enemy':
-                                for obj in objectgroup.findall('object'):
-                                    name = (obj.get('name', '') or '').lower()
-                                    x = float(obj.get('x', 0) or 0)
-                                    y = float(obj.get('y', 0) or 0)
-                                    if name in ('demon', 'enemy', 'monster', 'fireworm'):
-                                        if VERBOSE_LOGS:
-                                            print(f"✅ XML: {name} @ ({x:.0f},{y:.0f})")
-                                        if name == 'fireworm':
-                                            self.add_fireworm(x, y, 2.0, True)
-                                        else:
-                                            self.add_demon(x, y, 2.0, True)
-                                        enemy_count += 1
+                            group_name_raw = (objectgroup.get('name') or '').lower()
+                            for group_name, spawn_method in group_configs:
+                                if group_name_raw == group_name:
+                                    for obj in objectgroup.findall('object'):
+                                        name = (obj.get('name', '') or '').lower()
+                                        x = float(obj.get('x', 0) or 0)
+                                        y = float(obj.get('y', 0) or 0)
+                                        spawned = getattr(self, spawn_method)(name, x, y, VERBOSE_LOGS)
+                                        if spawned:
+                                            enemy_count += 1
             except Exception as e:
                 if VERBOSE_LOGS:
                     print(f"❌ XML Fallback failed: {e}")
 
         if VERBOSE_LOGS:
             print(f"🎮 ENDE: {enemy_count} Gegner gespawnt (aktuell: {len(self.enemies)})")
+
+    def _spawn_enemy_by_name(self, name, x, y, verbose=False):
+        """Spawn enemy from 'Enemy' group based on object name"""
+        if name in ('demon', 'enemy', 'monster', 'fireworm', 'skeleton', 'goblin', 'boss', ''):
+            if verbose:
+                print(f"✅ Enemy: {name or 'default'} @ ({x:.0f},{y:.0f})")
+            if name == 'fireworm':
+                self.add_fireworm(x, y, 2.0, True)
+            elif name == 'skeleton':
+                self.add_skeleton(x, y, 0.8, True)
+            elif name == 'goblin':
+                self.add_goblin(x, y, 0.8, True)
+            elif name == 'boss':
+                self.add_castle_boss(x, y, 2.0, True)
+            else:
+                self.add_demon(x, y, 2.0, True)
+            return True
+        return False
+
+    def _spawn_skeleton(self, name, x, y, verbose=False):
+        """Spawn skeleton from 'Skeleton' object group"""
+        if verbose:
+            print(f"✅ Skeleton @ ({x:.0f},{y:.0f})")
+        self.add_skeleton(x, y, 0.8, True)
+        return True
+
+    def _spawn_goblin(self, name, x, y, verbose=False):
+        """Spawn goblin from 'Goblin' object group"""
+        if verbose:
+            print(f"✅ Goblin @ ({x:.0f},{y:.0f})")
+        self.add_goblin(x, y, 0.8, True)
+        return True
+
+    def _spawn_boss(self, name, x, y, verbose=False):
+        """Spawn boss from 'Boss' object group (skip DragonLord – handled by Level)."""
+        if name in ('dragonlord', 'dragon_lord', 'dragon lord', 'dragon'):
+            if verbose:
+                print(f"⏭️ DragonLord @ ({x:.0f},{y:.0f}) – übersprungen (Level-Spawner)")
+            return False
+        if verbose:
+            print(f"✅ Castle Boss @ ({x:.0f},{y:.0f})")
+        self.add_castle_boss(x, y, 2.0, True)
+        return True
 
     # --- Difficulty management ---
     def _get_difficulty_multiplier(self) -> float:
@@ -177,12 +276,39 @@ class EnemyManager:
             except Exception:
                 continue
 
-    def update(self, dt, player=None):
-        """Update all enemies with player reference for AI and collision detection"""
+    def update(self, dt, player=None, companions=None):
+        """Update all enemies with player reference for AI and collision detection.
+        
+        If companions are provided (e.g. KnightCompanion), each enemy
+        targets whichever attackable entity is closest.
+        """
+        # Baue Liste der angreifbaren Ziele
+        targets = []
+        if player is not None:
+            targets.append(player)
+        if companions:
+            for c in companions:
+                if hasattr(c, 'is_alive') and c.is_alive():
+                    targets.append(c)
+
         for enemy in self.enemies:
-            # Pass other enemies for collision detection
             other_enemies = [e for e in self.enemies if e != enemy]
-            enemy.update(dt, player, other_enemies)
+
+            # Nächstes Ziel bestimmen
+            chosen_target = player  # Fallback
+            if len(targets) > 1:
+                ecx = enemy.rect.centerx
+                ecy = enemy.rect.centery
+                best_dist = float('inf')
+                for t in targets:
+                    dx = t.rect.centerx - ecx
+                    dy = t.rect.centery - ecy
+                    d = dx * dx + dy * dy  # kein sqrt nötig zum Vergleichen
+                    if d < best_dist:
+                        best_dist = d
+                        chosen_target = t
+
+            enemy.update(dt, chosen_target, other_enemies)
         
     def draw(self, screen, camera):
         """Draw all enemies with camera transformation"""
@@ -199,7 +325,11 @@ class EnemyManager:
         for enemy in self.enemies:
             # Enemy hitbox
             hitbox_transformed = camera.apply_rect(enemy.hitbox)
-            color = (255, 165, 0) if type(enemy).__name__ == "Demon" else (255, 100, 0)  # Orange for demons, red-orange for fireworms
+            color = (255, 165, 0) if type(enemy).__name__ == "Demon" else \
+                   (200, 200, 200) if type(enemy).__name__ == "Skeleton" else \
+                   (0, 200, 0) if type(enemy).__name__ == "Goblin" else \
+                   (180, 0, 180) if type(enemy).__name__ == "CastleBoss" else \
+                   (255, 100, 0)  # Orange for demons, grey skeleton, green goblin, purple boss, red-orange fireworms
             pygame.draw.rect(screen, color, hitbox_transformed, 2)
             
             # Detection range circle

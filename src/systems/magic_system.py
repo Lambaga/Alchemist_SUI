@@ -98,7 +98,7 @@ class MagicProjectile(pygame.sprite.Sprite):
     _FRAMES_CACHE: Dict[str, List[pygame.Surface]] = {}
     
     def __init__(self, start_x: int, start_y: int, target_x: int, target_y: int, 
-                 speed: int = 150, damage: int = 25, element_type: str = "feuer"):  # Langsamere Geschwindigkeit für bessere Sichtbarkeit
+                 speed: int = 300, damage: int = 25, element_type: str = "feuer"):  # Schnellere Projektile
         super().__init__()
         
         self.damage = damage
@@ -219,54 +219,53 @@ class MagicProjectile(pygame.sprite.Sprite):
             self.is_alive = False
     
     def hit_target(self, target, magic_system=None):
-        """Behandle Treffer auf Ziel"""
+        """Behandle Treffer auf Ziel (Schaden skaliert mit Spieler-Level)"""
         if hasattr(target, 'take_damage'):
             class_name = target.__class__.__name__.lower() if hasattr(target, '__class__') else ""
             
+            # self.damage enthält den level-skalierten Basisschaden (z.B. 25 * 1.15 bei Lvl 2)
+            base = self.damage  # Bereits vom Level-Scaling berechnet
+            
             if self.element_type == "feuer":
-                # Feuerball: 50 Schaden gegen Wasserkreaturen, 10 gegen alle anderen
+                # Feuerball: ×2 Schaden gegen Wasserkreaturen, normaler Schaden sonst
                 if ('water' in class_name or 'wasser' in class_name or 
                     'ice' in class_name or 'eis' in class_name):
-                    # Gegen Wasserkreaturen (noch nicht implementiert)
-                    damage = 50
+                    damage = int(base * 2)
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "fire")
                     if _VERBOSE_LOGS:
-                        print(f"🔥 Feuerball trifft Wasserkreatur für {damage} Schaden!")
+                        print(f"🔥 Feuerball trifft Wasserkreatur für {damage} Schaden! (Lvl-Basis: {base})")
                 else:
-                    # Gegen alle anderen (Feuerkreaturen, etc.)
-                    damage = 10
+                    damage = base
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "fire")
                     if _VERBOSE_LOGS:
-                        print(f"🔥 Feuerball trifft für {damage} Schaden!")
+                        print(f"🔥 Feuerball trifft für {damage} Schaden! (Lvl-Basis: {base})")
                     
             elif self.element_type == "wasser":
-                # Wasserkugel: 50 Schaden gegen Feuerkreaturen, 10 gegen alle anderen  
+                # Wasserkugel: ×2 Schaden gegen Feuerkreaturen, normaler Schaden sonst
                 if ('fire' in class_name or 'feuer' in class_name or 
                     'fireworm' in class_name or 'demon' in class_name or 
                     'flame' in class_name or 'lava' in class_name):
-                    # Gegen Feuerkreaturen (FireWorm UND Demon)
-                    damage = 50
+                    damage = int(base * 2)
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "water")
                     if _VERBOSE_LOGS:
-                        print(f"💧 Wasserkugel trifft Feuerkreatur für {damage} Schaden!")
+                        print(f"💧 Wasserkugel trifft Feuerkreatur für {damage} Schaden! (Lvl-Basis: {base})")
                 else:
-                    # Gegen alle anderen neutralen Kreaturen
-                    damage = 10
+                    damage = base
                     target.take_damage(damage)
                     if magic_system:
                         magic_system.add_floating_damage(target, damage, "water")
                     if _VERBOSE_LOGS:
-                        print(f"💧 Wasserkugel trifft für {damage} Schaden!")
+                        print(f"💧 Wasserkugel trifft für {damage} Schaden! (Lvl-Basis: {base})")
                     
             else:
                 # Andere Projektile verwenden Standard-Schaden
-                damage = self.damage
+                damage = base
                 target.take_damage(damage)
                 if magic_system:
                     magic_system.add_floating_damage(target, damage, "normal")
@@ -509,10 +508,28 @@ class MagicSystem:
     
     def _execute_effect(self, effect: MagicEffect, caster, target_pos: Optional[Tuple[int, int]], 
                        enemies: Optional[List[Any]]):
-        """Führt den spezifischen Magie-Effekt aus"""
+        """Führt den spezifischen Magie-Effekt aus (mit Level- + Shop-Scaling)"""
+        
+        # Level-Damage-Multiplikator anwenden
+        damage_mult = getattr(caster, 'get_damage_multiplier', lambda: 1.0)()
+        
+        # Shop-Damage-Bonus: base_attack_damage über dem Standard (30) erhöht auch Magie
+        base_std = 30  # Standard-Basis-Schaden ohne Upgrades
+        base_attack = getattr(caster, 'base_attack_damage', base_std)
+        if base_attack > base_std:
+            # Zusätzlicher Multiplikator basierend auf Shop-Upgrade
+            damage_mult *= (base_attack / base_std)
         
         if effect.effect_type == "projectile":
-            self._cast_projectile(effect, caster, target_pos)
+            # Skalierter Effekt für Projektile
+            scaled_effect = MagicEffect(
+                name=effect.name, description=effect.description,
+                elements=effect.elements, effect_type=effect.effect_type,
+                damage=int(effect.damage * damage_mult),
+                duration=effect.duration, radius=effect.radius,
+                healing=effect.healing, special_effects=effect.special_effects
+            )
+            self._cast_projectile(scaled_effect, caster, target_pos)
         
         elif effect.effect_type == "healing":
             self._cast_healing(effect, caster)
@@ -521,17 +538,30 @@ class MagicSystem:
             self._cast_shield(effect, caster)
         
         elif effect.effect_type == "area_attack":
-            self._cast_area_attack(effect, caster, enemies)
+            # Skalierter Effekt für Area Attack
+            scaled_effect = MagicEffect(
+                name=effect.name, description=effect.description,
+                elements=effect.elements, effect_type=effect.effect_type,
+                damage=int(effect.damage * damage_mult),
+                duration=effect.duration, radius=effect.radius,
+                healing=effect.healing, special_effects=effect.special_effects
+            )
+            self._cast_area_attack(scaled_effect, caster, enemies)
         
         elif effect.effect_type == "invisibility":
             self._cast_invisibility(effect, caster)
     
     def _cast_projectile(self, effect: MagicEffect, caster, target_pos: Optional[Tuple[int, int]]):
         """Erstellt Projektil-Magie"""        
-        # Ignoriere target_pos und nutze nur die Blickrichtung des Spielers
-        if hasattr(caster, 'facing_right'):
-            # Projektil fliegt horizontal in die Blickrichtung
-            offset_x = 500 if caster.facing_right else -500  # Weiter für bessere Flugbahn
+        # Nutze die letzte Bewegungsrichtung des Spielers (unterstützt alle Richtungen)
+        if hasattr(caster, 'last_direction') and caster.last_direction.length() > 0:
+            # Volle 2D-Richtung: hoch, runter, links, rechts, diagonal
+            direction = caster.last_direction.normalize()
+            target_pos = (caster.rect.centerx + int(direction.x * 500),
+                          caster.rect.centery + int(direction.y * 500))
+        elif hasattr(caster, 'facing_right'):
+            # Fallback: nur horizontal
+            offset_x = 500 if caster.facing_right else -500
             target_pos = (caster.rect.centerx + offset_x, caster.rect.centery)
         else:
             # Fallback: nach rechts
@@ -556,10 +586,13 @@ class MagicSystem:
         self.projectiles.add(projectile)
     
     def _cast_healing(self, effect: MagicEffect, caster):
-        """Führt Heilung aus"""
+        """Führt Heilung aus (+ Level-Bonus)"""
         if hasattr(caster, 'current_health') and hasattr(caster, 'max_health'):
             old_health = caster.current_health
-            caster.current_health = min(caster.max_health, caster.current_health + effect.healing)
+            # Level-Bonus: +5 HP Heilung pro Level
+            heal_bonus = getattr(caster, 'get_heal_bonus', lambda: 0)()
+            total_healing = effect.healing + heal_bonus
+            caster.current_health = min(caster.max_health, caster.current_health + total_healing)
             healed = caster.current_health - old_health
             
             # Floating Damage für Heilung hinzufügen (positiver Wert)
@@ -685,15 +718,22 @@ class MagicSystem:
         self.floating_damages.append(floating_damage)
     
     def _cast_invisibility(self, effect: MagicEffect, caster):
-        """Aktiviert Unsichtbarkeit"""
+        """Aktiviert Unsichtbarkeit (+ Level-Speed-Bonus)"""
         current_time = pygame.time.get_ticks()
+        
+        # Level-Bonus: +5% Speed pro Level während Unsichtbarkeit
+        speed_bonus = getattr(caster, 'get_invis_speed_bonus', lambda: 0)()
+        if speed_bonus > 0 and hasattr(caster, 'base_speed'):
+            caster.speed = int(caster.base_speed * (1 + speed_bonus))
+        
         self.active_effects["invisibility"] = {
             "start_time": current_time,
             "duration": effect.duration,
-            "target": caster
+            "target": caster,
+            "speed_bonus_applied": speed_bonus > 0
         }
         if _VERBOSE_LOGS:
-            print(f"👻 Unsichtbarkeit aktiviert für {effect.duration/1000}s!")
+            print(f"👻 Unsichtbarkeit aktiviert für {effect.duration/1000}s! Speed-Bonus: +{int(speed_bonus*100)}%")
     
     def update(self, dt: float = 1.0/60.0, enemies: Optional[List[Any]] = None):
         """Update das Magie-System"""
@@ -722,6 +762,15 @@ class MagicSystem:
         
         # Entferne abgelaufene Effekte
         for effect_name in expired_effects:
+            # Speed-Bonus zurücksetzen wenn Unsichtbarkeit endet
+            if effect_name == "invisibility":
+                effect_data = self.active_effects[effect_name]
+                target = effect_data.get("target")
+                if target and effect_data.get("speed_bonus_applied", False):
+                    if hasattr(target, 'base_speed'):
+                        target.speed = target.base_speed
+                        if _VERBOSE_LOGS:
+                            print(f"👻 Unsichtbarkeit endet - Speed zurückgesetzt auf {target.base_speed}")
             del self.active_effects[effect_name]
     
     def is_effect_active(self, effect_name: str) -> bool:

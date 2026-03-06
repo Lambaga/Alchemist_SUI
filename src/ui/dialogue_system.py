@@ -55,12 +55,44 @@ class DialogueBox:
         self.open_time: int = 0  # Für Animationen
         self.on_close = None  # Callback nach Dialog-Ende
 
+        # Choice / Entscheidungs-System
+        self._choices: List[str] = []            # Auswahl-Optionen (leer = kein Auswahlmodus)
+        self._selected_choice: int = 0           # Aktuell markierte Option
+        self._on_choice = None                   # Callback(index) bei Auswahl
+        self._choice_font = self._font_manager.get_font(22)
+        self._choice_color = (220, 220, 230)     # Normal
+        self._choice_highlight = (255, 220, 80)  # Ausgewählt (Gold)
+        self._choice_arrow_color = (255, 200, 100)
+
     def open(self, text: str, speaker: Optional[str] = None, wrap_at: Optional[int] = None, on_close=None):
         self.pages = self._paginate(text, speaker, wrap_at)
         self.page_index = 0
         self.is_active = True
         self.open_time = pygame.time.get_ticks()
         self.on_close = on_close
+        # Reset choice state
+        self._choices = []
+        self._selected_choice = 0
+        self._on_choice = None
+
+    def open_with_choices(self, text: str, choices: List[str], on_choice=None,
+                          speaker: Optional[str] = None, wrap_at: Optional[int] = None):
+        """Öffnet einen Dialog mit Auswahl-Optionen am Ende.
+        
+        Args:
+            text: Der Dialog-Text.
+            choices: Liste der Auswahl-Optionen (z.B. ['Ja, weiter!', 'Warte noch...'])
+            on_choice: Callback(index) – wird mit dem Index der gewählten Option aufgerufen.
+            speaker: Optionaler Sprecher-Name.
+        """
+        self.pages = self._paginate(text, speaker, wrap_at)
+        self.page_index = 0
+        self.is_active = True
+        self.open_time = pygame.time.get_ticks()
+        self.on_close = None
+        self._choices = list(choices)
+        self._selected_choice = 0
+        self._on_choice = on_choice
 
     def close(self):
         callback = self.on_close
@@ -68,6 +100,9 @@ class DialogueBox:
         self.pages = []
         self.page_index = 0
         self.on_close = None
+        self._choices = []
+        self._selected_choice = 0
+        self._on_choice = None
         # Callback nach dem Reset aufrufen
         if callback:
             callback()
@@ -78,7 +113,20 @@ class DialogueBox:
         if self.page_index + 1 < len(self.pages):
             self.page_index += 1
         else:
-            self.close()
+            # Letzte Seite: wenn Choices aktiv, Auswahl bestätigen
+            if self._choices and self._on_choice:
+                choice_idx = self._selected_choice
+                callback = self._on_choice
+                self.is_active = False
+                self.pages = []
+                self.page_index = 0
+                self.on_close = None
+                self._choices = []
+                self._selected_choice = 0
+                self._on_choice = None
+                callback(choice_idx)
+            else:
+                self.close()
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Returns True if the event was consumed by the dialogue."""
@@ -89,7 +137,16 @@ class DialogueBox:
         if pygame.time.get_ticks() - self.open_time < 300:
             return True  # Event konsumieren aber nicht weiterleiten
 
+        # Auswahl-Navigation (nur auf letzter Seite mit Choices)
+        is_choice_page = (self._choices and self.page_index + 1 >= len(self.pages))
+
         if event.type == pygame.KEYDOWN:
+            if is_choice_page and event.key in (pygame.K_UP, pygame.K_w):
+                self._selected_choice = (self._selected_choice - 1) % len(self._choices)
+                return True
+            if is_choice_page and event.key in (pygame.K_DOWN, pygame.K_s):
+                self._selected_choice = (self._selected_choice + 1) % len(self._choices)
+                return True
             if event.key in (pygame.K_c, pygame.K_SPACE, pygame.K_RETURN):
                 self.advance()
                 return True
@@ -97,6 +154,15 @@ class DialogueBox:
             if event.button == 0:  # A / Bottom button
                 self.advance()
                 return True
+        elif event.type == pygame.JOYHATMOTION:
+            if is_choice_page:
+                _, hat_y = event.value
+                if hat_y == 1:  # D-Pad up
+                    self._selected_choice = (self._selected_choice - 1) % len(self._choices)
+                    return True
+                elif hat_y == -1:  # D-Pad down
+                    self._selected_choice = (self._selected_choice + 1) % len(self._choices)
+                    return True
         return False
 
     def render(self):
@@ -152,8 +218,13 @@ class DialogueBox:
             self.screen.blit(txt, (content_x, y))
             y += txt.get_height() + 3
 
-        # === BLINKENDER WEITER-HINWEIS ===
-        self._draw_hint(dialog_x, dialog_y, dialog_w, dialog_h, anim_time)
+        # === AUSWAHL-OPTIONEN (auf letzter Seite) ===
+        is_choice_page = (self._choices and self.page_index + 1 >= len(self.pages))
+        if is_choice_page:
+            self._draw_choices(dialog_x, dialog_y, dialog_w, dialog_h, y, anim_time)
+        else:
+            # === BLINKENDER WEITER-HINWEIS ===
+            self._draw_hint(dialog_x, dialog_y, dialog_w, dialog_h, anim_time)
         
         # === SEITEN-ANZEIGE ===
         self._draw_page_counter(dialog_x, dialog_y, dialog_h)
@@ -232,6 +303,44 @@ class DialogueBox:
             (deco_x + 6, deco_y - 4),
             (deco_x + 6, deco_y + 4)
         ])
+
+    def _draw_choices(self, dialog_x: int, dialog_y: int, dialog_w: int, dialog_h: int,
+                      start_y: int, anim_time: int):
+        """Zeichnet die Auswahl-Optionen."""
+        if not self._choices:
+            return
+
+        cx = dialog_x + self.padding + 20
+        cy = start_y + 6
+
+        for i, choice_text in enumerate(self._choices):
+            is_selected = (i == self._selected_choice)
+
+            # Pfeil-Indikator für ausgewählte Option
+            if is_selected:
+                # Pulsierender Pfeil ►
+                arrow_pulse = int(4 * math.sin(anim_time / 200))
+                arrow_x = cx - 16 + arrow_pulse
+                arrow_color = self._choice_arrow_color
+                pygame.draw.polygon(self.screen, arrow_color, [
+                    (arrow_x, cy + 4),
+                    (arrow_x + 8, cy + 10),
+                    (arrow_x, cy + 16)
+                ])
+                color = self._choice_highlight
+            else:
+                color = self._choice_color
+
+            txt_surf = self._choice_font.render(choice_text, True, color)
+            self.screen.blit(txt_surf, (cx, cy))
+
+            # Unterstreichen wenn ausgewählt
+            if is_selected:
+                underline_y = cy + txt_surf.get_height() + 1
+                pygame.draw.line(self.screen, (*self._choice_highlight, 120),
+                               (cx, underline_y), (cx + txt_surf.get_width(), underline_y), 1)
+
+            cy += txt_surf.get_height() + 8
 
     def _draw_hint(self, dialog_x: int, dialog_y: int, dialog_w: int, dialog_h: int, anim_time: int):
         """Zeichnet den blinkenden Weiter-Hinweis."""
