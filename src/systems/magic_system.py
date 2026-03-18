@@ -491,8 +491,15 @@ class MagicSystem:
         
         effect = self.magic_effects[element_key]
         
+        # Spellspezifische Mana-Kosten (Unsichtbarkeit und Schild sind teuer)
+        spell_mana_cost = MANA_SPELL_COST
+        if effect.effect_type == "invisibility":
+            spell_mana_cost = 60  # Unsichtbarkeit kostet 60% des Max-Mana
+        elif effect.effect_type == "shield":
+            spell_mana_cost = 50  # Schild kostet 50% des Max-Mana
+        
         # Mana-Kosten prüfen
-        if hasattr(caster, 'spend_mana') and not caster.spend_mana(MANA_SPELL_COST):
+        if hasattr(caster, 'spend_mana') and not caster.spend_mana(spell_mana_cost):
             # Optionales Feedback für nicht genug Mana
             if _VERBOSE_LOGS:
                 print("⚠️ Nicht genug Mana!")

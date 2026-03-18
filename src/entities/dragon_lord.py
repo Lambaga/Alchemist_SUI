@@ -13,13 +13,13 @@ from typing import Optional, List, Tuple
 class DragonLord(pygame.sprite.Sprite):
     """Dragon Lord Boss mit verschiedenen Animationen."""
     
-    # Basis-Stats
-    MAX_HEALTH = 20
-    ATTACK_DAMAGE = 35
+    # Basis-Stats für Endboss
+    MAX_HEALTH = 1000 # Viel mehr Leben für Endboss
+    ATTACK_DAMAGE = 50  # Stärkere Angriffe
     ATTACK_RANGE = 100  # Pixel
-    ATTACK_COOLDOWN = 1.5  # Sekunden
-    AGGRO_RANGE = 150  # Pixel - Reichweite für Verfolgung nach Aggro
-    MOVE_SPEED = 60  # Pixel pro Sekunde
+    ATTACK_COOLDOWN = 1.2  # Schnellere Angriffe
+    AGGRO_RANGE = 200  # Pixel - Reichweite für Verfolgung nach Aggro
+    MOVE_SPEED = 120  # Schneller - aggressive Bewegung
     
     def __init__(self, x: int, y: int):
         pygame.sprite.Sprite.__init__(self)
@@ -314,11 +314,48 @@ class DragonLord(pygame.sprite.Sprite):
             self.rect.centerx = old_centerx
     
     def render(self, screen: pygame.Surface, camera):
-        """Zeichnet den Dragon Lord."""
+        """Zeichnet den Dragon Lord mit Health-Balken."""
         # Nur zeichnen wenn sichtbar und nicht tot
         if self.image and not self.death_animation_complete and self.visible:
             screen_pos = camera.apply(self)
             screen.blit(self.image, screen_pos)
+            
+            # Health-Balken über dem Kopf zeichnen
+            if self.is_aggro or self.current_health < self.max_health:
+                # Balken-Größe
+                bar_width = 80
+                bar_height = 8
+                bar_x = int(screen_pos.centerx - bar_width // 2)
+                bar_y = int(screen_pos.top - 20)
+                
+                # Hintergrund (dunkelrot)
+                pygame.draw.rect(screen, (100, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+                
+                # Health-Füllstand (grün -> rot gradient)
+                health_percentage = self.current_health / self.max_health
+                fill_width = int(bar_width * health_percentage)
+                
+                # Farbe basierend auf Health (grün bei viel, rot bei wenig)
+                if health_percentage > 0.5:
+                    color = (0, 255, 0)  # Grün
+                elif health_percentage > 0.25:
+                    color = (255, 200, 0)  # Orange
+                else:
+                    color = (255, 0, 0)  # Rot
+                
+                pygame.draw.rect(screen, color, (bar_x, bar_y, fill_width, bar_height))
+                
+                # Rahmen
+                pygame.draw.rect(screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), 2)
+                
+                # HP-Text
+                try:
+                    font = pygame.font.Font(None, 16)
+                    hp_text = font.render(f"{int(self.current_health)}/{int(self.max_health)}", True, (255, 255, 255))
+                    hp_rect = hp_text.get_rect(center=(bar_x + bar_width // 2, bar_y - 12))
+                    screen.blit(hp_text, hp_rect)
+                except:
+                    pass
     
     def hide(self):
         """Macht den Dragon Lord unsichtbar."""
