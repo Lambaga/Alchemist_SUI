@@ -2,7 +2,7 @@
 """
 Shop UI – Vollbild-Overlay zum Kaufen von Upgrades.
 
-Gesteuert per ↑/↓ Navigation, I/Enter zum Kaufen, Escape zum Schließen.
+Gesteuert per ↑/↓ Navigation, C/Enter zum Kaufen, Escape zum Schließen.
 Pixel-Art-Stil passend zum restlichen UI.
 """
 
@@ -91,7 +91,7 @@ class ShopUI:
             upgrades = self._shop_manager.get_upgrade_defs() if self._shop_manager else []
             count = len(upgrades)
 
-            if event.key in (pygame.K_ESCAPE, pygame.K_q):
+            if event.key in (pygame.K_i, pygame.K_q):
                 self.close()
                 return True
             elif event.key in (pygame.K_UP, pygame.K_w):
@@ -100,7 +100,7 @@ class ShopUI:
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 self._selected_index = (self._selected_index + 1) % count if count else 0
                 return True
-            elif event.key in (pygame.K_i, pygame.K_RETURN, pygame.K_SPACE):
+            elif event.key in (pygame.K_z, pygame.K_RETURN, pygame.K_SPACE):
                 self._try_buy()
                 return True
 
@@ -271,7 +271,7 @@ class ShopUI:
 
         # ---- Hinweis-Zeile ----
         hints_y = py + panel_h - self.PADDING - 18
-        hint_text = "↑↓ Auswahl  ·  C/Enter Kaufen  ·  Esc Schließen"
+        hint_text = "↑↓ Auswahl  ·  1 Kaufen  ·  i Schließen"
         hint_surf = self._font_hint.render(hint_text, True, self.DESC_COLOR)
         hint_rect = hint_surf.get_rect(center=(px + panel_w // 2, hints_y))
         surface.blit(hint_surf, hint_rect)

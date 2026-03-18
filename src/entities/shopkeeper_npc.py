@@ -409,7 +409,7 @@ class ShopkeeperNPC(pygame.sprite.Sprite):
 
         try:
             font = pygame.font.Font(None, 20)
-            text = font.render("[ C ] Shop", True, (255, 220, 100))
+            text = font.render("[ i ] Shop", True, (255, 220, 100))
             text_rect = text.get_rect(center=(prompt_x, prompt_y))
 
             bg_rect = text_rect.inflate(10, 6)

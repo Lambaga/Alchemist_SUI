@@ -388,11 +388,11 @@ class BlackjackGame:
                     
             elif self.state == BlackjackState.PLAYER_TURN:
                 # 1 = Karte nehmen (Wasser)
-                if event.key in [pygame.K_1, pygame.K_KP1]:
+                if event.key in [pygame.K_z, pygame.K_KP1]:
                     self.player_hit()
                     return True
                 # 2 = Stehen bleiben (Feuer)
-                elif event.key in [pygame.K_2, pygame.K_KP2]:
+                elif event.key in [pygame.K_u, pygame.K_KP2]:
                     self.player_stand()
                     return True
                 # Blockiere alle anderen Tasten während Spieler-Zug
@@ -553,7 +553,7 @@ class BlackjackGame:
         self._draw_button(screen, no_rect, "Nein, danke", self.selected_option == 1)
         
         # Steuerungshinweis
-        hint = self.font_small.render("Pfeile Auswaehlen  -  C Bestaetigen", True, (150, 150, 150))
+        hint = self.font_small.render("Joystick Auswaehlen - i Bestaetigen", True, (150, 150, 150))
         screen.blit(hint, (center_x - hint.get_width() // 2, table_rect.bottom - 40))
         
         if not can_play:
@@ -645,7 +645,7 @@ class BlackjackGame:
             close_rect = pygame.Rect(center_x - 80, result_rect.bottom + 10, 160, 35)
             pygame.draw.rect(screen, (100, 70, 40, 220), close_rect, border_radius=8)
             pygame.draw.rect(screen, (180, 140, 80), close_rect, 2, border_radius=8)
-            close_text = self.font_medium.render("3  Schließen", True, (220, 190, 140))
+            close_text = self.font_medium.render("i  Schließen", True, (220, 190, 140))
             screen.blit(close_text, (close_rect.centerx - close_text.get_width() // 2, close_rect.y + 5))
     
     def _render_hand(self, screen: pygame.Surface, hand: Hand, x: int, y: int):
