@@ -172,9 +172,9 @@ class UniversalInputSystem:
                 'clear_magic': pygame.K_x,
                 
                 # New Action System mappings
-                'magic_fire': [pygame.K_2, pygame.K_z],      # 2 oder Z = Fire
-                'magic_water': [pygame.K_1, pygame.K_t],     # 1 oder T = Water  
-                'magic_stone': [pygame.K_3, pygame.K_u],     # 3 oder U = Stone
+                'magic_fire': [pygame.K_2, pygame.K_u],      # 2 oder U = Fire
+                'magic_water': [pygame.K_1, pygame.K_z],     # 1 oder Z = Water  
+                'magic_stone': [pygame.K_3, pygame.K_t],     # 3 oder T = Stone
                 'attack': [pygame.K_SPACE, pygame.K_i],      # Leertaste oder I
                 'toggle_debug': pygame.K_F1,
                 'toggle_fps': pygame.K_F3
@@ -471,7 +471,7 @@ class UniversalInputSystem:
         print("   Reset: R")
         print("   Musik: M")
         print("   Pause: ESC")
-        print("   Magie: 1=Wasser, 2=Feuer, 3=Stein")
+        print("   Magie: 1=Wasser (Z), 2=Feuer (U), 3=Stein (T)")
         
         if self.active_joystick:
             print(f"\n🎮 GAMEPAD ({self.active_joystick.get_name()}):")

@@ -338,10 +338,11 @@ class InputConfig:
     }
     
     # Element mixing keys (for magic system integration)
+    # Zusätzliches Hotkeys: Z = Water, U = Fire, T = Stone
     ELEMENT_KEYS = {
-        'water': pygame.K_1,   # 1 = Water
-        'fire': pygame.K_2,    # 2 = Fire  
-        'stone': pygame.K_3    # 3 = Stone
+        'water': pygame.K_1,   # 1 = Water (Z alternativ)
+        'fire': pygame.K_2,    # 2 = Fire (U alternativ)
+        'stone': pygame.K_3    # 3 = Stone (T alternativ)
     }
     
     # Legacy spell hotkeys (kept for compatibility)
@@ -380,19 +381,19 @@ class InputConfig:
         
         # Magic System - KORREKTE ZUORDNUNG: 1=Water, 2=Fire, 3=Stone
         'magic_fire': {
-            'keyboard': [pygame.K_2],           # Taste 2
-            'gamepad': {'button': 5},           # R1/RB Button
-            'hardware': 'FIRE'                  # Hardware Button "FIRE"
+            'keyboard': [pygame.K_2, pygame.K_u],  # Taste 2 oder U
+            'gamepad': {'button': 5},               # R1/RB Button
+            'hardware': 'FIRE'                      # Hardware Button "FIRE"
         },
         'magic_water': {
-            'keyboard': [pygame.K_1],           # Taste 1  
-            'gamepad': {'button': 4},           # L1/LB Button
-            'hardware': 'WATER'                 # Hardware Button "WATER"
+            'keyboard': [pygame.K_1, pygame.K_z],  # Taste 1 oder Z
+            'gamepad': {'button': 4},               # L1/LB Button
+            'hardware': 'WATER'                     # Hardware Button "WATER"
         },
         'magic_stone': {
-            'keyboard': [pygame.K_3],           # Taste 3
-            'gamepad': {'button': 6},           # Back/Select Button
-            'hardware': 'STONE'                 # Hardware Button "STONE"
+            'keyboard': [pygame.K_3, pygame.K_t],  # Taste 3 oder T
+            'gamepad': {'button': 6},               # Back/Select Button
+            'hardware': 'STONE'                     # Hardware Button "STONE"
         },
         'cast_magic': {
             'keyboard': [pygame.K_c, pygame.K_SPACE],  # C oder Space

@@ -2485,14 +2485,6 @@ class Level:
                 print(f"Koordinatenanzeige: {'An' if self.show_coordinates else 'Aus'}")
             
             # 🔧 DEBUG: U-Taste zum Überspringen der aktuellen Map
-            elif event.key == pygame.K_u:
-                if self.current_map_index < len(self.map_progression) - 1:
-                    next_index = self.current_map_index + 1
-                    next_map = self.map_progression[next_index]
-                    print(f"⏭️ DEBUG: Überspringe zu Map {next_index}: {next_map}")
-                    self.load_next_map(next_map, next_index)
-                else:
-                    print("⏭️ DEBUG: Bereits auf der letzten Map!")
 
     def toggle_health_bars(self):
         """Schaltet Health-Bars ein/aus"""
