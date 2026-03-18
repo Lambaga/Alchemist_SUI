@@ -379,7 +379,7 @@ class GamblerNPC(pygame.sprite.Sprite):
             return
         screen_pos = camera.apply(self)
         prompt_x = screen_pos.centerx
-        prompt_y = screen_pos.top - 25
+        prompt_y = screen_pos.top +20
 
         try:
             font = pygame.font.Font(None, 20)

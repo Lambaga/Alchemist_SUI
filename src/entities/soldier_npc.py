@@ -175,7 +175,7 @@ class SoldierNPC(pygame.sprite.Sprite):
             return
         screen_pos = camera.apply(self)
         px = screen_pos.centerx
-        py = screen_pos.top - 25
+        py = screen_pos.top + 40
 
         try:
             font = pygame.font.Font(None, 20)

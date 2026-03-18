@@ -1057,7 +1057,9 @@ class Level:
                 'is_checkpoint': True,  # Markiere als Checkpoint
                 'required_items': ['stahlerz', 'holzstab'],  # Benötigte Gegenstände
                 'completion_text': 'Du hast alle Gegenstände gefunden und die Brücke repariert!',
-                'completed': False
+                'completed': False,
+                'map_specific': True,  # Kennzeichnet, dass dieser NPC nur in Map3.tmx erscheint (Level 1)
+                'allowed_map': 'Map3.tmx'
             },
             'brann_dialog': {
                 'pos': pygame.math.Vector2(902, 603),
@@ -3747,20 +3749,15 @@ class Level:
             pass
 
         # 💬 Interaktions-Hinweis über dem NPC anzeigen (wenn NPC in Reichweite)
-        npc_in_range = (self.beckalof_npc and self.beckalof_npc.can_interact) or self.active_npc_zone
-        if npc_in_range and not (self.dialogue_box and self.dialogue_box.is_active):
+        # Hinweis: Beckalof zeichnet seinen eigenen Hinweis in BeckalofNPC.render(), nicht hier!
+        if self.active_npc_zone and not (self.dialogue_box and self.dialogue_box.is_active):
             try:
-                # NPC-Weltposition ermitteln
+                # NPC-Weltposition ermitteln (nur aus interaction_zones, nicht aus Beckalof!)
                 npc_world_pos = None
                 
                 if self.active_npc_zone and self.active_npc_zone in self.interaction_zones:
                     zone = self.interaction_zones[self.active_npc_zone]
                     npc_world_pos = zone['pos']
-                elif self.beckalof_npc and self.beckalof_npc.can_interact:
-                    npc_world_pos = pygame.math.Vector2(
-                        self.beckalof_npc.rect.centerx,
-                        self.beckalof_npc.rect.top
-                    )
                 
                 if npc_world_pos:
                     # NPC-Position auf dem Bildschirm (Welt → Screen)
@@ -3780,8 +3777,14 @@ class Level:
                     padding = 8
                     bg_width = hint_surf.get_width() + padding * 2
                     bg_height = hint_surf.get_height() + padding * 2
-                    bg_x = int(screen_x - bg_width // 2)
-                    bg_y = int(screen_y - 50 + bob_offset)
+                    
+                    # Unterschiedliche Positionen je nach NPC
+                    if self.active_npc_zone == 'brann_dialog':
+                        bg_x = int(screen_x - bg_width // 2 + 40)# Brann: +30 nach rechts
+                        bg_y = int(screen_y - 25 + bob_offset)  # Brann: spezielle Y-Position
+                    else:
+                        bg_x = int(screen_x - bg_width // 2)  # Normal zentriert
+                        bg_y = int(screen_y - 60 + bob_offset)  # Andere (Elara, etc)
                     
                     # Halbtransparenter Hintergrund mit Gradient
                     bg_surf = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
