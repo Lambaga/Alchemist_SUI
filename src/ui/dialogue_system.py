@@ -6,7 +6,7 @@ Features:
 - Blocks gameplay input while active (Level controls this by querying `is_active`).
 - Multi-line text with automatic wrapping to screen width.
 - Paging support with indicator (» Weiter: C/Space/Enter).
-- Advance via keyboard: C, SPACE, ENTER; gamepad: A; hardware: CAST.
+- Advance via keyboard: I, SPACE, ENTER; gamepad: A; hardware: CAST.
 - Modern pixel-art styled dialogue box with decorative elements.
 """
 
@@ -147,7 +147,7 @@ class DialogueBox:
             if is_choice_page and event.key in (pygame.K_DOWN, pygame.K_s):
                 self._selected_choice = (self._selected_choice + 1) % len(self._choices)
                 return True
-            if event.key in (pygame.K_c, pygame.K_SPACE, pygame.K_RETURN):
+            if event.key in (pygame.K_i, pygame.K_SPACE, pygame.K_RETURN):
                 self.advance()
                 return True
         elif event.type == pygame.JOYBUTTONDOWN:

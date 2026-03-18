@@ -315,7 +315,7 @@ class SpellBar:
                 # Trigger selection animation
                 self.slot_animations[spell_index] = 0.5  # Softer flash for selection
                 
-                print("Selected spell: {} (slot {}) - Press C to cast!".format(spell["display_name"], spell_index + 1))
+                print("Selected spell: {} (slot {}) - Press I to cast!".format(spell["display_name"], spell_index + 1))
                 return True
             else:
                 # Spell on cooldown - show remaining time
@@ -328,7 +328,7 @@ class SpellBar:
     def handle_spell_cast(self, spell_id: str) -> bool:
         """
         Handle actual spell casting - starts cooldown
-        This should be called when the spell is actually cast (e.g., when pressing C)
+        This should be called when the spell is actually cast (e.g., when pressing I)
         
         Args:
             spell_id: ID of the spell being cast

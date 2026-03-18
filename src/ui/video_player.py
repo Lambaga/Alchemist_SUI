@@ -206,7 +206,7 @@ class VideoPlayer:
         if self.skip_enabled:
             try:
                 font = pygame.font.Font(None, 22)
-                hint = font.render("Druecke C, SPACE oder ESC zum Ueberspringen", True, (150, 150, 150))
+                hint = font.render("Druecke I, SPACE oder ESC zum Ueberspringen", True, (150, 150, 150))
                 hint_rect = hint.get_rect()
                 hint_rect.midbottom = (screen_w // 2, screen_h - 15)
                 screen.blit(hint, hint_rect)
@@ -226,9 +226,9 @@ class VideoPlayer:
         if not self.is_playing:
             return False
         
-        # Skip mit ESC, Space, Enter oder C
+        # Skip mit ESC, Space, Enter oder I
         if event.type == pygame.KEYDOWN:
-            if self.skip_enabled and event.key in (pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_RETURN, pygame.K_c):
+            if self.skip_enabled and event.key in (pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_RETURN, pygame.K_i):
                 self.stop()
                 return True
         

@@ -268,7 +268,7 @@ class BeckalofNPC(pygame.sprite.Sprite):
     
     def _render_interaction_hint(self, screen: pygame.Surface, screen_pos: pygame.Rect):
         """Zeichnet den 'C drücken' Hinweis über Beckalof."""
-        hint_text = "[ C ] Sprechen"
+        hint_text = "[ I ] Sprechen"
         hint_surf = self._interaction_font.render(hint_text, True, (255, 255, 200))
         
         # Hintergrund für bessere Lesbarkeit

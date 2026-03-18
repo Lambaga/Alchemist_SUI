@@ -168,7 +168,7 @@ class UniversalInputSystem:
                 'reset': pygame.K_r,
                 'music_toggle': pygame.K_m,
                 'pause': pygame.K_ESCAPE,
-                'cast_magic': pygame.K_c,
+                'cast_magic': pygame.K_i,
                 'clear_magic': pygame.K_x,
                 
                 # New Action System mappings

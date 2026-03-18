@@ -365,7 +365,7 @@ class GamblerNPC(pygame.sprite.Sprite):
         return self.can_interact
 
     def get_interaction_prompt(self) -> str:
-        return "[ C ] Sprechen"
+        return "[ I ] Sprechen"
 
     # ==================================================================
     # Rendering

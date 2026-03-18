@@ -2,7 +2,7 @@
 """
 Shop UI – Vollbild-Overlay zum Kaufen von Upgrades.
 
-Gesteuert per ↑/↓ Navigation, C/Enter zum Kaufen, Escape zum Schließen.
+Gesteuert per ↑/↓ Navigation, I/Enter zum Kaufen, Escape zum Schließen.
 Pixel-Art-Stil passend zum restlichen UI.
 """
 
@@ -100,7 +100,7 @@ class ShopUI:
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 self._selected_index = (self._selected_index + 1) % count if count else 0
                 return True
-            elif event.key in (pygame.K_c, pygame.K_RETURN, pygame.K_SPACE):
+            elif event.key in (pygame.K_i, pygame.K_RETURN, pygame.K_SPACE):
                 self._try_buy()
                 return True
 

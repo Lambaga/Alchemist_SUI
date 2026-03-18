@@ -368,8 +368,8 @@ class BlackjackGame:
                 elif event.key in [pygame.K_DOWN, pygame.K_s]:
                     self.selected_option = 1
                     return True
-                # C-Taste oder Enter zum Bestätigen (Braun-Knopf)
-                elif event.key in [pygame.K_c, pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER]:
+                # I-Taste oder Enter zum Bestätigen (Braun-Knopf)
+                elif event.key in [pygame.K_i, pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER]:
                     if self.selected_option == 0:
                         self.accept_invite()
                     else:
@@ -400,8 +400,8 @@ class BlackjackGame:
                     return True
                     
             elif self.state == BlackjackState.RESULT:
-                # 3 = Schließen (Stein) oder C
-                if event.key in [pygame.K_3, pygame.K_KP3, pygame.K_c, pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE]:
+                # 3 = Schließen (Stein) oder I
+                if event.key in [pygame.K_3, pygame.K_KP3, pygame.K_i, pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE]:
                     self.close()
                     return True
                 # Blockiere alle anderen Tasten während Ergebnis

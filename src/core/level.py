@@ -2332,6 +2332,18 @@ class Level:
         
         # Universal Input System für Actions verwenden (nur wenn Blackjack nicht aktiv)
         action = self.input_system.handle_event(event)
+
+        # I ist jetzt sowohl Brauen als auch Interaktion/Dialogue (wenn NPC in Reichweite)
+        if (action == 'brew' and event.type == pygame.KEYDOWN and event.key == pygame.K_i):
+            npc_interactable = (
+                (self.shopkeeper_npc and self.shopkeeper_npc.can_interact) or
+                (self.soldier_npc and self.soldier_npc.can_interact) or
+                (self.gambler_npc and self.gambler_npc.can_interact) or
+                (self.beckalof_npc and self.beckalof_npc.can_interact) or
+                bool(self.active_npc_zone)
+            )
+            if npc_interactable:
+                action = 'cast_magic'
         
         # Wenn Dialog aktiv ist: Hardware- oder Action-System-Events für Weiter/Schließen nutzen
         if (self.dialogue_box and self.dialogue_box.is_active) and action:
@@ -3757,7 +3769,7 @@ class Level:
                     screen_y = int((npc_world_pos.y - cam.y) * self.camera.zoom_factor)
                     
                     # Hint-Text
-                    hint_text = "[ C ] Sprechen"
+                    hint_text = "[ I ] Sprechen"
                     hint_surf = self.npc_interaction_font.render(hint_text, True, (255, 255, 200))
                     
                     # Pulsierende Animation

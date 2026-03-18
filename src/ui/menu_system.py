@@ -441,8 +441,8 @@ class BaseMenuState:
                 self.selected_index = (self.selected_index - 1) % len(self.buttons)
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 self.selected_index = (self.selected_index + 1) % len(self.buttons)
-            # Confirm: Space, C, or Enter
-            elif event.key in (pygame.K_SPACE, pygame.K_c, pygame.K_RETURN, pygame.K_i):
+            # Confirm: Space, I, or Enter
+            elif event.key in (pygame.K_SPACE, pygame.K_i, pygame.K_RETURN):
                 return self.buttons[self.selected_index].action
         elif event.type == pygame.JOYAXISMOTION:
             # Basic joystick navigation on vertical axis (usually axis 1)
@@ -1521,7 +1521,7 @@ class GameOverMenuState(BaseMenuState):
                 pygame.draw.rect(self.screen, (255, 215, 0), button.rect.inflate(8, 6), 2)
         
         # Show controls hint
-        hint_text = "ESC: Hauptmenue  |  R / C: Noch mal"
+        hint_text = "ESC: Hauptmenue  |  R / I: Noch mal"
         hint_surface = pygame.font.Font(None, 24).render(hint_text, True, (100, 100, 100))
         hint_rect = hint_surface.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() - 50))
         self.screen.blit(hint_surface, hint_rect)
@@ -1535,7 +1535,7 @@ class GameOverMenuState(BaseMenuState):
             return result
         
         if event.type == pygame.KEYDOWN:
-            if event.key in (pygame.K_r, pygame.K_c):
+            if event.key in (pygame.K_r, pygame.K_i):
                 return "retry_game"  # Quick retry keeping XP
             elif event.key == pygame.K_ESCAPE:
                 return GameState.MAIN_MENU

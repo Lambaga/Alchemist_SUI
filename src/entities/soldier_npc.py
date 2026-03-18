@@ -179,7 +179,7 @@ class SoldierNPC(pygame.sprite.Sprite):
 
         try:
             font = pygame.font.Font(None, 20)
-            text = font.render("[ C ] Ritter ansprechen", True, (255, 220, 100))
+            text = font.render("[ I ] Ritter ansprechen", True, (255, 220, 100))
             text_rect = text.get_rect(center=(px, py))
             bg = text_rect.inflate(10, 6)
             pygame.draw.rect(screen, (0, 0, 0, 180), bg, border_radius=4)

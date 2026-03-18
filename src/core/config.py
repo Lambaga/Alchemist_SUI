@@ -396,7 +396,7 @@ class InputConfig:
             'hardware': 'STONE'                     # Hardware Button "STONE"
         },
         'cast_magic': {
-            'keyboard': [pygame.K_c, pygame.K_SPACE],  # C oder Space
+            'keyboard': [pygame.K_i, pygame.K_SPACE],  # I oder Space
             'gamepad': {'button': 0},                  # A/X Button
             'hardware': 'CAST'                         # Hardware Button "CAST"
         },
