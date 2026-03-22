@@ -26,12 +26,12 @@ WINDOW_WIDTH = config.display.WINDOW_WIDTH
 WINDOW_HEIGHT = config.display.WINDOW_HEIGHT
 FPS = config.display.FPS
 
-# === SPIEL EINSTELLUNGEN ===
+# === SPIEL EINSTELLUNGEN ===jetz
 GAME_TITLE = config.game.TITLE
 
 # Logging verbosity toggle
 # Set to False to reduce console noise on startup and during loading
-VERBOSE_LOGS = False
+VERBOSE_LOGS = True
 # === MUSIK ===
 BACKGROUND_MUSIC = config.paths.BACKGROUND_MUSIC
 MUSIC_VOLUME = config.game.MUSIC_VOLUME

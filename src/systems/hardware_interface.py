@@ -57,6 +57,13 @@ class HardwareInterface:
         try:
             self.serial_connection = serial.Serial(self.port, self.baud_rate, timeout=1)
             time.sleep(2)  # Warten bis ESP32 bereit ist
+            
+            # Clear any junk data from serial buffer
+            if self.serial_connection.in_waiting:
+                self.serial_connection.reset_input_buffer()
+                if VERBOSE_LOGS:
+                    print("🧹 Serieller Input-Buffer geleert")
+            
             self.is_connected = True
             
             # Lese-Thread starten
@@ -124,17 +131,60 @@ class HardwareInterface:
     
     def _read_messages(self):
         """Kontinuierlich Nachrichten vom ESP32 lesen (läuft in eigenem Thread)"""
+        if VERBOSE_LOGS:
+            print("🔄 NFC-Lese-Thread gestartet - warte auf NFC-Daten...")
+        
+        last_heartbeat = time.time()
+        read_count = 0
+        connection_check_count = 0
+        
         while self.running and self.is_connected:
             try:
                 sc = self.serial_connection
                 if sc is None:
                     time.sleep(0.01)
                     continue
+                
+                # Heartbeat every 5 seconds (show that thread is alive)
+                now = time.time()
+                if now - last_heartbeat > 5 and VERBOSE_LOGS:
+                    bytes_waiting = sc.in_waiting if sc else 0
+                    print(f"💓 NFC-Thread alive... (read {read_count}, waiting: {bytes_waiting} bytes, port: {self.port})")
+                    last_heartbeat = now
+                    read_count = 0
+                
                 if sc.in_waiting > 0:
-                    line = sc.readline().decode().strip()
+                    line = sc.readline().decode(errors='ignore').strip()
                     if line:
-                        message = json.loads(line)
-                        self._handle_message(message)
+                        read_count += 1
+                        # Always log what we receive (for debugging)
+                        if VERBOSE_LOGS:
+                            print(f"📡 Raw serial: {repr(line)}")
+                        
+                        if line.startswith('{'):  # Standard JSON format
+                            try:
+                                message = json.loads(line)
+                                self._handle_message(message)
+                            except json.JSONDecodeError as je:
+                                if VERBOSE_LOGS:
+                                    print(f"⚠️ JSON Parse Error: {je}")
+                        elif 'Tag UID:' in line:  # Fallback: Parse "Tag UID: XX XX XX..." format
+                            # Extract UID from "Tag UID: 4 8E B4 DA BE 72 80"
+                            uid_part = line.split('Tag UID:')[-1].strip()
+                            if uid_part:
+                                if VERBOSE_LOGS:
+                                    print(f"🔖 NFC UID detected (fallback parser): {uid_part}")
+                                # Call NFC handler directly
+                                self._handle_nfc_message({'type': 'NFC_READ', 'uid': uid_part})
+                        else:
+                            # Non-JSON data (like debug output from Arduino)
+                            print(f"🔊 Serial Output: {line}")
+            except UnicodeDecodeError:
+                # Often happens with noise/junk data
+                try:
+                    sc.reset_input_buffer()
+                except Exception:
+                    pass
             except Exception as e:
                 if VERBOSE_LOGS:
                     print(f"❌ Lese-Fehler: {e}")
@@ -156,6 +206,8 @@ class HardwareInterface:
             self._handle_button_message(message)
         elif message_type == "JOYSTICK":
             self._handle_joystick_message(message)
+        elif message_type == "NFC_READ":
+            self._handle_nfc_message(message)
         elif message_type == "HEARTBEAT":
             self.last_heartbeat = time.time()
         elif message_type == "PING":
@@ -216,6 +268,29 @@ class HardwareInterface:
                     "y": y,
                     "vector": new_vector
                 })
+    
+    def _handle_nfc_message(self, message: Dict[str, Any]):
+        """Handle NFC_READ message type from ESP32 PN532"""
+        uid = message.get('uid', '')
+        
+        if uid:
+            if VERBOSE_LOGS:
+                print(f"🎫 NFC-Tag erkannt: {uid}")
+            
+            # Post custom pygame event for UI layer
+            try:
+                nfc_event = pygame.event.Event(
+                    pygame.USEREVENT,
+                    {'nfc_uid': uid}
+                )
+                pygame.event.post(nfc_event)
+            except Exception as e:
+                if VERBOSE_LOGS:
+                    print(f"⚠️ NFC Event posting error: {e}")
+            
+            # Also call callback if registered
+            if "nfc_read" in self.message_callbacks:
+                self.message_callbacks["nfc_read"](uid)
     
     def poll_messages(self) -> int:
         """
