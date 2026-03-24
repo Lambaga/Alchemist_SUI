@@ -230,10 +230,19 @@ def _ensure_menu_bg_loaded() -> None:
             _MENU_BG_BASE = None
 
 def _get_menu_bg_scaled(size: Tuple[int, int]) -> Optional[pygame.Surface]:
+    """Get scaled menu background, ensuring surface is unlocked"""
+    # 🔧 RPi BUGFIX: Disable custom backgrounds on Pi to avoid locking issues
+    if os.environ.get('ALCHEMIST_DISABLE_MENU_BG') == '1':
+        return None
+    
     _ensure_menu_bg_loaded()
     if not _MENU_BG_BASE:
         return None
-    return _asset_mgr.get_scaled_sprite(_MENU_BG_BASE, size)
+    scaled = _asset_mgr.get_scaled_sprite(_MENU_BG_BASE, size)
+    # 🔧 BUGFIX: Unlock surface if it's locked to prevent blit errors on RPi
+    if scaled and scaled.get_locked():
+        scaled.unlock()
+    return scaled
 
 class MenuButton:
     """A clickable menu button"""
@@ -474,6 +483,9 @@ class BaseMenuState:
         # Draw custom background if available, else solid color
         bg = _get_menu_bg_scaled((self.screen.get_width(), self.screen.get_height()))
         if bg is not None:
+            # 🔧 BUGFIX: Ensure surface is not locked before blitting (fixes RPi crash)
+            if bg.get_locked():
+                bg.unlock()
             self.screen.blit(bg, (0, 0))
         else:
             self.screen.fill(self.background_color)
