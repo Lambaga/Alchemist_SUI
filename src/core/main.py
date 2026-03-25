@@ -162,10 +162,9 @@ class Game:
             display_flags |= pygame.FULLSCREEN
         # Performance: double buffering can reduce tearing/overhead on some drivers
         display_flags |= pygame.DOUBLEBUF
-        try:
-            display_flags |= pygame.HWSURFACE
-        except Exception:
-            pass
+# HWSURFACE auf Raspberry Pi NICHT verwenden – sperrt die Surface und
+# verursacht "Surfaces must be not locked during blit" bei allen Blits
+# (set_alpha, SRCALPHA-Surfaces, draw.line-Schleifen etc.)
 
         # VSYNC (pygame2 keyword; safe fallback)
         vsync_enabled = bool(self.optimized_settings.get('VSYNC', False))

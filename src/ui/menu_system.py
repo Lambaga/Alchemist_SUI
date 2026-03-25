@@ -926,7 +926,7 @@ class CreditsMenuState(BaseMenuState):
         ]
         
         # Background panel for readability
-        import pygame
+      
         screen_w = self.screen.get_width()
         line_height = 25
         start_y = 150
