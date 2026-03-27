@@ -7,12 +7,14 @@ Provides main menu, settings, credits, and game state management
 import pygame
 import sys
 import os
+import math
 from typing import Optional, List, Dict, Any, Callable, Tuple
 from enum import Enum
 from settings import *
 from managers.settings_manager import SettingsManager
 from save_system import save_manager
 from managers.asset_manager import AssetManager
+from managers.highscore_manager import get_highscore_manager
 
 # Optional Action System integration (for hardware/buttons)
 # Define safe stubs so Pylance doesn't flag possibly-unbound
@@ -30,6 +32,7 @@ class GameState(Enum):
     """Game state enumeration"""
     MAIN_MENU = "main_menu"
     NEW_GAME = "new_game"
+    NFC_LOGIN = "nfc_login"
     LOAD_GAME = "load_game"
     SETTINGS = "settings"
     CREDITS = "credits"
@@ -1563,6 +1566,308 @@ class GameOverMenuState(BaseMenuState):
         
         return None
 
+
+# NFC Tag UID to Player Name Mapping
+# Format der UIDs von PN532: "4 8E B4 DA BE 72 80" -> "04:8e:b4:da:be:72:80"
+NFC_TAG_MAPPING = {
+    "04:8e:b4:da:be:72:80": "Jonas",
+    "04:10:b1:da:be:72:80": "Simon",
+    "04:66:41:da:be:72:80": "Christian"
+}
+
+# Alternative Formats (für verschiedene Seriell-Formate)
+NFC_TAG_MAPPING_ALT = {
+    "048EB4DABE7280": "Jonas",
+    "0410B1DABE7280": "Simon",
+    "046641DABE7280": "Christian"
+}
+
+
+class NFCLoginMenuState(BaseMenuState):
+    """NFC Login state - Waits for player to scan NFC tag"""
+    
+    def __init__(self, screen: pygame.Surface):
+        super().__init__(screen)
+        self.screen = screen
+        self.background_color = (18, 16, 28)
+        
+        # NFC scanning state
+        self.nfc_detected = False
+        self.player_name = None
+        self.detected_uid = None
+        self.welcome_message = ""
+        self.highscore_message = ""  # High-Score Anzeige
+        self.welcome_timer = 0
+        self.welcome_duration = 4000  # 4 Sekunden - Zeit für High-Score zu lesen
+        
+        # Pulsing animation for "waiting" text
+        self.pulse_timer = 0
+        self.pulse_frequency = 1.5  # Hz
+        
+        # Serial data buffer for NFC UIDs
+        self.uid_buffer = ""
+        self.last_uid = None
+        
+        # Create a button for "back to menu" (optional)
+        self.back_button = MenuButton(
+            screen.get_width() // 2 - 150, 
+            screen.get_height() - 80,
+            300, 
+            50,
+            "Hauptmenue", 
+            pygame.font.Font(None, 36),
+            GameState.MAIN_MENU
+        )
+        
+        # Fonts
+        self.title_font = pygame.font.Font(None, 56)
+        self.text_font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 24)
+        
+    def register_nfc_callback(self, hardware_interface):
+        """Register callback for NFC data from hardware interface"""
+        try:
+            if hardware_interface and hasattr(hardware_interface, 'register_callback'):
+                hardware_interface.register_callback('nfc_read', self.on_nfc_tag_detected)
+                if VERBOSE_LOGS:
+                    print("✅ NFC Callback registriert")
+        except Exception as e:
+            if VERBOSE_LOGS:
+                print(f"⚠️ NFC Callback Fehler: {e}")
+    
+    def on_nfc_tag_detected(self, uid_data: str):
+        """
+        Called when an NFC tag is detected.
+        uid_data format: "04:8e:b4:da:be:72:80" or "048EB4DABE7280" or "4 8E B4 DA BE 72 80"
+        """
+        if not uid_data:
+            return
+            
+        # Normalize UID format
+        uid_normalized = self.normalize_uid(uid_data)
+        
+        # Prevent duplicate detection
+        if uid_normalized == self.last_uid:
+            return
+        
+        self.last_uid = uid_normalized
+        
+        # Look up player name
+        player_name = self._lookup_player_name(uid_normalized)
+        
+        if player_name:
+            self.nfc_detected = True
+            self.player_name = player_name
+            self.detected_uid = uid_normalized
+            
+            # Load high-score
+            highscore_mgr = get_highscore_manager()
+            highscore = highscore_mgr.get_highscore(uid_normalized)
+            
+            self.welcome_message = f"Herzlich willkommen, {player_name}! ✨"
+            if highscore is not None:
+                self.highscore_message = f"Highscore: {highscore}"
+            else:
+                self.highscore_message = "Noch kein Highscore!"
+            
+            self.welcome_timer = pygame.time.get_ticks()
+            
+            if VERBOSE_LOGS:
+                print(f"🎫 NFC Tag erkannt: {player_name} ({uid_normalized})")
+                print(f"🏆 High-Score: {highscore if highscore else 'Keine Punkte gespeichert'}")
+        else:
+            # Unknown tag
+            self.welcome_message = f"⚠️ Unbekannter NFC-Tag: {uid_normalized}"
+            self.highscore_message = ""
+            self.welcome_timer = pygame.time.get_ticks()
+            if VERBOSE_LOGS:
+                print(f"❌ Unbekannter NFC-Tag: {uid_normalized}")
+    
+    @staticmethod
+    def normalize_uid(uid: str) -> str:
+        """
+        Normalize UID format to colon-separated lowercase.
+        Handles space-separated bytes: "4 8E B4 DA BE 72 80" -> "04:8e:b4:da:be:72:80"
+        Also handles colon-separated: "04:8e:b4:da:be:72:80" -> "04:8e:b4:da:be:72:80"
+        And compact format: "048EB4DABE7280" -> "04:8e:b4:da:be:72:80"
+        """
+        # If input has spaces, split by spaces first (space-separated hex bytes)
+        if ' ' in uid:
+            bytes_list = uid.split()
+            # Pad each byte to 2 characters (handle single-digit bytes like "4" -> "04")
+            bytes_list = [byte.zfill(2).lower() for byte in bytes_list]
+            return ":".join(bytes_list)
+        
+        # Otherwise, remove colons (colon-separated or compact format)
+        uid_clean = uid.replace(":", "").lower()
+        
+        # Pad to even length if odd (handle missing leading zero for compact format)
+        if len(uid_clean) % 2 == 1:
+            uid_clean = "0" + uid_clean
+        
+        # Split into pairs and rejoin with colons
+        pairs = [uid_clean[i:i+2] for i in range(0, len(uid_clean), 2)]
+        return ":".join(pairs)
+    
+    def _lookup_player_name(self, uid_normalized: str) -> Optional[str]:
+        """Look up player name from NFC tag UID"""
+        # Try standard format (colon-separated)
+        if uid_normalized in NFC_TAG_MAPPING:
+            return NFC_TAG_MAPPING[uid_normalized]
+        
+        # Try compact format
+        uid_compact = uid_normalized.replace(":", "").upper()
+        if uid_compact in NFC_TAG_MAPPING_ALT:
+            return NFC_TAG_MAPPING_ALT[uid_compact]
+        
+        return None
+    
+    def handle_event(self, event: pygame.event.Event) -> Optional[Any]:
+        """Handle events in NFC login state"""
+        # Back button
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            mouse_pos = pygame.mouse.get_pos()
+            if self.back_button.update(mouse_pos, True):
+                return self.back_button.action
+        elif event.type == pygame.MOUSEMOTION:
+            mouse_pos = pygame.mouse.get_pos()
+            self.back_button.update(mouse_pos, False)
+        
+        # ESC to go back to menu
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return GameState.MAIN_MENU
+        
+        # Custom event for NFC data (can be posted programmatically)
+        if event.type == pygame.USEREVENT:
+            if hasattr(event, 'nfc_uid'):
+                self.on_nfc_tag_detected(event.nfc_uid)
+        
+        # NFC login complete - transition to gameplay
+        if event.type == pygame.USEREVENT + 1:
+            if hasattr(event, 'nfc_login_complete') and event.nfc_login_complete:
+                if VERBOSE_LOGS:
+                    print(f"🎮 NFC Login abgeschlossen - Starte Spiel mit {self.player_name}!")
+                # Return NFC_LOGIN state which MenuSystem will convert to GAMEPLAY
+                return GameState.NFC_LOGIN
+        
+        return None
+    
+    def update(self, dt: float):
+        """Update NFC login state"""
+        self.pulse_timer += dt
+        
+        # Check if welcome message should disappear and auto-transition
+        if self.nfc_detected:
+            elapsed = pygame.time.get_ticks() - self.welcome_timer
+            if elapsed > self.welcome_duration:
+                # Post custom event to trigger gameplay transition
+                try:
+                    transition_event = pygame.event.Event(
+                        pygame.USEREVENT + 1,
+                        {'nfc_login_complete': True, 'player_name': self.player_name}
+                    )
+                    pygame.event.post(transition_event)
+                    if VERBOSE_LOGS:
+                        print(f"📤 NFC-Übergangs-Event gepostet mit Player: {self.player_name}")
+                except Exception as e:
+                    if VERBOSE_LOGS:
+                        print(f"⚠️ Error posting NFC transition event: {e}")
+                
+                self.nfc_detected = False  # Reset for next tag
+    
+    def draw(self):
+        """Draw NFC login screen"""
+        # Background
+        bg = _get_menu_bg_scaled((self.screen.get_width(), self.screen.get_height()))
+        if bg is not None:
+            self.screen.blit(bg, (0, 0))
+        else:
+            self.screen.fill(self.background_color)
+        
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+        
+        # Title
+        title_text = "🔐 Spieler-Login"
+        if getattr(self, 'disable_menu_emojis', False):
+            title_text = "Spieler-Login"
+        
+        title_surface = self.title_font.render(title_text, True, (255, 215, 0))
+        title_rect = title_surface.get_rect(center=(screen_width // 2, 100))
+        self.screen.blit(title_surface, title_rect)
+        
+        # Subtitle
+        if not self.nfc_detected:
+            subtitle_text = "Bitte scanne deinen NFC-Tag"
+            subtitle_surface = self.text_font.render(subtitle_text, True, (200, 200, 200))
+            subtitle_rect = subtitle_surface.get_rect(center=(screen_width // 2, 200))
+            self.screen.blit(subtitle_surface, subtitle_rect)
+            
+            # Pulsing "Warte..." text
+            pulse_value = math.sin(self.pulse_timer * self.pulse_frequency * math.pi)
+            pulse_alpha = int(128 + 127 * abs(pulse_value))
+            
+            waiting_text = "⏳ Warte auf NFC-Tag..."
+            if getattr(self, 'disable_menu_emojis', False):
+                waiting_text = "Warte auf NFC-Tag..."
+            
+            waiting_surface = self.text_font.render(waiting_text, True, (200, 200, 150))
+            waiting_surface.set_alpha(min(255, pulse_alpha))
+            waiting_rect = waiting_surface.get_rect(center=(screen_width // 2, 300))
+            self.screen.blit(waiting_surface, waiting_rect)
+            
+            # Instructions
+            instructions = [
+                "NFC-Reader mit Adafruit Metro ESP32-S2",
+                "PN532-Modul verbunden"
+            ]
+            
+            instr_y = 400
+            for instr_text in instructions:
+                instr_surface = self.small_font.render(instr_text, True, (150, 150, 150))
+                instr_rect = instr_surface.get_rect(center=(screen_width // 2, instr_y))
+                self.screen.blit(instr_surface, instr_rect)
+                instr_y += 40
+        
+        # Welcome message when tag detected
+        if self.nfc_detected and self.player_name:
+            elapsed = pygame.time.get_ticks() - self.welcome_timer
+            progress = elapsed / self.welcome_duration
+            
+            # Fade effect
+            alpha = int(255 * (1 - progress))
+            
+            welcome_text = self.welcome_message
+            welcome_surface = self.title_font.render(welcome_text, True, (100, 255, 100))
+            welcome_surface.set_alpha(max(0, alpha))
+            welcome_rect = welcome_surface.get_rect(center=(screen_width // 2, screen_height // 2 - 60))
+            self.screen.blit(welcome_surface, welcome_rect)
+            
+            # Show high-score
+            if self.highscore_message:
+                highscore_surface = self.text_font.render(self.highscore_message, True, (255, 215, 0))
+                highscore_surface.set_alpha(max(0, alpha))
+                highscore_rect = highscore_surface.get_rect(center=(screen_width // 2, screen_height // 2 + 20))
+                self.screen.blit(highscore_surface, highscore_rect)
+            
+            # Show detected players
+            info_text = f"Spieler: {self.player_name} erkannt!"
+            info_surface = self.text_font.render(info_text, True, (200, 255, 200))
+            info_surface.set_alpha(max(0, alpha))
+            info_rect = info_surface.get_rect(center=(screen_width // 2, screen_height // 2 + 100))
+            self.screen.blit(info_surface, info_rect)
+        
+        # Back button
+        self.back_button.draw(self.screen)
+        
+        # Help text
+        help_text = "ESC: Hauptmenue"
+        help_surface = self.small_font.render(help_text, True, (100, 100, 100))
+        help_rect = help_surface.get_rect(center=(screen_width // 2, screen_height - 180))
+        self.screen.blit(help_surface, help_rect)
+
+
 class MenuSystem:
     """Main menu system controller"""
     
@@ -1575,7 +1880,8 @@ class MenuSystem:
             GameState.CREDITS: CreditsMenuState(screen),
             GameState.LOAD_GAME: LoadGameMenuState(screen),
             GameState.PAUSE: PauseMenuState(screen),
-            GameState.GAME_OVER: GameOverMenuState(screen)
+            GameState.GAME_OVER: GameOverMenuState(screen),
+            GameState.NFC_LOGIN: NFCLoginMenuState(screen)
         }
         
         # Return values for game state management
@@ -1599,7 +1905,7 @@ class MenuSystem:
                     if not evt.pressed:
                         return
                     if self.current_state in [GameState.MAIN_MENU, GameState.SETTINGS, GameState.CREDITS,
-                                              GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
+                                              GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER, GameState.NFC_LOGIN]:
                         # Post a synthetic ENTER key event so existing handlers run
                         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
 
@@ -1630,7 +1936,12 @@ class MenuSystem:
             result = self.states[self.current_state].handle_event(event)
             if result:
                 if result == GameState.NEW_GAME:
-                    return GameState.GAMEPLAY  # Start new game
+                    # Go to NFC login instead of directly to gameplay
+                    self.change_state(GameState.NFC_LOGIN)
+                    return None
+                elif result == GameState.NFC_LOGIN:
+                    # NFC login complete, transition to gameplay
+                    return GameState.GAMEPLAY
                 elif result == "restart_game":
                     return "restart_game"  # Restart current game
                 elif result == "retry_game":

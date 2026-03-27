@@ -243,6 +243,13 @@ class Game:
             # Magic Adapter wird erst nach Level-Erstellung gesetzt
             pass
         
+        # NFC/Hardware Interface für NFC-Login
+        # Hinweis: Wird nach hardware_adapter Initialisierung konfiguriert
+        self.hardware_interface = None
+        self.player_name = None  # Spielername vom NFC-Tag
+        self.player_uid = None  # NFC Tag UID für Highscore
+        self._setup_nfc_callbacks()  # Register NFC callbacks AFTER hardware_adapter is created
+        
         # Start with menu music on initial MAIN_MENU
         self._current_music_path = None
         self.settings = SettingsManager()
@@ -257,6 +264,46 @@ class Game:
             print("💡 Drücke F3 um FPS-Anzeige ein/auszuschalten")
             print("💡 Drücke F4 um zwischen einfacher/detaillierter Anzeige zu wechseln")
             print("🎮 Verwende das Menu-System zum Navigieren!")
+    
+    def _setup_nfc_callbacks(self):
+        """Setup NFC callbacks using existing hardware_adapter (action system)"""
+        try:
+            # Use existing hardware_adapter from action system (already connected to COM port)
+            if self.hardware_adapter and hasattr(self.hardware_adapter, 'hardware'):
+                hw_interface = self.hardware_adapter.hardware
+                self.hardware_interface = hw_interface
+                
+                # Register NFC callback with existing hardware interface
+                hw_interface.register_callback(
+                    'nfc_read',
+                    self._on_nfc_tag_detected
+                )
+                
+                if VERBOSE_LOGS:
+                    print("✅ NFC-Callback registriert (nutzt bestehenden Hardware-Adapter)")
+            else:
+                if VERBOSE_LOGS:
+                    print("⚠️ Hardware-Adapter nicht verfügbar - NFC-Login deaktiviert")
+                    
+        except Exception as e:
+            if VERBOSE_LOGS:
+                print(f"⚠️ NFC Callback Setup Error: {e}")
+    
+    def _on_nfc_tag_detected(self, uid: str):
+        """Handle NFC tag detection from hardware interface"""
+        if VERBOSE_LOGS:
+            print(f"🎫 NFC-Tag in Game detected: {uid}")
+        
+        # Post pygame event for the menu system to handle
+        try:
+            nfc_event = pygame.event.Event(
+                pygame.USEREVENT,
+                {'nfc_uid': uid}
+            )
+            pygame.event.post(nfc_event)
+        except Exception as e:
+            if VERBOSE_LOGS:
+                print(f"⚠️ Error posting NFC event: {e}")
     
     def load_background_music(self):
         """Legacy helper: plays gameplay background music."""
@@ -374,6 +421,9 @@ class Game:
             # Apply music volume on settings change
             if event.type == pygame.USEREVENT and getattr(event, 'name', '') == 'APPLY_MUSIC_VOLUME':
                 self.apply_current_music_volume()
+            elif event.type == pygame.USEREVENT and getattr(event, 'nfc_login_complete', False):
+                # NFC login completed - transition to gameplay
+                self.start_nfc_login_or_gameplay()
             elif event.type == pygame.USEREVENT and getattr(event, 'name', '') == 'APPLY_DIFFICULTY':
                 try:
                     if self.level and getattr(self.level, 'enemy_manager', None):
@@ -505,12 +555,12 @@ class Game:
                                 continue  # Skip weitere Event-Verarbeitung
             
             # Handle events based on current game state
-            if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER]:
+            if self.game_state == GameState.MAIN_MENU or self.game_state in [GameState.SETTINGS, GameState.CREDITS, GameState.LOAD_GAME, GameState.PAUSE, GameState.GAME_OVER, GameState.NFC_LOGIN]:
                 # Menu system handles these states
                 result = self.menu_system.handle_event(event)
                 if result:
                     if result == GameState.GAMEPLAY:
-                        self.start_new_game()
+                        self.start_nfc_login_or_gameplay()
                     elif isinstance(result, tuple) and result[0] == "load_game":
                         self.load_game(result[1])
                     elif isinstance(result, tuple) and result[0] == "save_to_slot":
@@ -551,10 +601,32 @@ class Game:
                     self.level.handle_event(event)
     
     
+    def start_nfc_login_or_gameplay(self):
+        """
+        Transition from NFC_LOGIN to actual gameplay.
+        Called when NFC_LOGIN state completes (auto-transition after tag detected).
+        """
+        # Get player name and UID from NFC login screen
+        nfc_login_state = self.menu_system.states.get(GameState.NFC_LOGIN)
+        if nfc_login_state:
+            if hasattr(nfc_login_state, 'player_name'):
+                self.player_name = nfc_login_state.player_name
+                if VERBOSE_LOGS:
+                    print(f"👤 Spielername gespeichert: {self.player_name}")
+            if hasattr(nfc_login_state, 'detected_uid'):
+                self.player_uid = nfc_login_state.detected_uid
+                if VERBOSE_LOGS:
+                    print(f"🏷️ NFC UID gespeichert: {self.player_uid}")
+        
+        # Start gameplay
+        self.start_new_game()
+    
     def start_new_game(self):
         """Startet ein neues Spiel - optional mit Intro-Cinematic"""
         if VERBOSE_LOGS:
             print("🎮 Neues Spiel wird gestartet...")
+            if self.player_name:
+                print(f"👤 Mit Spieler: {self.player_name}")
         
         # 🎬 Intro-Cinematic abspielen (falls vorhanden)
         if self.intro_cinematic.video_player.video_loaded:
@@ -748,6 +820,25 @@ class Game:
     def return_to_menu(self):
         """Kehrt zum Hauptmenü zurück"""
         print("📋 Zurück zum Hauptmenü...")
+        
+        # Speichere High-Score vor dem Cleanup
+        if self.level and self.player_uid:
+            from managers.highscore_manager import get_highscore_manager
+            try:
+                # Get score from level if available
+                if hasattr(self.level, '_score_data') and self.level._score_data:
+                    final_score = self.level._score_data.final_score
+                    if final_score and final_score > 0:
+                        highscore_mgr = get_highscore_manager()
+                        is_new_high = highscore_mgr.set_highscore(self.player_uid, final_score)
+                        player_display = self.player_name if self.player_name else "Unbekannt"
+                        if is_new_high:
+                            print(f"🏆 Neuer High-Score für {player_display}: {final_score}")
+                        else:
+                            print(f"📊 Score für {player_display}: {final_score}")
+            except Exception as e:
+                if VERBOSE_LOGS:
+                    print(f"⚠️ High-Score Save Error: {e}")
         
         # Input-Status leeren bevor wir zum Menü wechseln
         if self.level:
